@@ -303,15 +303,20 @@ async function saveQRCode(qrContent) {
                 qrContent
             })
         });
-        
+
+        const contentType = response.headers.get('content-type') || '';
+        const responseText = await response.text();
+
         // Verificar si la respuesta es válida
         if (!response.ok) {
             // Intentar obtener detalles del error
             let errorMessage = `Error del servidor: ${response.status}`;
             try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorMessage;
-                
+                if (contentType.includes('application/json') && responseText) {
+                    const errorData = JSON.parse(responseText);
+                    errorMessage = errorData.error || errorMessage;
+                }
+
                 // Si el error es de formato, mostrar el contenido del QR
                 if (response.status === 400) {
                     console.log('📋 Contenido QR escaneado:', qrContent);
@@ -322,17 +327,29 @@ async function saveQRCode(qrContent) {
             } catch (e) {
                 console.log('Error al parsear respuesta de error:', e);
             }
-            
+
+            // Si no es JSON, dar pista útil
+            if (!contentType.includes('application/json')) {
+                const hint = responseText.includes('<!DOCTYPE html>')
+                    ? 'La respuesta parece HTML (sitio estático o ruta incorrecta).'
+                    : 'La respuesta no es JSON.';
+                throw new Error(`${errorMessage}. ${hint}`);
+            }
+
             throw new Error(errorMessage);
         }
-        
+
         // Intentar parsear JSON
         let result;
         try {
-            result = await response.json();
+            if (!contentType.includes('application/json')) {
+                throw new Error('Respuesta no es JSON');
+            }
+            result = JSON.parse(responseText);
         } catch (jsonError) {
             console.error('Error al parsear JSON:', jsonError);
             console.log('📋 Contenido QR que causó el error:', qrContent);
+            console.log('📋 Respuesta del servidor:', responseText);
             showToast(`⚠️ QR detectado: "${qrContent.substring(0, 40)}..."`, 'warning');
             throw new Error('El servidor no devolvió una respuesta válida');
         }
