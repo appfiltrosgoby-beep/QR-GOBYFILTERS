@@ -12,11 +12,19 @@ const { JWT } = require('google-auth-library');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const path = require('path');
 
 // Middlewares
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static('public'));
+
+// Servir archivos estáticos desde public
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// Servir index.html desde la raíz
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Configuración de Google Sheets
 const SCOPES = [
