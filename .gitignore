@@ -1,0 +1,39 @@
+# Dependencias
+node_modules/
+package-lock.json
+yarn.lock
+
+# Variables de entorno
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Credenciales de Google
+credentials.json
+service-account.json
+*.json
+
+# Build y cache
+dist/
+build/
+.cache/
+
+# Otros
+*.pid
+*.seed
+*.pid.lock

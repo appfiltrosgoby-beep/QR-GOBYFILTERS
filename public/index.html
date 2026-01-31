@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LECTURA DE QR GOBY FILTERS</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Librería html5-qrcode para escaneo de QR -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Contenedor principal -->
+    <div class="container">
+        <!-- Encabezado -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="3" y="3" width="7" height="7" rx="1"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1"/>
+                        <rect x="14" y="14" width="7" height="7" rx="1"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                    <h1>LECTURA DE QR GOBY FILTERS</h1>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total escaneados</span>
+                        <span class="stat-value" id="totalScans">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Hoy</span>
+                        <span class="stat-value" id="todayScans">0</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Contenido principal -->
+        <main class="main-content">
+            <!-- Panel de escaneo -->
+            <section class="scanner-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📸 Escáner de Códigos QR</h2>
+                        <div class="info-badge">
+                            <span class="badge-label">Formato: REFERENCIA|SERIAL</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Área del escáner -->
+                        <div id="reader" class="qr-reader"></div>
+                        
+                        <!-- Controles del escáner -->
+                        <div class="scanner-controls">
+                            <button id="startBtn" class="btn btn-primary">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M9.5 9l5 3-5 3z"/>
+                                </svg>
+                                Iniciar Escaneo
+                            </button>
+                            <button id="stopBtn" class="btn btn-secondary" disabled>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <rect x="9" y="9" width="6" height="6"/>
+                                </svg>
+                                Detener
+                            </button>
+                            <select id="cameraSelect" class="camera-select">
+                                <option value="">Seleccionar cámara...</option>
+                            </select>
+                        </div>
+
+                        <!-- Estado del escáner -->
+                        <div id="scannerStatus" class="scanner-status"></div>
+
+                        <!-- Último resultado -->
+                        <div id="lastResult" class="last-result hidden">
+                            <div class="result-header">
+                                <h3>✅ Último escaneo</h3>
+                                <button id="clearResult" class="btn-icon">×</button>
+                            </div>
+                            <div class="result-content">
+                                <div class="result-type" id="resultType"></div>
+                                <div class="result-data" id="resultData"></div>
+                                <div class="result-meta" id="resultMeta"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Panel de registros recientes -->
+            <section class="records-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📋 Registros Recientes</h2>
+                        <div class="header-actions">
+                            <button id="refreshBtn" class="btn btn-icon-text">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                                </svg>
+                                Actualizar
+                            </button>
+                            <button id="exportBtn" class="btn btn-icon-text">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                                </svg>
+                                Exportar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Tabla de registros -->
+                        <div class="table-container">
+                            <table id="recordsTable" class="records-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Referencia</th>
+                                        <th>Serial</th>
+                                        <th>Estado</th>
+                                        <th>Fecha Almacén</th>
+                                        <th>Fecha Despacho</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recordsBody">
+                                    <tr>
+                                        <td colspan="6" class="no-data">
+                                            No hay registros para mostrar
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estadísticas por tipo -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📊 Estadísticas por Tipo</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="statsContainer" class="stats-grid">
+                            <p class="no-data">Cargando estadísticas...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Notificaciones toast -->
+        <div id="toastContainer" class="toast-container"></div>
+    </div>
+
+    <!-- Script principal -->
+    <script src="app.js"></script>
+</body>
+</html>
