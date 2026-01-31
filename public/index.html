@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LECTURA DE QR GOBY FILTERS</title>
+    <title>INDUSTRIAS GOBY</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
     <!-- Librería html5-qrcode para escaneo de QR -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -15,17 +16,12 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <rect x="3" y="3" width="7" height="7" rx="1"/>
-                        <rect x="14" y="3" width="7" height="7" rx="1"/>
-                        <rect x="14" y="14" width="7" height="7" rx="1"/>
-                        <rect x="3" y="14" width="7" height="7" rx="1"/>
-                    </svg>
-                    <h1>LECTURA DE QR GOBY FILTERS</h1>
+                    <img src="GOBY MARCA REGISTRADA.png" alt="INDUSTRIAS GOBY Logo">
+                    <h1>INDUSTRIAS GOBY</h1>
                 </div>
-                <div class="header-stats">
+                <div class="header-stats mobile-hidden">
                     <div class="stat-item">
-                        <span class="stat-label">Total escaneados</span>
+                        <span class="stat-label">Total</span>
                         <span class="stat-value" id="totalScans">0</span>
                     </div>
                     <div class="stat-item">
@@ -38,14 +34,11 @@
 
         <!-- Contenido principal -->
         <main class="main-content">
-            <!-- Panel de escaneo -->
-            <section class="scanner-section">
+            <!-- Vista: Escáner (por defecto) -->
+            <section id="scannerView" class="view active">
                 <div class="card">
                     <div class="card-header">
-                        <h2>📸 Escáner de Códigos QR</h2>
-                        <div class="info-badge">
-                            <span class="badge-label">Formato: REFERENCIA|SERIAL</span>
-                        </div>
+                        <h2>📸 ESCANEA EL CODIGO QR</h2>
                     </div>
                     <div class="card-body">
                         <!-- Área del escáner -->
@@ -67,9 +60,6 @@
                                 </svg>
                                 Detener
                             </button>
-                            <select id="cameraSelect" class="camera-select">
-                                <option value="">Seleccionar cámara...</option>
-                            </select>
                         </div>
 
                         <!-- Estado del escáner -->
@@ -91,8 +81,8 @@
                 </div>
             </section>
 
-            <!-- Panel de registros recientes -->
-            <section class="records-section">
+            <!-- Vista: Registros -->
+            <section id="recordsView" class="view">
                 <div class="card">
                     <div class="card-header">
                         <h2>📋 Registros Recientes</h2>
@@ -136,8 +126,10 @@
                         </div>
                     </div>
                 </div>
+            </section>
 
-                <!-- Estadísticas por tipo -->
+            <!-- Vista: Estadísticas -->
+            <section id="statsView" class="view">
                 <div class="card">
                     <div class="card-header">
                         <h2>📊 Estadísticas por Tipo</h2>
@@ -150,6 +142,34 @@
                 </div>
             </section>
         </main>
+
+        <!-- Menú de navegación móvil -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-view="scannerView">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <span>Escanear</span>
+            </button>
+            <button class="nav-item" data-view="recordsView">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span>Registros</span>
+            </button>
+            <button class="nav-item" data-view="statsView">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="20" x2="12" y2="10"/>
+                    <line x1="18" y1="20" x2="18" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="16"/>
+                </svg>
+                <span>Estadísticas</span>
+            </button>
+        </nav>
 
         <!-- Notificaciones toast -->
         <div id="toastContainer" class="toast-container"></div>

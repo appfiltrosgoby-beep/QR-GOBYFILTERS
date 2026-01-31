@@ -16,7 +16,6 @@ let selectedCameraId = null;
 const elements = {
     startBtn: document.getElementById('startBtn'),
     stopBtn: document.getElementById('stopBtn'),
-    cameraSelect: document.getElementById('cameraSelect'),
     scannerStatus: document.getElementById('scannerStatus'),
     lastResult: document.getElementById('lastResult'),
     resultType: document.getElementById('resultType'),
@@ -31,6 +30,51 @@ const elements = {
     statsContainer: document.getElementById('statsContainer'),
     toastContainer: document.getElementById('toastContainer')
 };
+
+// ============================================
+// NAVEGACIÓN ENTRE VISTAS
+// ============================================
+
+/**
+ * Cambia entre las diferentes vistas de la aplicación
+ */
+function switchView(viewId) {
+    // Ocultar todas las vistas
+    document.querySelectorAll('.view').forEach(view => {
+        view.classList.remove('active');
+    });
+    
+    // Mostrar la vista seleccionada
+    const targetView = document.getElementById(viewId);
+    if (targetView) {
+        targetView.classList.add('active');
+    }
+    
+    // Actualizar botones de navegación
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    const activeBtn = document.querySelector(`[data-view="${viewId}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    }
+    
+    // Cargar datos según la vista
+    if (viewId === 'recordsView') {
+        loadRecentScans();
+    } else if (viewId === 'statsView') {
+        loadStats();
+    }
+}
+
+// Event listeners para navegación
+document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const viewId = btn.getAttribute('data-view');
+        switchView(viewId);
+    });
+});
 
 // ============================================
 // INICIALIZACIÓN
@@ -72,7 +116,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupEventListeners() {
     elements.startBtn.addEventListener('click', startScanning);
     elements.stopBtn.addEventListener('click', stopScanning);
-    elements.cameraSelect.addEventListener('change', handleCameraChange);
     elements.clearResult.addEventListener('click', clearLastResult);
     elements.refreshBtn.addEventListener('click', () => {
         loadRecentScans();
@@ -93,15 +136,6 @@ async function loadCameras() {
         const devices = await Html5Qrcode.getCameras();
         
         if (devices && devices.length > 0) {
-            elements.cameraSelect.innerHTML = '';
-            
-            devices.forEach((device, index) => {
-                const option = document.createElement('option');
-                option.value = device.id;
-                option.text = device.label || `Cámara ${index + 1}`;
-                elements.cameraSelect.appendChild(option);
-            });
-            
             // Seleccionar la cámara trasera por defecto (si existe)
             const backCamera = devices.find(d => 
                 d.label.toLowerCase().includes('back') || 
@@ -109,7 +143,6 @@ async function loadCameras() {
             );
             
             selectedCameraId = backCamera ? backCamera.id : devices[0].id;
-            elements.cameraSelect.value = selectedCameraId;
             
             console.log(`✅ ${devices.length} cámara(s) detectada(s)`);
         } else {
@@ -225,7 +258,6 @@ function onScanError(errorMessage) {
 function updateScannerUI(scanning) {
     elements.startBtn.disabled = scanning;
     elements.stopBtn.disabled = !scanning;
-    elements.cameraSelect.disabled = scanning;
     
     if (scanning) {
         elements.startBtn.classList.add('disabled');
@@ -341,22 +373,9 @@ async function loadStats() {
 }
 
 // ============================================
-// INTERFAZ DE USUARIOdata, estado) {
-    const estadoClass = estado === 'EN ALMACEN' ? 'almacen' : 'despachado';
-    const estadoEmoji = estado === 'EN ALMACEN' ? '📦' : '🚚';
-    
-    elements.resultType.innerHTML = `<span class="type-badge type-${estadoClass}">${estadoEmoji} ${estado}</span>`;
-    
-    elements.resultData.innerHTML = `
-        <div class="qr-details">
-            <div class="qr-field">
-                <strong>Referencia:</strong> ${data.referencia}
-            </div>
-            <div class="qr-field">
-                <strong>Serial:</strong> ${data.serial}
-            </div>
-            <div class="qr-field">
-                <strong>Fecha Almacén:</strong> ${data.fechaAlmacen || 'N/A'}
+// INTERFAZ DE USUARIO
+// ============================================
+
 /**
  * Muestra el último resultado escaneado
  */
@@ -522,15 +541,4 @@ async function exportToCSV() {
 function truncateText(text, maxLength) {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
-}
-    
-    // Detectar tipo de dispositivo
-    let device = 'Desktop';
-    if (/Mobile|Android|iPhone|iPad|iPod/i.test(ua)) {
-        device = 'Móvil';
-    } else if (/Tablet|iPad/i.test(ua)) {
-        device = 'Tablet';
-    }
-    
-    return { browser, os, device };
 }
