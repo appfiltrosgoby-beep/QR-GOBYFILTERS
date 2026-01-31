@@ -223,15 +223,22 @@ async function stopScanning() {
  */
 async function onQRCodeScanned(decodedText, decodedResult) {
     console.log('✅ QR detectado:', decodedText);
+    console.log('Contenido completo:', decodedText);
+    console.log('Longitud:', decodedText.length);
     
     // Pausar temporalmente el escaneo
     await stopScanning();
     
+    // Validar que no esté vacío
+    if (!decodedText || decodedText.trim() === '') {
+        showToast('⚠️ QR vacío o inválido', 'warning');
+        updateStatus('❌ QR vacío detectado', 'error');
+        setTimeout(() => startScanning(), 2000);
+        return;
+    }
+    
     // Guardar el QR
     await saveQRCode(decodedText);
-    
-    // Mostrar resultado
-    displayLastResult(decodedText);
     
     // Reanudar escaneo después de 2 segundos
     setTimeout(() => {
@@ -297,7 +304,38 @@ async function saveQRCode(qrContent) {
             })
         });
         
-        const result = await response.json();
+        // Verificar si la respuesta es válida
+        if (!response.ok) {
+            // Intentar obtener detalles del error
+            let errorMessage = `Error del servidor: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+                
+                // Si el error es de formato, mostrar el contenido del QR
+                if (response.status === 400) {
+                    console.log('📋 Contenido QR escaneado:', qrContent);
+                    showToast(`⚠️ Formato inválido. QR: "${qrContent.substring(0, 40)}..."`, 'warning');
+                    updateStatus(`⚠️ ${errorMessage}`, 'warning');
+                    return;
+                }
+            } catch (e) {
+                console.log('Error al parsear respuesta de error:', e);
+            }
+            
+            throw new Error(errorMessage);
+        }
+        
+        // Intentar parsear JSON
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            console.error('Error al parsear JSON:', jsonError);
+            console.log('📋 Contenido QR que causó el error:', qrContent);
+            showToast(`⚠️ QR detectado: "${qrContent.substring(0, 40)}..."`, 'warning');
+            throw new Error('El servidor no devolvió una respuesta válida');
+        }
         
         if (result.success) {
             const action = result.action;
@@ -323,7 +361,7 @@ async function saveQRCode(qrContent) {
             await loadRecentScans();
             await loadStats();
         } else {
-            throw new Error(result.error);
+            throw new Error(result.error || 'Error desconocido');
         }
         
     } catch (error) {

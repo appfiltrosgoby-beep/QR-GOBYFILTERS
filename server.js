@@ -150,9 +150,11 @@ app.post('/api/save-qr', async (req, res) => {
     // Parsear el contenido del QR
     const parsedData = parseQRContent(qrContent);
     if (!parsedData) {
+      console.log('❌ QR con formato inválido:', qrContent);
       return res.status(400).json({ 
         success: false, 
-        error: 'Formato de QR inválido. Use: REFERENCIA|SERIAL' 
+        error: `Formato de QR inválido. Esperado: REFERENCIA|SERIAL. Recibido: "${qrContent.substring(0, 50)}${qrContent.length > 50 ? '...' : ''}"`,
+        qrContent: qrContent
       });
     }
 
