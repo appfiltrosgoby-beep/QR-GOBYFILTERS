@@ -10,6 +10,16 @@ const bodyParser = require('body-parser');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
+// Validar variables de entorno críticas
+const requiredEnvVars = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SPREADSHEET_ID'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.warn('⚠️ ADVERTENCIA: Variables de entorno faltantes:', missingEnvVars);
+  console.warn('⚠️ El servidor se iniciará pero las rutas de Google Sheets fallarán.');
+  console.warn('⚠️ Por favor, configura estas variables en tu archivo .env o en Render');
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const path = require('path');
@@ -20,6 +30,11 @@ app.use(bodyParser.json());
 
 // Servir archivos estáticos desde public
 app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// Health check para Render
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });
+});
 
 // Servir index.html desde la raíz
 app.get('/', (req, res) => {
@@ -38,6 +53,11 @@ const SCOPES = [
  */
 async function getGoogleSheet() {
   try {
+    // Validar variables de entorno
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY || !process.env.GOOGLE_SPREADSHEET_ID) {
+      throw new Error('Variables de entorno de Google Sheets no configuradas');
+    }
+
     // Configuración de autenticación JWT
     const serviceAccountAuth = new JWT({
       email: process.env.GOOGLE_CLIENT_EMAIL,

@@ -2,12 +2,12 @@ services:
   - type: web
     name: qr-scanner-goby
     runtime: node
-    env: node
     region: oregon
     plan: free
     buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /api/health
+    healthCheckInterval: 30
     autoDeploy: true
     envVars:
       - key: NODE_ENV
