@@ -28,17 +28,22 @@ const path = require('path');
 app.use(cors());
 app.use(bodyParser.json());
 
+// Debug: Log de rutas
+const publicPath = path.join(__dirname, 'public');
+console.log('📁 Public path:', publicPath);
+
 // Servir archivos estáticos desde public
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(publicPath));
 
 // Health check para Render
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });
 });
 
-// Servir index.html desde la raíz
+// Servir index.html desde la raíz (fallback para SPA)
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    const indexPath = path.join(publicPath, 'index.html');
+    res.sendFile(indexPath);
 });
 
 // Configuración de Google Sheets
