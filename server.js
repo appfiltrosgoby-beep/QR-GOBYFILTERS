@@ -308,6 +308,9 @@ app.get('/api/recent-scans', async (req, res) => {
       return res.json({ success: true, data: [] });
     }
 
+    // Asegurar que existan encabezados
+    await initializeSheet(sheet);
+
     const rows = await sheet.getRows();
     const recentRows = rows.slice(-limit).reverse();
 
@@ -354,6 +357,9 @@ app.get('/api/stats', async (req, res) => {
         } 
       });
     }
+
+    // Asegurar que existan encabezados
+    await initializeSheet(sheet);
 
     const rows = await sheet.getRows();
     const today = new Date().toLocaleDateString('es-ES');
