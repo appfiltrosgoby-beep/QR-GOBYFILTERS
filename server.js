@@ -29,7 +29,7 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // Servir archivos estáticos desde public
-app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Health check para Render
 app.get('/api/health', (req, res) => {
