@@ -12,6 +12,7 @@ let html5QrCode = null;
 let isScanning = false;
 let selectedCameraId = null;
 let currentUserRole = null; // 'user' o 'admin'
+let currentUserEmail = null; // Email del usuario logueado
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 let currentFilteredData = []; // Guardar datos filtrados actual
 
@@ -35,6 +36,11 @@ const elements = {
     loginModal: document.getElementById('loginModal'),
     loginUserBtn: document.getElementById('loginUserBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
+    userEmailForm: document.getElementById('userEmailForm'),
+    userEmail: document.getElementById('userEmail'),
+    submitUserBtn: document.getElementById('submitUserBtn'),
+    cancelUserBtn: document.getElementById('cancelUserBtn'),
+    emailError: document.getElementById('emailError'),
     adminPasswordForm: document.getElementById('adminPasswordForm'),
     adminPassword: document.getElementById('adminPassword'),
     submitAdminBtn: document.getElementById('submitAdminBtn'),
@@ -53,14 +59,60 @@ const elements = {
  */
 function initAuth() {
     const savedRole = localStorage.getItem('userRole');
+    const savedEmail = localStorage.getItem('userEmail');
     
     if (savedRole) {
         currentUserRole = savedRole;
+        if (savedEmail) {
+            currentUserEmail = savedEmail;
+        }
         applyRolePermissions();
         elements.loginModal.style.display = 'none';
     } else {
         elements.loginModal.style.display = 'flex';
     }
+}
+
+/**
+ * Mostrar formulario de email para usuario
+ */
+function showUserEmailForm() {
+    elements.loginUserBtn.parentElement.style.display = 'none';
+    elements.userEmailForm.classList.remove('hidden');
+    elements.userEmail.focus();
+}
+
+/**
+ * Cancelar login de usuario
+ */
+function cancelUserLogin() {
+    elements.userEmailForm.classList.add('hidden');
+    elements.loginUserBtn.parentElement.style.display = 'block';
+    elements.userEmail.value = '';
+    elements.emailError.textContent = '';
+}
+
+/**
+ * Validar email del usuario
+ */
+function validateUserEmail() {
+    const email = elements.userEmail.value.trim();
+    
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) {
+        elements.emailError.textContent = 'Por favor ingresa tu correo';
+        return;
+    }
+    if (!emailRegex.test(email)) {
+        elements.emailError.textContent = 'Por favor ingresa un correo válido';
+        return;
+    }
+    
+    // Guardar email y continuar con login
+    currentUserEmail = email;
+    localStorage.setItem('userEmail', email);
+    loginAsUser();
 }
 
 /**
@@ -71,7 +123,10 @@ function loginAsUser() {
     localStorage.setItem('userRole', 'user');
     applyRolePermissions();
     elements.loginModal.style.display = 'none';
-    showToast('Bienvenido Usuario', 'success');
+    elements.userEmailForm.classList.add('hidden');
+    elements.userEmail.value = '';
+    elements.emailError.textContent = '';
+    showToast(`Bienvenido ${currentUserEmail}`, 'success');
 }
 
 /**
@@ -144,14 +199,19 @@ function showPasswordError(message) {
  */
 function logout() {
     localStorage.removeItem('userRole');
+    localStorage.removeItem('userEmail');
     currentUserRole = null;
+    currentUserEmail = null;
     
     // Resetear modal al estado inicial
     const modalBody = elements.loginUserBtn.parentElement;
     modalBody.style.display = 'flex';
     elements.adminPasswordForm.classList.add('hidden');
+    elements.userEmailForm.classList.add('hidden');
     elements.adminPassword.value = '';
+    elements.userEmail.value = '';
     elements.passwordError.classList.add('hidden');
+    elements.emailError.textContent = '';
     elements.adminPassword.classList.remove('error');
     
     // Mostrar modal
@@ -167,7 +227,8 @@ function logout() {
 function applyRolePermissions() {
     // Actualizar badge de rol
     const roleText = currentUserRole === 'admin' ? 'Admin' : 'Usuario';
-    elements.currentRole.textContent = roleText;
+    const displayText = currentUserRole === 'admin' ? roleText : (currentUserEmail || roleText);
+    elements.currentRole.textContent = displayText;
     elements.currentRole.className = `role-badge ${currentUserRole}`;
     
     // Ocultar/mostrar vista de estadísticas
@@ -293,11 +354,25 @@ function setupEventListeners() {
     elements.exportBtn.addEventListener('click', exportToCSV);
     
     // Event listeners de autenticación
-    elements.loginUserBtn.addEventListener('click', loginAsUser);
+    elements.loginUserBtn.addEventListener('click', showUserEmailForm);
     elements.loginAdminBtn.addEventListener('click', showAdminPasswordForm);
+    elements.submitUserBtn.addEventListener('click', validateUserEmail);
+    elements.cancelUserBtn.addEventListener('click', cancelUserLogin);
     elements.submitAdminBtn.addEventListener('click', validateAdminPassword);
     elements.cancelAdminBtn.addEventListener('click', cancelAdminLogin);
     elements.logoutBtn.addEventListener('click', logout);
+    
+    // Enter en campo de email
+    elements.userEmail.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            validateUserEmail();
+        }
+    });
+    
+    // Limpiar error al escribir email
+    elements.userEmail.addEventListener('input', () => {
+        elements.emailError.textContent = '';
+    });
     
     // Enter en campo de contraseña
     elements.adminPassword.addEventListener('keypress', (e) => {

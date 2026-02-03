@@ -258,6 +258,15 @@
                         Administrador
                     </button>
                 </div>
+                <!-- Formulario de email para usuario (oculto por defecto) -->
+                <div id="userEmailForm" class="password-form hidden">
+                    <input type="email" id="userEmail" placeholder="Ingresa tu correo electrónico" class="input-password">
+                    <div class="password-actions">
+                        <button id="cancelUserBtn" class="btn btn-secondary">Cancelar</button>
+                        <button id="submitUserBtn" class="btn btn-primary">Continuar</button>
+                    </div>
+                    <div id="emailError" class="error-message hidden"></div>
+                </div>
                 <!-- Formulario de contraseña para admin (oculto por defecto) -->
                 <div id="adminPasswordForm" class="password-form hidden">
                     <input type="password" id="adminPassword" placeholder="Ingresa la contraseña de administrador" class="input-password">
