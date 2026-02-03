@@ -40,6 +40,27 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });
 });
 
+/**
+ * Valida la contraseña de administrador
+ * POST /api/validate-admin
+ * Body: { password }
+ */
+app.post('/api/validate-admin', (req, res) => {
+  try {
+    const { password } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123'; // Contraseña por defecto
+    
+    if (password === adminPassword) {
+      res.json({ success: true, message: 'Contraseña correcta' });
+    } else {
+      res.json({ success: false, message: 'Contraseña incorrecta' });
+    }
+  } catch (error) {
+    console.error('Error al validar contraseña:', error);
+    res.status(500).json({ success: false, error: 'Error al validar contraseña' });
+  }
+});
+
 // Servir index.html desde la raíz (fallback para SPA)
 app.get('/', (req, res) => {
     const indexPath = path.join(publicPath, 'index.html');

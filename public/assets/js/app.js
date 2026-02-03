@@ -11,6 +11,7 @@ const API_URL = window.location.origin;
 let html5QrCode = null;
 let isScanning = false;
 let selectedCameraId = null;
+let currentUserRole = null; // 'user' o 'admin'
 
 // Elementos del DOM
 const elements = {
@@ -28,8 +29,153 @@ const elements = {
     totalScans: document.getElementById('totalScans'),
     todayScans: document.getElementById('todayScans'),
     statsContainer: document.getElementById('statsContainer'),
-    toastContainer: document.getElementById('toastContainer')
+    toastContainer: document.getElementById('toastContainer'),
+    loginModal: document.getElementById('loginModal'),
+    loginUserBtn: document.getElementById('loginUserBtn'),
+    loginAdminBtn: document.getElementById('loginAdminBtn'),
+    adminPasswordForm: document.getElementById('adminPasswordForm'),
+    adminPassword: document.getElementById('adminPassword'),
+    submitAdminBtn: document.getElementById('submitAdminBtn'),
+    cancelAdminBtn: document.getElementById('cancelAdminBtn'),
+    passwordError: document.getElementById('passwordError'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    currentRole: document.getElementById('currentRole')
 };
+
+// ============================================
+// SISTEMA DE AUTENTICACIÓN
+// ============================================
+
+/**
+ * Inicializa el sistema de autenticación
+ */
+function initAuth() {
+    const savedRole = localStorage.getItem('userRole');
+    
+    if (savedRole) {
+        currentUserRole = savedRole;
+        applyRolePermissions();
+        elements.loginModal.style.display = 'none';
+    } else {
+        elements.loginModal.style.display = 'flex';
+    }
+}
+
+/**
+ * Login como usuario (sin contraseña)
+ */
+function loginAsUser() {
+    currentUserRole = 'user';
+    localStorage.setItem('userRole', 'user');
+    applyRolePermissions();
+    elements.loginModal.style.display = 'none';
+    showToast('Bienvenido Usuario', 'success');
+}
+
+/**
+ * Mostrar formulario de contraseña para admin
+ */
+function showAdminPasswordForm() {
+    elements.loginUserBtn.parentElement.style.display = 'none';
+    elements.adminPasswordForm.classList.remove('hidden');
+    elements.adminPassword.focus();
+}
+
+/**
+ * Cancelar login de admin
+ */
+function cancelAdminLogin() {
+    elements.loginUserBtn.parentElement.style.display = 'block';
+    elements.adminPasswordForm.classList.add('hidden');
+    elements.adminPassword.value = '';
+    elements.passwordError.classList.add('hidden');
+}
+
+/**
+ * Validar contraseña de administrador
+ */
+async function validateAdminPassword() {
+    const password = elements.adminPassword.value.trim();
+    
+    if (!password) {
+        showPasswordError('Por favor ingresa la contraseña');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/api/validate-admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            currentUserRole = 'admin';
+            localStorage.setItem('userRole', 'admin');
+            applyRolePermissions();
+            elements.loginModal.style.display = 'none';
+            elements.adminPassword.value = '';
+            elements.adminPasswordForm.classList.add('hidden');
+            showToast('Bienvenido Administrador', 'success');
+        } else {
+            showPasswordError('Contraseña incorrecta');
+        }
+    } catch (error) {
+        console.error('Error al validar contraseña:', error);
+        showPasswordError('Error al validar. Intenta de nuevo.');
+    }
+}
+
+/**
+ * Mostrar error de contraseña
+ */
+function showPasswordError(message) {
+    elements.passwordError.textContent = message;
+    elements.passwordError.classList.remove('hidden');
+    elements.adminPassword.classList.add('error');
+}
+
+/**
+ * Cerrar sesión
+ */
+function logout() {
+    localStorage.removeItem('userRole');
+    currentUserRole = null;
+    elements.loginModal.style.display = 'flex';
+    cancelAdminLogin();
+    switchView('scannerView');
+}
+
+/**
+ * Aplicar permisos según el rol
+ */
+function applyRolePermissions() {
+    // Actualizar badge de rol
+    const roleText = currentUserRole === 'admin' ? 'Admin' : 'Usuario';
+    elements.currentRole.textContent = roleText;
+    elements.currentRole.className = `role-badge ${currentUserRole}`;
+    
+    // Ocultar/mostrar vista de estadísticas
+    const statsNavBtn = document.querySelector('[data-view="statsView"]');
+    
+    if (currentUserRole === 'user') {
+        // Usuario: ocultar estadísticas
+        if (statsNavBtn) {
+            statsNavBtn.style.display = 'none';
+        }
+        // Si está en vista de estadísticas, redirigir a escáner
+        if (document.getElementById('statsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+    } else {
+        // Admin: mostrar todo
+        if (statsNavBtn) {
+            statsNavBtn.style.display = 'flex';
+        }
+    }
+}
 
 // ============================================
 // NAVEGACIÓN ENTRE VISTAS
@@ -86,6 +232,9 @@ document.querySelectorAll('.nav-item').forEach(btn => {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Iniciando QR Scanner Pro...');
     
+    // Inicializar sistema de autenticación
+    initAuth();
+    
     // Inicializar escáner
     html5QrCode = new Html5Qrcode("reader");
     
@@ -95,13 +244,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Configurar event listeners
     setupEventListeners();
     
-    // Cargar datos iniciales
-    await loadRecentScans();
-    await loadStats();
+    // Cargar datos iniciales si está autenticado
+    if (currentUserRole) {
+        await loadRecentScans();
+        if (currentUserRole === 'admin') {
+            await loadStats();
+        }
+    }
     
     // Actualizar datos cada 30 segundos
     setInterval(async () => {
-        if (!isScanning) {
+        if (!isScanning && currentUserRole) {
             await loadRecentScans();
             await loadStats();
         }
@@ -114,14 +267,37 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Configura todos los event listeners
  */
 function setupEventListeners() {
+    // Event listeners de escaneo
     elements.startBtn.addEventListener('click', startScanning);
     elements.stopBtn.addEventListener('click', stopScanning);
     elements.clearResult.addEventListener('click', clearLastResult);
     elements.refreshBtn.addEventListener('click', () => {
         loadRecentScans();
-        loadStats();
+        if (currentUserRole === 'admin') {
+            loadStats();
+        }
     });
     elements.exportBtn.addEventListener('click', exportToCSV);
+    
+    // Event listeners de autenticación
+    elements.loginUserBtn.addEventListener('click', loginAsUser);
+    elements.loginAdminBtn.addEventListener('click', showAdminPasswordForm);
+    elements.submitAdminBtn.addEventListener('click', validateAdminPassword);
+    elements.cancelAdminBtn.addEventListener('click', cancelAdminLogin);
+    elements.logoutBtn.addEventListener('click', logout);
+    
+    // Enter en campo de contraseña
+    elements.adminPassword.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            validateAdminPassword();
+        }
+    });
+    
+    // Limpiar error al escribir
+    elements.adminPassword.addEventListener('input', () => {
+        elements.passwordError.classList.add('hidden');
+        elements.adminPassword.classList.remove('error');
+    });
 }
 
 // ============================================
