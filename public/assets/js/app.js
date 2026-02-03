@@ -707,6 +707,52 @@ function displayRecords(records) {
 /**
  * Muestra las estadísticas
  */
+/**
+ * Calcula las estadísticas basadas en los datos filtrados
+ */
+function calculateStats(data) {
+    const total = data.length;
+    const enAlmacen = data.filter(row => row.estado === 'EN ALMACEN').length;
+    const despachados = data.filter(row => row.estado === 'DESPACHADO').length;
+    
+    return {
+        total,
+        enAlmacen,
+        despachados,
+        today: 0 // El today se mantiene del original
+    };
+}
+
+/**
+ * Actualiza las estadísticas mostradas basadas en los datos filtrados
+ */
+function updateDisplayStats(data) {
+    const stats = calculateStats(data);
+    
+    const statsData = [
+        { label: 'En Almacén', count: stats.enAlmacen, emoji: '📦', class: 'almacen' },
+        { label: 'Despachados', count: stats.despachados, emoji: '🚚', class: 'despachado' }
+    ];
+    
+    elements.statsContainer.innerHTML = statsData.map(stat => {
+        const percentage = stats.total > 0 ? ((stat.count / stats.total) * 100).toFixed(1) : 0;
+        
+        return `
+            <div class="stat-card">
+                <div class="stat-icon">${stat.emoji}</div>
+                <div class="stat-info">
+                    <div class="stat-type">${stat.label}</div>
+                    <div class="stat-count">${stat.count}</div>
+                    <div class="stat-percentage">${percentage}%</div>
+                </div>
+                <div class="stat-bar">
+                    <div class="stat-bar-fill stat-bar-${stat.class}" style="width: ${percentage}%"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 function displayStats(stats) {
     elements.totalScans.textContent = stats.total;
     elements.todayScans.textContent = stats.today;
@@ -745,6 +791,9 @@ function displayStatsTable(data) {
     
     // Guardar datos filtrados actuales
     currentFilteredData = data;
+    
+    // Actualizar estadísticas (almacén, despachados)
+    updateDisplayStats(data);
     
     // Actualizar total y label
     if (totalCount) {
