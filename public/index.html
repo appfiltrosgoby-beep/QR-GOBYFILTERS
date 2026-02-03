@@ -148,17 +148,26 @@
                             <p class="no-data">Cargando estadísticas...</p>
                         </div>
 
+                        <!-- Total de registros -->
+                        <div class="total-card">
+                            <div class="total-icon">📋</div>
+                            <div class="total-info">
+                                <span class="total-label">Total de Registros</span>
+                                <span class="total-count" id="totalCount">0</span>
+                            </div>
+                        </div>
+
                         <!-- Separador -->
                         <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e5e7eb;">
 
                         <!-- Filtro y exportación -->
                         <div class="stats-controls">
-                            <input 
-                                type="text" 
+                            <select 
                                 id="filterReferencia" 
-                                class="input-filter" 
-                                placeholder="Filtrar por referencia..."
+                                class="input-filter"
                             >
+                                <option value="">Todas las referencias</option>
+                            </select>
                             <button id="exportStatsBtn" class="btn btn-icon-text">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>

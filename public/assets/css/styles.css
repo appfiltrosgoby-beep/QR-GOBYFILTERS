@@ -1185,6 +1185,40 @@ input:checked + .slider:before {
    CONTROLES DE ESTADÍSTICAS
    ============================================ */
 
+.total-card {
+    background: linear-gradient(135deg, #1565C0 0%, #5BC2E7 100%);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    color: white;
+    box-shadow: var(--shadow-md);
+}
+
+.total-icon {
+    font-size: 2.5rem;
+}
+
+.total-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.total-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    font-style: normal;
+}
+
+.total-count {
+    font-size: 2rem;
+    font-weight: 700;
+    font-style: normal;
+}
+
 .stats-controls {
     display: flex;
     gap: var(--spacing-md);
@@ -1199,6 +1233,8 @@ input:checked + .slider:before {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 0.95rem;
     transition: border-color var(--transition-fast);
+    background: white;
+    cursor: pointer;
 }
 
 .input-filter:focus {
@@ -1214,5 +1250,10 @@ input:checked + .slider:before {
 @media (max-width: 768px) {
     .stats-controls {
         flex-direction: column;
+    }
+    
+    .total-card {
+        flex-direction: column;
+        text-align: center;
     }
 }

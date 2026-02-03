@@ -316,7 +316,7 @@ function setupEventListeners() {
     const exportStatsBtn = document.getElementById('exportStatsBtn');
     
     if (filterReferencia) {
-        filterReferencia.addEventListener('input', (e) => {
+        filterReferencia.addEventListener('change', (e) => {
             filterStatsByReferencia(e.target.value);
         });
     }
@@ -633,6 +633,7 @@ async function loadStats() {
         if (scansResult.success) {
             allStatsData = scansResult.data || [];
             displayStatsTable(allStatsData);
+            populateReferenciasSelect(); // Llenar el select con referencias únicas
         }
     } catch (error) {
         console.error('Error al cargar estadísticas:', error);
@@ -738,6 +739,12 @@ function displayStats(stats) {
  */
 function displayStatsTable(data) {
     const statsTableBody = document.getElementById('statsTableBody');
+    const totalCount = document.getElementById('totalCount');
+    
+    // Actualizar total
+    if (totalCount) {
+        totalCount.textContent = data.length;
+    }
     
     if (!data || data.length === 0) {
         statsTableBody.innerHTML = '<tr><td colspan="6" class="no-data">No hay datos para mostrar</td></tr>';
@@ -761,12 +768,42 @@ function displayStatsTable(data) {
 }
 
 /**
- * Filtra los registros de estadísticas por referencia
+ * Llena el select de referencias únicas
  */
-function filterStatsByReferencia(searchTerm) {
-    const filtered = allStatsData.filter(row => 
-        row.referencia && row.referencia.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+function populateReferenciasSelect() {
+    const filterSelect = document.getElementById('filterReferencia');
+    
+    if (!filterSelect || !allStatsData.length) return;
+    
+    // Obtener referencias únicas
+    const referencias = [...new Set(allStatsData.map(row => row.referencia).filter(Boolean))].sort();
+    
+    // Guardar la opción "Todas"
+    const currentValue = filterSelect.value;
+    
+    // Reconstruir opciones
+    filterSelect.innerHTML = '<option value="">Todas las referencias</option>';
+    referencias.forEach(ref => {
+        const option = document.createElement('option');
+        option.value = ref;
+        option.textContent = ref;
+        filterSelect.appendChild(option);
+    });
+    
+    // Restaurar selección
+    filterSelect.value = currentValue;
+}
+
+/**
+ * Filtra los registros de estadísticas por referencia (select)
+ */
+function filterStatsByReferencia(referencia = '') {
+    let filtered = allStatsData;
+    
+    if (referencia) {
+        filtered = allStatsData.filter(row => row.referencia === referencia);
+    }
+    
     displayStatsTable(filtered);
 }
 
