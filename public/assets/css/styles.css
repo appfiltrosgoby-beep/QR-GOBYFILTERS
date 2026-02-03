@@ -1180,3 +1180,39 @@ input:checked + .slider:before {
         font-size: 1rem;
     }
 }
+
+/* ============================================
+   CONTROLES DE ESTADÍSTICAS
+   ============================================ */
+
+.stats-controls {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.input-filter {
+    flex: 1;
+    padding: var(--spacing-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 0.95rem;
+    transition: border-color var(--transition-fast);
+}
+
+.input-filter:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.1);
+}
+
+.input-filter::placeholder {
+    color: var(--text-tertiary);
+}
+
+@media (max-width: 768px) {
+    .stats-controls {
+        flex-direction: column;
+    }
+}

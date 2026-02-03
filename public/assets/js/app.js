@@ -12,6 +12,7 @@ let html5QrCode = null;
 let isScanning = false;
 let selectedCameraId = null;
 let currentUserRole = null; // 'user' o 'admin'
+let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 
 // Elementos del DOM
 const elements = {
@@ -309,6 +310,20 @@ function setupEventListeners() {
         elements.passwordError.classList.add('hidden');
         elements.adminPassword.classList.remove('error');
     });
+    
+    // Event listeners de estadísticas
+    const filterReferencia = document.getElementById('filterReferencia');
+    const exportStatsBtn = document.getElementById('exportStatsBtn');
+    
+    if (filterReferencia) {
+        filterReferencia.addEventListener('input', (e) => {
+            filterStatsByReferencia(e.target.value);
+        });
+    }
+    
+    if (exportStatsBtn) {
+        exportStatsBtn.addEventListener('click', exportStatsToCSV);
+    }
 }
 
 // ============================================
@@ -603,14 +618,25 @@ async function loadRecentScans() {
  */
 async function loadStats() {
     try {
+        // Obtener estadísticas generales
         const response = await fetch(`${API_URL}/api/stats`);
         const result = await response.json();
         
         if (result.success) {
             displayStats(result.data);
         }
+        
+        // Obtener todos los registros para mostrar en tabla
+        const scansResponse = await fetch(`${API_URL}/api/recent-scans?limit=10000`);
+        const scansResult = await scansResponse.json();
+        
+        if (scansResult.success) {
+            allStatsData = scansResult.data || [];
+            displayStatsTable(allStatsData);
+        }
     } catch (error) {
         console.error('Error al cargar estadísticas:', error);
+        showToast('Error al cargar estadísticas', 'error');
     }
 }
 
@@ -705,6 +731,88 @@ function displayStats(stats) {
             </div>
         `;
     }).join('');
+}
+
+/**
+ * Muestra la tabla de registros en la vista de estadísticas
+ */
+function displayStatsTable(data) {
+    const statsTableBody = document.getElementById('statsTableBody');
+    
+    if (!data || data.length === 0) {
+        statsTableBody.innerHTML = '<tr><td colspan="6" class="no-data">No hay datos para mostrar</td></tr>';
+        return;
+    }
+    
+    statsTableBody.innerHTML = data.map(row => `
+        <tr>
+            <td>${row.id || 'N/A'}</td>
+            <td>${row.referencia || 'N/A'}</td>
+            <td>${row.serial || 'N/A'}</td>
+            <td>
+                <span class="type-badge type-${row.estado === 'EN ALMACEN' ? 'almacen' : 'despachado'}">
+                    ${row.estado || 'N/A'}
+                </span>
+            </td>
+            <td>${row.fechaAlmacen || 'N/A'}</td>
+            <td>${row.fechaDespacho || 'N/A'}</td>
+        </tr>
+    `).join('');
+}
+
+/**
+ * Filtra los registros de estadísticas por referencia
+ */
+function filterStatsByReferencia(searchTerm) {
+    const filtered = allStatsData.filter(row => 
+        row.referencia && row.referencia.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    displayStatsTable(filtered);
+}
+
+/**
+ * Exporta los datos de estadísticas a CSV
+ */
+function exportStatsToCSV() {
+    if (!allStatsData || allStatsData.length === 0) {
+        showToast('No hay datos para exportar', 'warning');
+        return;
+    }
+    
+    // Headers del CSV
+    const headers = ['ID', 'REFERENCIA', 'SERIAL', 'ESTADO', 'FECHA_ALMACEN', 'FECHA_DESPACHO', 'HORA_ALMACEN', 'HORA_DESPACHO'];
+    
+    // Datos
+    const rows = allStatsData.map(row => [
+        row.id || '',
+        row.referencia || '',
+        row.serial || '',
+        row.estado || '',
+        row.fechaAlmacen || '',
+        row.fechaDespacho || '',
+        row.horaAlmacen || '',
+        row.horaDespacho || ''
+    ]);
+    
+    // Crear contenido CSV
+    let csvContent = headers.join(',') + '\n';
+    rows.forEach(row => {
+        csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+    });
+    
+    // Crear y descargar archivo
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `estadisticas-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showToast('Datos exportados exitosamente', 'success');
 }
 
 /**
