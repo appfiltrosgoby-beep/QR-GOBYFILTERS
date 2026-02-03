@@ -13,6 +13,7 @@ let isScanning = false;
 let selectedCameraId = null;
 let currentUserRole = null; // 'user' o 'admin'
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
+let currentFilteredData = []; // Guardar datos filtrados actual
 
 // Elementos del DOM
 const elements = {
@@ -740,20 +741,33 @@ function displayStats(stats) {
 function displayStatsTable(data) {
     const statsTableBody = document.getElementById('statsTableBody');
     const totalCount = document.getElementById('totalCount');
+    const totalLabel = document.getElementById('totalLabel');
     
-    // Actualizar total
+    // Guardar datos filtrados actuales
+    currentFilteredData = data;
+    
+    // Actualizar total y label
     if (totalCount) {
         totalCount.textContent = data.length;
     }
     
+    // Actualizar label dinámico
+    if (totalLabel) {
+        const selectedRef = document.getElementById('filterReferencia').value;
+        if (selectedRef) {
+            totalLabel.textContent = `Total de Registros - ${selectedRef}`;
+        } else {
+            totalLabel.textContent = 'Total de Registros';
+        }
+    }
+    
     if (!data || data.length === 0) {
-        statsTableBody.innerHTML = '<tr><td colspan="6" class="no-data">No hay datos para mostrar</td></tr>';
+        statsTableBody.innerHTML = '<tr><td colspan="5" class="no-data">No hay datos para mostrar</td></tr>';
         return;
     }
     
     statsTableBody.innerHTML = data.map(row => `
         <tr>
-            <td>${row.id || 'N/A'}</td>
             <td>${row.referencia || 'N/A'}</td>
             <td>${row.serial || 'N/A'}</td>
             <td>
@@ -811,17 +825,16 @@ function filterStatsByReferencia(referencia = '') {
  * Exporta los datos de estadísticas a CSV
  */
 function exportStatsToCSV() {
-    if (!allStatsData || allStatsData.length === 0) {
+    if (!currentFilteredData || currentFilteredData.length === 0) {
         showToast('No hay datos para exportar', 'warning');
         return;
     }
     
-    // Headers del CSV
-    const headers = ['ID', 'REFERENCIA', 'SERIAL', 'ESTADO', 'FECHA_ALMACEN', 'FECHA_DESPACHO', 'HORA_ALMACEN', 'HORA_DESPACHO'];
+    // Headers del CSV (sin ID)
+    const headers = ['REFERENCIA', 'SERIAL', 'ESTADO', 'FECHA_ALMACEN', 'FECHA_DESPACHO', 'HORA_ALMACEN', 'HORA_DESPACHO'];
     
-    // Datos
-    const rows = allStatsData.map(row => [
-        row.id || '',
+    // Datos (sin ID)
+    const rows = currentFilteredData.map(row => [
         row.referencia || '',
         row.serial || '',
         row.estado || '',
@@ -842,8 +855,14 @@ function exportStatsToCSV() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     
+    // Nombre del archivo con referencia si está filtrada
+    const selectedRef = document.getElementById('filterReferencia').value;
+    const filename = selectedRef 
+        ? `estadisticas-${selectedRef}-${new Date().toISOString().split('T')[0]}.csv`
+        : `estadisticas-${new Date().toISOString().split('T')[0]}.csv`;
+    
     link.setAttribute('href', url);
-    link.setAttribute('download', `estadisticas-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', filename);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
