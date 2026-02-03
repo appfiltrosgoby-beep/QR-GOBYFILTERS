@@ -143,8 +143,19 @@ function showPasswordError(message) {
 function logout() {
     localStorage.removeItem('userRole');
     currentUserRole = null;
+    
+    // Resetear modal al estado inicial
+    const modalBody = elements.loginUserBtn.parentElement;
+    modalBody.style.display = 'flex';
+    elements.adminPasswordForm.classList.add('hidden');
+    elements.adminPassword.value = '';
+    elements.passwordError.classList.add('hidden');
+    elements.adminPassword.classList.remove('error');
+    
+    // Mostrar modal
     elements.loginModal.style.display = 'flex';
-    cancelAdminLogin();
+    
+    // Regresar a vista de escáner
     switchView('scannerView');
 }
 
