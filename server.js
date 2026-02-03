@@ -119,6 +119,7 @@ async function initializeSheet(sheet) {
       'REFERENCIA',
       'SERIAL',
       'ESTADO',
+      'USUARIO',
       'FECHA_ALMACEN',
       'FECHA_DESPACHO',
       'HORA_ALMACEN',
@@ -183,7 +184,7 @@ app.get('/api/health', (req, res) => {
  */
 app.post('/api/save-qr', async (req, res) => {
   try {
-    const { qrContent } = req.body;
+    const { qrContent, userEmail } = req.body;
 
     // Validación de datos
     if (!qrContent) {
@@ -219,6 +220,7 @@ app.post('/api/save-qr', async (req, res) => {
           'REFERENCIA',
           'SERIAL',
           'ESTADO',
+          'USUARIO',
           'FECHA_ALMACEN',
           'FECHA_DESPACHO',
           'HORA_ALMACEN',
@@ -284,6 +286,7 @@ app.post('/api/save-qr', async (req, res) => {
         'REFERENCIA': referencia,
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
+        'USUARIO': userEmail || '',
         'FECHA_ALMACEN': fecha,
         'FECHA_DESPACHO': '',
         'HORA_ALMACEN': hora,

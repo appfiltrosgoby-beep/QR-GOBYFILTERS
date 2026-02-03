@@ -578,7 +578,8 @@ async function saveQRCode(qrContent) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                qrContent
+                qrContent,
+                userEmail: currentUserEmail
             })
         });
 
