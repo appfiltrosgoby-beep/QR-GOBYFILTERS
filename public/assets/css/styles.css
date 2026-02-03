@@ -1069,14 +1069,9 @@ input:checked + .slider:before {
 }
 
 .btn-large.btn-secondary {
-    background: linear-gradient(135deg, #5BC2E7 0%, #42A5F5 100%);
-    border-color: #42A5F5;
 }
 
 .btn-large.btn-secondary:hover {
-    background: linear-gradient(135deg, #42A5F5 0%, #1E88E5 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(66, 165, 245, 0.3);
 }
 
 .password-form {
