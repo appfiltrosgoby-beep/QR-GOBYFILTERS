@@ -119,11 +119,17 @@ async function initializeSheet(sheet) {
       'REFERENCIA',
       'SERIAL',
       'ESTADO',
-      'USUARIO',
+      'USUARIO_PLANTA',
+      'USUARIO_INSTALACION',
+      'USUARIO_DESINSTALACION',
       'FECHA_ALMACEN',
       'FECHA_DESPACHO',
+      'FECHA_INSTALACION',
+      'FECHA_DESINSTALACION',
       'HORA_ALMACEN',
-      'HORA_DESPACHO'
+      'HORA_DESPACHO',
+      'HORA_INSTALACION',
+      'HORA_DESINSTALACION'
     ]);
   }
 }
@@ -220,11 +226,17 @@ app.post('/api/save-qr', async (req, res) => {
           'REFERENCIA',
           'SERIAL',
           'ESTADO',
-          'USUARIO',
+          'USUARIO_PLANTA',
+          'USUARIO_INSTALACION',
+          'USUARIO_DESINSTALACION',
           'FECHA_ALMACEN',
           'FECHA_DESPACHO',
+          'FECHA_INSTALACION',
+          'FECHA_DESINSTALACION',
           'HORA_ALMACEN',
-          'HORA_DESPACHO'
+          'HORA_DESPACHO',
+          'HORA_INSTALACION',
+          'HORA_DESINSTALACION'
         ]
       });
     }
@@ -238,44 +250,93 @@ app.post('/api/save-qr', async (req, res) => {
     const hora = now.toLocaleTimeString('es-ES');
 
     if (existingRecord) {
-      // SEGUNDO ESCANEO: Actualizar a DESPACHADO
+      // Registro existente: determinar siguiente estado
       const currentState = existingRecord.get('ESTADO');
       
-      if (currentState === 'DESPACHADO') {
+      if (currentState === 'EN ALMACEN') {
+        // SEGUNDO ESCANEO: Actualizar a DESPACHADO
+        existingRecord.set('ESTADO', 'DESPACHADO');
+        existingRecord.set('FECHA_DESPACHO', fecha);
+        existingRecord.set('HORA_DESPACHO', hora);
+        await existingRecord.save();
+
         return res.json({ 
           success: true, 
-          action: 'already_dispatched',
-          message: '⚠️ Este producto ya fue DESPACHADO anteriormente',
+          action: 'dispatched',
+          message: '🚚 Producto marcado como DESPACHADO',
+          data: {
+            id: existingRecord.get('ID'),
+            referencia,
+            serial,
+            estado: 'DESPACHADO',
+            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
+            fechaDespacho: fecha
+          }
+        });
+      } else if (currentState === 'DESPACHADO') {
+        // TERCER ESCANEO: Actualizar a INSTALADO
+        existingRecord.set('ESTADO', 'INSTALADO');
+        existingRecord.set('USUARIO_INSTALACION', userEmail || '');
+        existingRecord.set('FECHA_INSTALACION', fecha);
+        existingRecord.set('HORA_INSTALACION', hora);
+        await existingRecord.save();
+
+        return res.json({ 
+          success: true, 
+          action: 'installed',
+          message: '🔧 Producto marcado como INSTALADO',
+          data: {
+            id: existingRecord.get('ID'),
+            referencia,
+            serial,
+            estado: 'INSTALADO',
+            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
+            fechaDespacho: existingRecord.get('FECHA_DESPACHO'),
+            fechaInstalacion: fecha,
+            usuarioInstalacion: userEmail
+          }
+        });
+      } else if (currentState === 'INSTALADO') {
+        // CUARTO ESCANEO: Actualizar a DESINSTALADO
+        existingRecord.set('ESTADO', 'DESINSTALADO');
+        existingRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+        existingRecord.set('FECHA_DESINSTALACION', fecha);
+        existingRecord.set('HORA_DESINSTALACION', hora);
+        await existingRecord.save();
+
+        return res.json({ 
+          success: true, 
+          action: 'uninstalled',
+          message: '📤 Producto marcado como DESINSTALADO',
+          data: {
+            id: existingRecord.get('ID'),
+            referencia,
+            serial,
+            estado: 'DESINSTALADO',
+            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
+            fechaDespacho: existingRecord.get('FECHA_DESPACHO'),
+            fechaInstalacion: existingRecord.get('FECHA_INSTALACION'),
+            fechaDesinstalacion: fecha,
+            usuarioDesinstalacion: userEmail
+          }
+        });
+      } else {
+        // Ya fue DESINSTALADO, no permitir más escaneos
+        return res.json({ 
+          success: true, 
+          action: 'already_completed',
+          message: '⚠️ Este producto ya completó todo el ciclo (DESINSTALADO)',
           data: {
             referencia,
             serial,
             estado: currentState,
             fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
-            fechaDespacho: existingRecord.get('FECHA_DESPACHO')
+            fechaDespacho: existingRecord.get('FECHA_DESPACHO'),
+            fechaInstalacion: existingRecord.get('FECHA_INSTALACION'),
+            fechaDesinstalacion: existingRecord.get('FECHA_DESINSTALACION')
           }
         });
       }
-
-      // Actualizar estado a DESPACHADO
-      existingRecord.set('ESTADO', 'DESPACHADO');
-      existingRecord.set('FECHA_DESPACHO', fecha);
-      existingRecord.set('HORA_DESPACHO', hora);
-      await existingRecord.save();
-
-      res.json({ 
-        success: true, 
-        action: 'dispatched',
-        message: '📦 Producto marcado como DESPACHADO',
-        data: {
-          id: existingRecord.get('ID'),
-          referencia,
-          serial,
-          estado: 'DESPACHADO',
-          fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
-          fechaDespacho: fecha
-        }
-      });
-
     } else {
       // PRIMER ESCANEO: Crear nuevo registro EN ALMACEN
       const rows = await sheet.getRows();
@@ -286,11 +347,17 @@ app.post('/api/save-qr', async (req, res) => {
         'REFERENCIA': referencia,
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
-        'USUARIO': userEmail || '',
+        'USUARIO_PLANTA': userEmail || '',
+        'USUARIO_INSTALACION': '',
+        'USUARIO_DESINSTALACION': '',
         'FECHA_ALMACEN': fecha,
         'FECHA_DESPACHO': '',
+        'FECHA_INSTALACION': '',
+        'FECHA_DESINSTALACION': '',
         'HORA_ALMACEN': hora,
-        'HORA_DESPACHO': ''
+        'HORA_DESPACHO': '',
+        'HORA_INSTALACION': '',
+        'HORA_DESINSTALACION': ''
       });
 
       res.json({ 
@@ -343,10 +410,17 @@ app.get('/api/recent-scans', async (req, res) => {
       referencia: row.get('REFERENCIA'),
       serial: row.get('SERIAL'),
       estado: row.get('ESTADO'),
+      usuarioPlanta: row.get('USUARIO_PLANTA'),
+      usuarioInstalacion: row.get('USUARIO_INSTALACION'),
+      usuarioDesinstalacion: row.get('USUARIO_DESINSTALACION'),
       fechaAlmacen: row.get('FECHA_ALMACEN'),
       fechaDespacho: row.get('FECHA_DESPACHO'),
+      fechaInstalacion: row.get('FECHA_INSTALACION'),
+      fechaDesinstalacion: row.get('FECHA_DESINSTALACION'),
       horaAlmacen: row.get('HORA_ALMACEN'),
-      horaDespacho: row.get('HORA_DESPACHO')
+      horaDespacho: row.get('HORA_DESPACHO'),
+      horaInstalacion: row.get('HORA_INSTALACION'),
+      horaDesinstalacion: row.get('HORA_DESINSTALACION')
     }));
 
     res.json({ success: true, data });
@@ -377,6 +451,8 @@ app.get('/api/stats', async (req, res) => {
           total: 0, 
           enAlmacen: 0, 
           despachados: 0,
+          instalados: 0,
+          desinstalados: 0,
           today: 0 
         } 
       });
@@ -392,6 +468,8 @@ app.get('/api/stats', async (req, res) => {
       total: rows.length,
       enAlmacen: 0,
       despachados: 0,
+      instalados: 0,
+      desinstalados: 0,
       today: 0
     };
 
@@ -402,9 +480,14 @@ app.get('/api/stats', async (req, res) => {
         stats.enAlmacen++;
       } else if (estado === 'DESPACHADO') {
         stats.despachados++;
+      } else if (estado === 'INSTALADO') {
+        stats.instalados++;
+      } else if (estado === 'DESINSTALADO') {
+        stats.desinstalados++;
       }
       
-      if (row.get('FECHA_ALMACEN') === today || row.get('FECHA_DESPACHO') === today) {
+      if (row.get('FECHA_ALMACEN') === today || row.get('FECHA_DESPACHO') === today || 
+          row.get('FECHA_INSTALACION') === today || row.get('FECHA_DESINSTALACION') === today) {
         stats.today++;
       }
     });

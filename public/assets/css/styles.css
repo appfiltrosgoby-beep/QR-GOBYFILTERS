@@ -676,6 +676,18 @@ input:checked + .slider:before {
     border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.type-instalado {
+    background: rgba(168, 85, 247, 0.1);
+    color: #a855f7;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.type-desinstalado {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error-color);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
 .id-badge {
     display: inline-block;
     padding: 0.25rem 0.5rem;
@@ -800,6 +812,14 @@ input:checked + .slider:before {
 
 .stat-bar-despachado {
     background: linear-gradient(90deg, var(--success-color), #34d399) !important;
+}
+
+.stat-bar-instalado {
+    background: linear-gradient(90deg, #a855f7, #c084fc) !important;
+}
+
+.stat-bar-desinstalado {
+    background: linear-gradient(90deg, var(--error-color), #f87171) !important;
 }
 .stat-bar {
     height: 6px;

@@ -643,14 +643,24 @@ async function saveQRCode(qrContent) {
                 displayLastResult(result.data, 'EN ALMACEN');
             } else if (action === 'dispatched') {
                 // Segundo escaneo - DESPACHADO
-                showToast('📦 Producto marcado como DESPACHADO', 'success');
-                updateStatus(`📦 ${result.data.referencia} | ${result.data.serial} - DESPACHADO`, 'success');
+                showToast('� Producto marcado como DESPACHADO', 'success');
+                updateStatus(`🚚 ${result.data.referencia} | ${result.data.serial} - DESPACHADO`, 'success');
                 displayLastResult(result.data, 'DESPACHADO');
-            } else if (action === 'already_dispatched') {
-                // Ya fue despachado antes
-                showToast('⚠️ Producto ya fue DESPACHADO', 'warning');
-                updateStatus(`⚠️ ${result.data.referencia} | ${result.data.serial} - Ya despachado`, 'warning');
-                displayLastResult(result.data, 'DESPACHADO');
+            } else if (action === 'installed') {
+                // Tercer escaneo - INSTALADO
+                showToast('🔧 Producto marcado como INSTALADO', 'success');
+                updateStatus(`🔧 ${result.data.referencia} | ${result.data.serial} - INSTALADO`, 'success');
+                displayLastResult(result.data, 'INSTALADO');
+            } else if (action === 'uninstalled') {
+                // Cuarto escaneo - DESINSTALADO
+                showToast('📤 Producto marcado como DESINSTALADO', 'success');
+                updateStatus(`📤 ${result.data.referencia} | ${result.data.serial} - DESINSTALADO`, 'success');
+                displayLastResult(result.data, 'DESINSTALADO');
+            } else if (action === 'already_completed') {
+                // Ya completó todo el ciclo
+                showToast('⚠️ Producto ya completó todo el ciclo', 'warning');
+                updateStatus(`⚠️ ${result.data.referencia} | ${result.data.serial} - Ciclo completo`, 'warning');
+                displayLastResult(result.data, result.data.estado);
             }
             
             // Actualizar registros y estadísticas
@@ -726,12 +736,26 @@ async function loadStats() {
  * Muestra el último resultado escaneado
  */
 function displayLastResult(data, estado) {
-    const estadoClass = estado === 'EN ALMACEN' ? 'almacen' : 'despachado';
-    const estadoEmoji = estado === 'EN ALMACEN' ? '📦' : '🚚';
+    let estadoClass = 'almacen';
+    let estadoEmoji = '📦';
+    
+    if (estado === 'EN ALMACEN') {
+        estadoClass = 'almacen';
+        estadoEmoji = '📦';
+    } else if (estado === 'DESPACHADO') {
+        estadoClass = 'despachado';
+        estadoEmoji = '🚚';
+    } else if (estado === 'INSTALADO') {
+        estadoClass = 'instalado';
+        estadoEmoji = '🔧';
+    } else if (estado === 'DESINSTALADO') {
+        estadoClass = 'desinstalado';
+        estadoEmoji = '📤';
+    }
     
     elements.resultType.innerHTML = `<span class="type-badge type-${estadoClass}">${estadoEmoji} ${estado}</span>`;
     
-    elements.resultData.innerHTML = `
+    let detallesHTML = `
         <div class="qr-details">
             <div class="qr-field">
                 <strong>Referencia:</strong> ${data.referencia}
@@ -742,9 +766,23 @@ function displayLastResult(data, estado) {
             <div class="qr-field">
                 <strong>Fecha Almacén:</strong> ${data.fechaAlmacen || 'N/A'}
             </div>
-            ${data.fechaDespacho ? `<div class="qr-field"><strong>Fecha Despacho:</strong> ${data.fechaDespacho}</div>` : ''}
-        </div>
     `;
+    
+    if (data.fechaDespacho) {
+        detallesHTML += `<div class="qr-field"><strong>Fecha Despacho:</strong> ${data.fechaDespacho}</div>`;
+    }
+    
+    if (data.fechaInstalacion) {
+        detallesHTML += `<div class="qr-field"><strong>Fecha Instalación:</strong> ${data.fechaInstalacion}</div>`;
+    }
+    
+    if (data.fechaDesinstalacion) {
+        detallesHTML += `<div class="qr-field"><strong>Fecha Desinstalación:</strong> ${data.fechaDesinstalacion}</div>`;
+    }
+    
+    detallesHTML += `</div>`;
+    
+    elements.resultData.innerHTML = detallesHTML;
     
     const now = new Date();
     elements.resultMeta.textContent = `Escaneado: ${now.toLocaleString('es-ES')}`;
@@ -764,12 +802,25 @@ function clearLastResult() {
  */
 function displayRecords(records) {
     elements.recordsBody.innerHTML = records.map(record => {
-        const estadoClass = record.estado === 'EN ALMACEN' ? 'almacen' : 'despachado';
-        const estadoEmoji = record.estado === 'EN ALMACEN' ? '📦' : '🚚';
+        let estadoClass = 'almacen';
+        let estadoEmoji = '📦';
+        
+        if (record.estado === 'EN ALMACEN') {
+            estadoClass = 'almacen';
+            estadoEmoji = '📦';
+        } else if (record.estado === 'DESPACHADO') {
+            estadoClass = 'despachado';
+            estadoEmoji = '🚚';
+        } else if (record.estado === 'INSTALADO') {
+            estadoClass = 'instalado';
+            estadoEmoji = '🔧';
+        } else if (record.estado === 'DESINSTALADO') {
+            estadoClass = 'desinstalado';
+            estadoEmoji = '📤';
+        }
         
         return `
             <tr>
-                <td><span class="id-badge">#${record.id}</span></td>
                 <td class="content-cell"><strong>${record.referencia}</strong></td>
                 <td class="content-cell">${record.serial}</td>
                 <td><span class="type-badge type-${estadoClass}">${estadoEmoji} ${record.estado}</span></td>
@@ -790,11 +841,15 @@ function calculateStats(data) {
     const total = data.length;
     const enAlmacen = data.filter(row => row.estado === 'EN ALMACEN').length;
     const despachados = data.filter(row => row.estado === 'DESPACHADO').length;
+    const instalados = data.filter(row => row.estado === 'INSTALADO').length;
+    const desinstalados = data.filter(row => row.estado === 'DESINSTALADO').length;
     
     return {
         total,
         enAlmacen,
         despachados,
+        instalados,
+        desinstalados,
         today: 0 // El today se mantiene del original
     };
 }
@@ -807,7 +862,9 @@ function updateDisplayStats(data) {
     
     const statsData = [
         { label: 'En Almacén', count: stats.enAlmacen, emoji: '📦', class: 'almacen' },
-        { label: 'Despachados', count: stats.despachados, emoji: '🚚', class: 'despachado' }
+        { label: 'Despachados', count: stats.despachados, emoji: '🚚', class: 'despachado' },
+        { label: 'Instalados', count: stats.instalados, emoji: '🔧', class: 'instalado' },
+        { label: 'Desinstalados', count: stats.desinstalados, emoji: '📤', class: 'desinstalado' }
     ];
     
     elements.statsContainer.innerHTML = statsData.map(stat => {
@@ -835,7 +892,9 @@ function displayStats(stats) {
     
     const statsData = [
         { label: 'En Almacén', count: stats.enAlmacen, emoji: '📦', class: 'almacen' },
-        { label: 'Despachados', count: stats.despachados, emoji: '🚚', class: 'despachado' }
+        { label: 'Despachados', count: stats.despachados, emoji: '🚚', class: 'despachado' },
+        { label: 'Instalados', count: stats.instalados || 0, emoji: '🔧', class: 'instalado' },
+        { label: 'Desinstalados', count: stats.desinstalados || 0, emoji: '📤', class: 'desinstalado' }
     ];
     
     elements.statsContainer.innerHTML = statsData.map(stat => {
@@ -891,19 +950,33 @@ function displayStatsTable(data) {
         return;
     }
     
-    statsTableBody.innerHTML = data.map(row => `
-        <tr>
-            <td>${row.referencia || 'N/A'}</td>
-            <td>${row.serial || 'N/A'}</td>
-            <td>
-                <span class="type-badge type-${row.estado === 'EN ALMACEN' ? 'almacen' : 'despachado'}">
-                    ${row.estado || 'N/A'}
-                </span>
-            </td>
-            <td>${row.fechaAlmacen || 'N/A'}</td>
-            <td>${row.fechaDespacho || 'N/A'}</td>
-        </tr>
-    `).join('');
+    statsTableBody.innerHTML = data.map(row => {
+        let estadoClass = 'almacen';
+        
+        if (row.estado === 'EN ALMACEN') {
+            estadoClass = 'almacen';
+        } else if (row.estado === 'DESPACHADO') {
+            estadoClass = 'despachado';
+        } else if (row.estado === 'INSTALADO') {
+            estadoClass = 'instalado';
+        } else if (row.estado === 'DESINSTALADO') {
+            estadoClass = 'desinstalado';
+        }
+        
+        return `
+            <tr>
+                <td>${row.referencia || 'N/A'}</td>
+                <td>${row.serial || 'N/A'}</td>
+                <td>
+                    <span class="type-badge type-${estadoClass}">
+                        ${row.estado || 'N/A'}
+                    </span>
+                </td>
+                <td>${row.fechaAlmacen || 'N/A'}</td>
+                <td>${row.fechaDespacho || 'N/A'}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 /**
