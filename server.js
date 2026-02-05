@@ -82,11 +82,6 @@ app.post('/api/validate-user', async (req, res) => {
       role = 'admin';
     }
     
-    // Validar que los usuarios con TIPO SUPER sean los correos autorizados
-    if (storedType === 'super' && !isSuperadminUser(normalizedUser)) {
-      return res.json({ success: false, message: 'Usuario no autorizado como superadmin' });
-    }
-
     return res.json({ success: true, tipo: storedType, usuario: normalizedUser, role });
   } catch (error) {
     console.error('Error al validar usuario:', error);
@@ -107,7 +102,7 @@ app.get('/api/users', async (req, res) => {
     const authPassword = req.headers['x-auth-password'] || '';
     const authRow = await validateUserCredentials(sheet, authUser, authPassword);
 
-    if (!authRow || !isSuperadminUser(authUser)) {
+    if (!authRow || !isSuperadminRow(authRow)) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
@@ -145,17 +140,12 @@ app.post('/api/users', async (req, res) => {
     if (!['administrador', 'mecanico', 'super'].includes(normalizedType)) {
       return res.status(400).json({ success: false, message: 'Tipo inválido' });
     }
-    
-    // Validar que solo los correos autorizados puedan tener TIPO SUPER
-    if (normalizedType === 'super' && !isSuperadminUser(normalizedUser)) {
-      return res.status(400).json({ success: false, message: 'Este usuario no puede ser superadmin' });
-    }
 
     const doc = await getGoogleSheet();
     const sheet = await getOrCreateUsersSheet(doc);
 
     const authRow = await validateUserCredentials(sheet, authUser, authPassword);
-    if (!authRow || !isSuperadminUser(authUser)) {
+    if (!authRow || !isSuperadminRow(authRow)) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
@@ -349,6 +339,10 @@ function isSuperadminUser(usuario) {
   const normalizedUser = normalizeUser(usuario);
   return normalizedUser === normalizeUser(SUPERADMIN_1_EMAIL) ||
          normalizedUser === normalizeUser(SUPERADMIN_2_EMAIL);
+}
+
+function isSuperadminRow(row) {
+  return normalizeType(row.get('TIPO')) === 'super';
 }
 
 async function validateUserCredentials(sheet, usuario, password) {
