@@ -11,11 +11,10 @@ const API_URL = window.location.origin;
 let html5QrCode = null;
 let isScanning = false;
 let selectedCameraId = null;
-let currentUserRole = null; // 'user', 'planta', 'admin', 'superadmin'
+let currentUserRole = null; // 'user', 'admin', 'superadmin'
 let currentUsername = null; // Usuario logueado
 let currentUserPassword = null; // Contraseña del usuario logueado (admin/superadmin)
 let currentUserClient = null; // Cliente del usuario logueado
-let currentLoginType = 'mecanico';
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 let currentFilteredData = []; // Guardar datos filtrados actual
 
@@ -108,25 +107,10 @@ function initAuth() {
  * Mostrar formulario de email para usuario
  */
 function showUserEmailForm() {
-    currentLoginType = 'mecanico';
     elements.loginUserBtn.parentElement.style.display = 'none';
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
-    elements.userUsername.placeholder = 'Correo mecánico';
-    elements.userUsername.focus();
-}
-
-/**
- * Mostrar formulario de email para planta
- */
-function showPlantEmailForm() {
-    currentLoginType = 'planta';
-    elements.loginUserBtn.parentElement.style.display = 'none';
-    elements.adminLoginForm.classList.add('hidden');
-    elements.userLoginForm.classList.remove('hidden');
-    elements.userError.classList.add('hidden');
-    elements.userUsername.placeholder = 'Correo planta';
     elements.userUsername.focus();
 }
 
@@ -191,11 +175,7 @@ async function validateUserLogin() {
     localStorage.setItem('userName', usuario);
     localStorage.setItem('userClient', result.cliente || '');
     sessionStorage.setItem('userPassword', password);
-    if (currentLoginType === 'planta') {
-        loginAsPlanta();
-    } else {
-        loginAsUser();
-    }
+    loginAsUser();
 }
 
 /**
@@ -284,22 +264,6 @@ function loginAsUser() {
 }
 
 /**
- * Login como planta
- */
-function loginAsPlanta() {
-    currentUserRole = 'planta';
-    localStorage.setItem('userRole', 'planta');
-    applyRolePermissions();
-    elements.loginModal.style.display = 'none';
-    elements.userLoginForm.classList.add('hidden');
-    elements.userUsername.value = '';
-    elements.userPassword.value = '';
-    elements.userError.textContent = '';
-    elements.userError.classList.add('hidden');
-    showToast(`Bienvenido ${currentUsername || 'Planta'}`, 'success');
-}
-
-/**
  * Login como admin (email autorizado)
  */
 function loginAsAdmin() {
@@ -357,8 +321,8 @@ function applyRolePermissions() {
     // Actualizar badge de rol
     const roleText = currentUserRole === 'superadmin'
         ? 'Superadmin'
-        : (currentUserRole === 'admin' ? 'Admin' : (currentUserRole === 'planta' ? 'Planta' : 'Mecánico'));
-    const displayText = (currentUserRole === 'user' || currentUserRole === 'planta')
+        : (currentUserRole === 'admin' ? 'Admin' : 'Mecánico');
+    const displayText = currentUserRole === 'user'
         ? (currentUsername || roleText)
         : roleText;
     elements.currentRole.textContent = displayText;
@@ -369,8 +333,8 @@ function applyRolePermissions() {
     const usersNavBtn = document.querySelector('[data-view="usersView"]');
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     
-    if (currentUserRole === 'user' || currentUserRole === 'planta') {
-        // Usuario y planta: ocultar estadísticas y usuarios
+    if (currentUserRole === 'user') {
+        // Usuario: ocultar estadísticas y usuarios
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
@@ -512,9 +476,6 @@ function setupEventListeners() {
     
     // Event listeners de autenticación
     elements.loginUserBtn.addEventListener('click', showUserEmailForm);
-    if (elements.loginPlantBtn) {
-        elements.loginPlantBtn.addEventListener('click', showPlantEmailForm);
-    }
     elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
     elements.submitUserBtn.addEventListener('click', validateUserLogin);
     elements.cancelUserBtn.addEventListener('click', cancelUserLogin);

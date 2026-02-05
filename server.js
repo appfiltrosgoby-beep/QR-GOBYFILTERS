@@ -98,9 +98,8 @@ app.post('/api/validate-user', async (req, res) => {
       role = 'superadmin';
     } else if (storedType === 'administrador') {
       role = 'admin';
-    } else if (storedType === 'planta') {
-      role = 'planta';
     }
+    // planta es un tipo de usuario que inicia sesión como 'user' (mecánico)
     
     return res.json({ 
       success: true, 
