@@ -673,12 +673,12 @@ input:checked + .slider:before {
 .type-despachado {
     background: rgba(16, 185, 129, 0.1);
     color: var(--success-color);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    border: 1px solid rgba(151, 16, 185, 0.3);
 }
 
 .type-instalado {
     background: rgba(168, 85, 247, 0.1);
-    color: #a855f7;
+    color: #20a54c;
     border: 1px solid rgba(168, 85, 247, 0.3);
 }
 

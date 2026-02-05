@@ -54,12 +54,30 @@ app.post('/api/validate-user', async (req, res) => {
     }
 
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateUsersSheet(doc);
-
     const normalizedUser = normalizeUser(usuario);
     const normalizedType = normalizeType(tipo);
 
-    const userRow = await validateUserCredentials(sheet, normalizedUser, password);
+    // Buscar usuario en hoja global (para superadmins)
+    let userRow = null;
+    let userClient = '';
+    const globalSheet = await getOrCreateUsersSheet(doc);
+    userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
+    
+    if (userRow) {
+      userClient = userRow.get('CLIENTE') || '';
+    } else {
+      // Buscar en todas las hojas de clientes
+      await doc.loadInfo();
+      for (const sheet of doc.sheetsByIndex) {
+        if (sheet.title.endsWith('_USUARIOS')) {
+          userRow = await validateUserCredentials(sheet, normalizedUser, password);
+          if (userRow) {
+            userClient = userRow.get('CLIENTE') || '';
+            break;
+          }
+        }
+      }
+    }
 
     if (!userRow) {
       return res.json({ success: false, message: 'Usuario no autorizado' });
@@ -80,9 +98,17 @@ app.post('/api/validate-user', async (req, res) => {
       role = 'superadmin';
     } else if (storedType === 'administrador') {
       role = 'admin';
+    } else if (storedType === 'planta') {
+      role = 'planta';
     }
     
-    return res.json({ success: true, tipo: storedType, usuario: normalizedUser, role });
+    return res.json({ 
+      success: true, 
+      tipo: storedType, 
+      usuario: normalizedUser, 
+      role,
+      cliente: userClient 
+    });
   } catch (error) {
     console.error('Error al validar usuario:', error);
     res.status(500).json({ success: false, error: 'Error al validar usuario' });
@@ -96,25 +122,45 @@ app.post('/api/validate-user', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateUsersSheet(doc);
+    const globalSheet = await getOrCreateUsersSheet(doc);
 
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
-    const authRow = await validateUserCredentials(sheet, authUser, authPassword);
+    const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
 
     if (!authRow || !isSuperadminRow(authRow)) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
-    const rows = await sheet.getRows();
+    // Superadmin puede ver todos los usuarios de todas las hojas
+    await doc.loadInfo();
+    const allUsers = [];
+    
+    // Agregar usuarios de la hoja global (superadmins)
+    const globalRows = await globalSheet.getRows();
+    for (const row of globalRows) {
+      allUsers.push({
+        usuario: normalizeUser(row.get('USUARIO')),
+        tipo: normalizeType(row.get('TIPO')),
+        cliente: row.get('CLIENTE') || ''
+      });
+    }
+    
+    // Agregar usuarios de todas las hojas de clientes
+    for (const sheet of doc.sheetsByIndex) {
+      if (sheet.title.endsWith('_USUARIOS') && sheet.title !== 'USUARIOS') {
+        const rows = await sheet.getRows();
+        for (const row of rows) {
+          allUsers.push({
+            usuario: normalizeUser(row.get('USUARIO')),
+            tipo: normalizeType(row.get('TIPO')),
+            cliente: row.get('CLIENTE') || ''
+          });
+        }
+      }
+    }
 
-    const data = rows.map(row => ({
-      usuario: normalizeUser(row.get('USUARIO')),
-      tipo: normalizeType(row.get('TIPO')),
-      cliente: row.get('CLIENTE') || ''
-    }));
-
-    res.json({ success: true, data });
+    res.json({ success: true, data: allUsers });
   } catch (error) {
     console.error('Error al listar usuarios:', error);
     res.status(500).json({ success: false, error: 'Error al listar usuarios' });
@@ -132,40 +178,57 @@ app.post('/api/users', async (req, res) => {
 
     const normalizedUser = normalizeUser(usuario);
     const normalizedType = normalizeType(tipo);
+    const normalizedClient = normalizeClient(cliente);
 
     if (!normalizedUser || !normalizedType || !password) {
       return res.status(400).json({ success: false, message: 'Usuario, tipo y contraseña son requeridos' });
     }
 
-    if (!['administrador', 'mecanico', 'super'].includes(normalizedType)) {
+    if (!normalizedClient && normalizedType !== 'super') {
+      return res.status(400).json({ success: false, message: 'Cliente es requerido para usuarios no superadmin' });
+    }
+
+    if (!['administrador', 'mecanico', 'planta', 'super'].includes(normalizedType)) {
       return res.status(400).json({ success: false, message: 'Tipo inválido' });
     }
 
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateUsersSheet(doc);
+    const globalSheet = await getOrCreateUsersSheet(doc);
 
-    const authRow = await validateUserCredentials(sheet, authUser, authPassword);
+    const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
     if (!authRow || !isSuperadminRow(authRow)) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
-    const rows = await sheet.getRows();
+    // Determinar en qué hoja guardar
+    let targetSheet;
+    if (normalizedType === 'super') {
+      // Superadmins se guardan en hoja global
+      targetSheet = globalSheet;
+    } else {
+      // Crear hojas del cliente si no existen
+      await getOrCreateClientUsersSheet(doc, normalizedClient);
+      await getOrCreateClientRecordsSheet(doc, normalizedClient);
+      targetSheet = await getOrCreateClientUsersSheet(doc, normalizedClient);
+    }
+
+    const rows = await targetSheet.getRows();
     const existingRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
 
     if (existingRow) {
       existingRow.set('TIPO', normalizedType);
       existingRow.set('CONTRASEÑA', password);
-      existingRow.set('CLIENTE', cliente || '');
+      existingRow.set('CLIENTE', normalizedClient);
       await existingRow.save();
 
       return res.json({ success: true, message: 'Usuario actualizado' });
     }
 
-    await sheet.addRow({
+    await targetSheet.addRow({
       'USUARIO': normalizedUser,
       'TIPO': normalizedType,
       'CONTRASEÑA': password,
-      'CLIENTE': cliente || ''
+      'CLIENTE': normalizedClient
     });
 
     res.json({ success: true, message: 'Usuario creado' });
@@ -335,6 +398,10 @@ function normalizeType(type) {
   return (type || '').trim().toLowerCase();
 }
 
+function normalizeClient(client) {
+  return (client || '').trim().toUpperCase();
+}
+
 function isSuperadminUser(usuario) {
   const normalizedUser = normalizeUser(usuario);
   return normalizedUser === normalizeUser(SUPERADMIN_1_EMAIL) ||
@@ -343,6 +410,105 @@ function isSuperadminUser(usuario) {
 
 function isSuperadminRow(row) {
   return normalizeType(row.get('TIPO')) === 'super';
+}
+
+/**
+ * Obtiene o crea la hoja de usuarios de un cliente específico
+ * @param {GoogleSpreadsheet} doc
+ * @param {string} cliente - Nombre del cliente
+ */
+async function getOrCreateClientUsersSheet(doc, cliente) {
+  const normalizedClient = normalizeClient(cliente);
+  const sheetTitle = `${normalizedClient}_USUARIOS`;
+  
+  let sheet = doc.sheetsByTitle[sheetTitle];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: sheetTitle,
+      headerValues: [
+        'USUARIO',
+        'TIPO',
+        'CONTRASEÑA',
+        'CLIENTE'
+      ]
+    });
+    console.log(`✅ Creada hoja de usuarios para cliente: ${sheetTitle}`);
+  }
+
+  await sheet.loadHeaderRow();
+  return sheet;
+}
+
+/**
+ * Obtiene o crea la hoja de registros de un cliente específico
+ * @param {GoogleSpreadsheet} doc
+ * @param {string} cliente - Nombre del cliente
+ */
+async function getOrCreateClientRecordsSheet(doc, cliente) {
+  const normalizedClient = normalizeClient(cliente);
+  const sheetTitle = `${normalizedClient}_REGISTROS`;
+  
+  let sheet = doc.sheetsByTitle[sheetTitle];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: sheetTitle,
+      headerValues: [
+        'ID',
+        'REFERENCIA',
+        'SERIAL',
+        'ESTADO',
+        'USUARIO_PLANTA',
+        'USUARIO_INSTALACION',
+        'USUARIO_DESINSTALACION',
+        'FECHA_ALMACEN',
+        'FECHA_DESPACHO',
+        'FECHA_INSTALACION',
+        'FECHA_DESINSTALACION',
+        'HORA_ALMACEN',
+        'HORA_DESPACHO',
+        'HORA_INSTALACION',
+        'HORA_DESINSTALACION'
+      ]
+    });
+    console.log(`✅ Creada hoja de registros para cliente: ${sheetTitle}`);
+  }
+
+  await sheet.loadHeaderRow();
+  return sheet;
+}
+
+/**
+ * Obtiene el cliente de un usuario desde cualquier hoja de clientes
+ * @param {GoogleSpreadsheet} doc
+ * @param {string} usuario
+ */
+async function getUserClient(doc, usuario) {
+  const normalizedUser = normalizeUser(usuario);
+  
+  // Primero buscar en la hoja global USUARIOS (para superadmins)
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  const globalRows = await globalSheet.getRows();
+  const globalUser = globalRows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+  
+  if (globalUser) {
+    return globalUser.get('CLIENTE') || '';
+  }
+  
+  // Buscar en todas las hojas de clientes
+  await doc.loadInfo();
+  for (const sheet of doc.sheetsByIndex) {
+    if (sheet.title.endsWith('_USUARIOS')) {
+      const rows = await sheet.getRows();
+      const userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+      if (userRow) {
+        return userRow.get('CLIENTE') || '';
+      }
+    }
+  }
+  
+  return '';
 }
 
 async function validateUserCredentials(sheet, usuario, password) {
@@ -418,13 +584,20 @@ app.get('/api/health', (req, res) => {
  */
 app.post('/api/save-qr', async (req, res) => {
   try {
-    const { qrContent, userEmail } = req.body;
+    const { qrContent, userEmail, userClient } = req.body;
 
     // Validación de datos
     if (!qrContent) {
       return res.status(400).json({ 
         success: false, 
         error: 'El contenido del QR es requerido' 
+      });
+    }
+
+    if (!userClient) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Cliente es requerido' 
       });
     }
 
@@ -441,9 +614,9 @@ app.post('/api/save-qr', async (req, res) => {
 
     const { referencia, serial } = parsedData;
 
-    // Conectar a Google Sheets
+    // Conectar a Google Sheets y obtener hoja del cliente
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateRecordsSheet(doc);
+    const sheet = await getOrCreateClientRecordsSheet(doc, userClient);
 
     // Buscar si ya existe un registro con esta REFERENCIA y SERIAL
     const existingRecord = await findExistingRecord(sheet, referencia, serial);
@@ -593,9 +766,16 @@ app.post('/api/save-qr', async (req, res) => {
 app.get('/api/recent-scans', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
+    const cliente = req.query.cliente || '';
     
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateRecordsSheet(doc);
+    let sheet;
+    
+    if (cliente) {
+      sheet = await getOrCreateClientRecordsSheet(doc, cliente);
+    } else {
+      sheet = await getOrCreateRecordsSheet(doc);
+    }
 
     const rows = await sheet.getRows();
     const recentRows = rows.slice(-limit).reverse();
@@ -636,8 +816,16 @@ app.get('/api/recent-scans', async (req, res) => {
  */
 app.get('/api/stats', async (req, res) => {
   try {
+    const cliente = req.query.cliente || '';
+    
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateRecordsSheet(doc);
+    let sheet;
+    
+    if (cliente) {
+      sheet = await getOrCreateClientRecordsSheet(doc, cliente);
+    } else {
+      sheet = await getOrCreateRecordsSheet(doc);
+    }
 
     const rows = await sheet.getRows();
     const today = new Date().toLocaleDateString('es-ES');

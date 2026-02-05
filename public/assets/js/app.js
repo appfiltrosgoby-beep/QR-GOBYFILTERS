@@ -11,9 +11,11 @@ const API_URL = window.location.origin;
 let html5QrCode = null;
 let isScanning = false;
 let selectedCameraId = null;
-let currentUserRole = null; // 'user' o 'admin'
+let currentUserRole = null; // 'user', 'planta', 'admin', 'superadmin'
 let currentUsername = null; // Usuario logueado
 let currentUserPassword = null; // Contraseña del usuario logueado (admin/superadmin)
+let currentUserClient = null; // Cliente del usuario logueado
+let currentLoginType = 'mecanico';
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 let currentFilteredData = []; // Guardar datos filtrados actual
 
@@ -36,6 +38,7 @@ const elements = {
     toastContainer: document.getElementById('toastContainer'),
     loginModal: document.getElementById('loginModal'),
     loginUserBtn: document.getElementById('loginUserBtn'),
+    loginPlantBtn: document.getElementById('loginPlantBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
     userLoginForm: document.getElementById('userLoginForm'),
     userUsername: document.getElementById('userUsername'),
@@ -73,11 +76,13 @@ function initAuth() {
     const savedRole = localStorage.getItem('userRole');
     const savedUserName = localStorage.getItem('userName') || localStorage.getItem('userEmail');
     const savedPassword = sessionStorage.getItem('userPassword');
+    const savedClient = localStorage.getItem('userClient');
     
     if (savedRole) {
         if (savedRole === 'superadmin' && !savedPassword) {
             localStorage.removeItem('userRole');
             localStorage.removeItem('userName');
+            localStorage.removeItem('userClient');
             elements.loginModal.style.display = 'flex';
             return;
         }
@@ -88,6 +93,9 @@ function initAuth() {
         }
         if (savedPassword) {
             currentUserPassword = savedPassword;
+        }
+        if (savedClient) {
+            currentUserClient = savedClient;
         }
         applyRolePermissions();
         elements.loginModal.style.display = 'none';
@@ -100,10 +108,25 @@ function initAuth() {
  * Mostrar formulario de email para usuario
  */
 function showUserEmailForm() {
+    currentLoginType = 'mecanico';
     elements.loginUserBtn.parentElement.style.display = 'none';
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
+    elements.userUsername.placeholder = 'Correo mecánico';
+    elements.userUsername.focus();
+}
+
+/**
+ * Mostrar formulario de email para planta
+ */
+function showPlantEmailForm() {
+    currentLoginType = 'planta';
+    elements.loginUserBtn.parentElement.style.display = 'none';
+    elements.adminLoginForm.classList.add('hidden');
+    elements.userLoginForm.classList.remove('hidden');
+    elements.userError.classList.add('hidden');
+    elements.userUsername.placeholder = 'Correo planta';
     elements.userUsername.focus();
 }
 
@@ -155,7 +178,7 @@ async function validateUserLogin() {
         return;
     }
 
-    const result = await validateCredentials(usuario, 'mecanico', password);
+    const result = await validateCredentials(usuario, currentLoginType, password);
     if (!result.success) {
         elements.userError.textContent = result.message || 'Credenciales inválidas';
         elements.userError.classList.remove('hidden');
@@ -164,9 +187,15 @@ async function validateUserLogin() {
 
     currentUsername = usuario;
     currentUserPassword = password;
+    currentUserClient = result.cliente || '';
     localStorage.setItem('userName', usuario);
+    localStorage.setItem('userClient', result.cliente || '');
     sessionStorage.setItem('userPassword', password);
-    loginAsUser();
+    if (currentLoginType === 'planta') {
+        loginAsPlanta();
+    } else {
+        loginAsUser();
+    }
 }
 
 /**
@@ -191,7 +220,9 @@ async function validateAdminLogin() {
 
     currentUsername = usuario;
     currentUserPassword = password;
+    currentUserClient = result.cliente || '';
     localStorage.setItem('userName', usuario);
+    localStorage.setItem('userClient', result.cliente || '');
     sessionStorage.setItem('userPassword', password);
     if (result.role === 'superadmin') {
         currentUserRole = 'superadmin';
@@ -222,7 +253,11 @@ async function validateCredentials(usuario, tipo, password) {
 
         const data = await response.json();
         if (data && data.success) {
-            return { success: true, role: data.role || 'user' };
+            return { 
+                success: true, 
+                role: data.role || 'user',
+                cliente: data.cliente || ''
+            };
         }
         return { success: false, message: data && data.message ? data.message : '' };
     } catch (error) {
@@ -249,6 +284,22 @@ function loginAsUser() {
 }
 
 /**
+ * Login como planta
+ */
+function loginAsPlanta() {
+    currentUserRole = 'planta';
+    localStorage.setItem('userRole', 'planta');
+    applyRolePermissions();
+    elements.loginModal.style.display = 'none';
+    elements.userLoginForm.classList.add('hidden');
+    elements.userUsername.value = '';
+    elements.userPassword.value = '';
+    elements.userError.textContent = '';
+    elements.userError.classList.add('hidden');
+    showToast(`Bienvenido ${currentUsername || 'Planta'}`, 'success');
+}
+
+/**
  * Login como admin (email autorizado)
  */
 function loginAsAdmin() {
@@ -270,10 +321,12 @@ function loginAsAdmin() {
 function logout() {
     localStorage.removeItem('userRole');
     localStorage.removeItem('userName');
+    localStorage.removeItem('userClient');
     sessionStorage.removeItem('userPassword');
     currentUserRole = null;
     currentUsername = null;
     currentUserPassword = null;
+    currentUserClient = null;
     
     // Resetear modal al estado inicial
     const modalBody = elements.loginUserBtn.parentElement;
@@ -304,24 +357,30 @@ function applyRolePermissions() {
     // Actualizar badge de rol
     const roleText = currentUserRole === 'superadmin'
         ? 'Superadmin'
-        : (currentUserRole === 'admin' ? 'Admin' : 'Mecánico');
-    const displayText = currentUserRole === 'user' ? (currentUsername || roleText) : roleText;
+        : (currentUserRole === 'admin' ? 'Admin' : (currentUserRole === 'planta' ? 'Planta' : 'Mecánico'));
+    const displayText = (currentUserRole === 'user' || currentUserRole === 'planta')
+        ? (currentUsername || roleText)
+        : roleText;
     elements.currentRole.textContent = displayText;
     elements.currentRole.className = `role-badge ${currentUserRole}`;
     
-    // Ocultar/mostrar vista de estadísticas
+    // Ocultar/mostrar vistas
     const statsNavBtn = document.querySelector('[data-view="statsView"]');
     const usersNavBtn = document.querySelector('[data-view="usersView"]');
+    const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     
-    if (currentUserRole === 'user') {
-        // Usuario: ocultar estadísticas
+    if (currentUserRole === 'user' || currentUserRole === 'planta') {
+        // Usuario y planta: ocultar estadísticas y usuarios
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'none';
         }
-        // Si está en vista de estadísticas, redirigir a escáner
+        if (scannerNavBtn) {
+            scannerNavBtn.style.display = 'flex';
+        }
+        // Si está en vista de estadísticas/usuarios, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
@@ -335,6 +394,12 @@ function applyRolePermissions() {
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = currentUserRole === 'superadmin' ? 'flex' : 'none';
+        }
+        if (scannerNavBtn) {
+            scannerNavBtn.style.display = currentUserRole === 'superadmin' ? 'none' : 'flex';
+        }
+        if (currentUserRole === 'superadmin' && document.getElementById('scannerView').classList.contains('active')) {
+            switchView('recordsView');
         }
     }
 }
@@ -447,6 +512,9 @@ function setupEventListeners() {
     
     // Event listeners de autenticación
     elements.loginUserBtn.addEventListener('click', showUserEmailForm);
+    if (elements.loginPlantBtn) {
+        elements.loginPlantBtn.addEventListener('click', showPlantEmailForm);
+    }
     elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
     elements.submitUserBtn.addEventListener('click', validateUserLogin);
     elements.cancelUserBtn.addEventListener('click', cancelUserLogin);
@@ -581,6 +649,10 @@ function handleCameraChange(event) {
  * Inicia el escaneo de códigos QR
  */
 async function startScanning() {
+    if (currentUserRole === 'superadmin') {
+        showToast('El superadmin no tiene permiso para escanear', 'warning');
+        return;
+    }
     if (!selectedCameraId) {
         showToast('Por favor selecciona una cámara', 'warning');
         return;
@@ -708,7 +780,8 @@ async function saveQRCode(qrContent) {
             },
             body: JSON.stringify({
                 qrContent,
-                userEmail: currentUsername
+                userEmail: currentUsername,
+                userClient: currentUserClient
             })
         });
 
@@ -811,7 +884,8 @@ async function saveQRCode(qrContent) {
  */
 async function loadRecentScans() {
     try {
-        const response = await fetch(`${API_URL}/api/recent-scans?limit=20`);
+        const clientParam = currentUserClient ? `&cliente=${encodeURIComponent(currentUserClient)}` : '';
+        const response = await fetch(`${API_URL}/api/recent-scans?limit=20${clientParam}`);
         const result = await response.json();
         
         if (result.success && result.data.length > 0) {
@@ -834,8 +908,9 @@ async function loadRecentScans() {
  */
 async function loadStats() {
     try {
-        // Obtener estadísticas generales
-        const response = await fetch(`${API_URL}/api/stats`);
+        // Obtener estadísticas del cliente
+        const clientParam = currentUserClient ? `?cliente=${encodeURIComponent(currentUserClient)}` : '';
+        const response = await fetch(`${API_URL}/api/stats${clientParam}`);
         const result = await response.json();
         
         if (result.success) {
@@ -867,11 +942,17 @@ async function loadStats() {
 async function createUser() {
     const usuario = elements.newUserUsername.value.trim();
     const password = elements.newUserPassword.value.trim();
-    const cliente = elements.newUserClient.value.trim();
+    const cliente = elements.newUserClient.value.trim().toUpperCase();
     const tipo = elements.newUserType.value;
 
     if (!usuario || !password) {
         elements.userFormError.textContent = 'Usuario y contraseña son requeridos';
+        elements.userFormError.classList.remove('hidden');
+        return;
+    }
+
+    if (!cliente && tipo !== 'super') {
+        elements.userFormError.textContent = 'El campo Cliente es requerido (excepto para Super Admin)';
         elements.userFormError.classList.remove('hidden');
         return;
     }

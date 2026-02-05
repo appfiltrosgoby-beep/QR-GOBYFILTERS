@@ -208,12 +208,13 @@
                     </div>
                     <div class="card-body">
                         <div class="user-form">
-                            <input type="text" id="newUserUsername" placeholder="Usuario" class="input-password">
-                            <input type="password" id="newUserPassword" placeholder="Contraseña" class="input-password">
-                            <input type="text" id="newUserClient" placeholder="Cliente" class="input-password">
+                            <input type="text" id="newUserUsername" placeholder="Usuario (correo)" class="input-password" required>
+                            <input type="password" id="newUserPassword" placeholder="Contraseña" class="input-password" required>
+                            <input type="text" id="newUserClient" placeholder="Cliente" class="input-password" required>
                             <select id="newUserType" class="input-filter">
                                 <option value="administrador">Administrador</option>
                                 <option value="mecanico">Mecánico</option>
+                                <option value="planta">Planta</option>
                                 <option value="super">Super Admin</option>
                             </select>
                             <button id="createUserBtn" class="btn btn-primary">Crear/Actualizar</button>
@@ -313,6 +314,13 @@
                             <circle cx="12" cy="7" r="4"/>
                         </svg>
                         Mecánico
+                    </button>
+                    <button id="loginPlantBtn" class="btn btn-large btn-primary">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2s4 4 4 8-4 8-4 8-4-4-4-8 4-8 4-8z"/>
+                            <path d="M12 22v-4"/>
+                        </svg>
+                        Planta
                     </button>
                     <button id="loginAdminBtn" class="btn btn-large btn-secondary">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
