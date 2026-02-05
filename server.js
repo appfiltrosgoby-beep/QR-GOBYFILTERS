@@ -360,7 +360,7 @@ async function validateUserCredentials(sheet, usuario, password) {
     return null;
   }
 
-  const storedPassword = (userRow.get('CONTRASEÑA') || '').toString();
+  const storedPassword = (userRow.get('CONTRASEÑA') || '').toString().trim();
   if (storedPassword !== password) {
     return null;
   }

@@ -157,7 +157,7 @@ async function validateUserLogin() {
 
     const result = await validateCredentials(usuario, 'mecanico', password);
     if (!result.success) {
-        elements.userError.textContent = 'Credenciales inválidas';
+        elements.userError.textContent = result.message || 'Credenciales inválidas';
         elements.userError.classList.remove('hidden');
         return;
     }
@@ -184,7 +184,7 @@ async function validateAdminLogin() {
 
     const result = await validateCredentials(usuario, 'administrador', password);
     if (!result.success) {
-        elements.adminError.textContent = 'Credenciales inválidas';
+        elements.adminError.textContent = result.message || 'Credenciales inválidas';
         elements.adminError.classList.remove('hidden');
         return;
     }
@@ -224,7 +224,7 @@ async function validateCredentials(usuario, tipo, password) {
         if (data && data.success) {
             return { success: true, role: data.role || 'user' };
         }
-        return { success: false };
+        return { success: false, message: data && data.message ? data.message : '' };
     } catch (error) {
         console.error('Error validando usuario:', error);
         showToast('Error al validar usuario', 'error');
