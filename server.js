@@ -68,7 +68,10 @@ app.post('/api/validate-user', async (req, res) => {
     const storedType = normalizeType(userRow.get('TIPO'));
 
     if (storedType !== normalizedType) {
-      return res.json({ success: false, message: 'Tipo no autorizado' });
+      // Permitir que superadmin ingrese por el flujo de administrador
+      if (!(storedType === 'super' && normalizedType === 'administrador')) {
+        return res.json({ success: false, message: 'Tipo no autorizado' });
+      }
     }
 
     // Determinar el rol basado en el TIPO del usuario

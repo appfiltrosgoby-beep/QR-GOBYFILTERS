@@ -324,25 +324,25 @@
                     </button>
                 </div>
                 <!-- Formulario de login para mecánico (oculto por defecto) -->
-                <div id="userLoginForm" class="password-form hidden">
-                    <input type="text" id="userUsername" placeholder="Correo mecánico" class="input-password">
-                    <input type="password" id="userPassword" placeholder="Contraseña" class="input-password">
+                <form id="userLoginForm" class="password-form hidden" autocomplete="on">
+                    <input type="text" id="userUsername" placeholder="Correo mecánico" class="input-password" autocomplete="username">
+                    <input type="password" id="userPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
                     <div class="password-actions">
-                        <button id="cancelUserBtn" class="btn btn-secondary">Cancelar</button>
-                        <button id="submitUserBtn" class="btn btn-primary">Continuar</button>
+                        <button id="cancelUserBtn" type="button" class="btn btn-secondary">Cancelar</button>
+                        <button id="submitUserBtn" type="button" class="btn btn-primary">Continuar</button>
                     </div>
                     <div id="userError" class="error-message hidden"></div>
-                </div>
+                </form>
                 <!-- Formulario de login para administrador (oculto por defecto) -->
-                <div id="adminLoginForm" class="password-form hidden">
-                    <input type="text" id="adminUsername" placeholder="Correo administrador" class="input-password">
-                    <input type="password" id="adminPassword" placeholder="Contraseña" class="input-password">
+                <form id="adminLoginForm" class="password-form hidden" autocomplete="on">
+                    <input type="text" id="adminUsername" placeholder="Correo administrador" class="input-password" autocomplete="username">
+                    <input type="password" id="adminPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
                     <div class="password-actions">
-                        <button id="cancelAdminEmailBtn" class="btn btn-secondary">Cancelar</button>
-                        <button id="submitAdminEmailBtn" class="btn btn-primary">Continuar</button>
+                        <button id="cancelAdminEmailBtn" type="button" class="btn btn-secondary">Cancelar</button>
+                        <button id="submitAdminEmailBtn" type="button" class="btn btn-primary">Continuar</button>
                     </div>
                     <div id="adminError" class="error-message hidden"></div>
-                </div>
+                </form>
                 <div id="passwordError" class="error-message hidden"></div>
             </div>
         </div>
