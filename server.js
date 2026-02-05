@@ -41,23 +41,144 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
- * Valida la contraseña de administrador
- * POST /api/validate-admin
- * Body: { password }
+ * Valida un usuario contra la hoja USUARIOS
+ * POST /api/validate-user
+ * Body: { usuario, tipo, password }
  */
-app.post('/api/validate-admin', (req, res) => {
+app.post('/api/validate-user', async (req, res) => {
   try {
-    const { password } = req.body;
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123'; // Contraseña por defecto
-    
-    if (password === adminPassword) {
-      res.json({ success: true, message: 'Contraseña correcta' });
-    } else {
-      res.json({ success: false, message: 'Contraseña incorrecta' });
+    const { usuario, tipo, password } = req.body;
+
+    if (!usuario || !tipo || !password) {
+      return res.status(400).json({ success: false, message: 'Usuario, tipo y contraseña son requeridos' });
     }
+
+    const doc = await getGoogleSheet();
+    const sheet = await getOrCreateUsersSheet(doc);
+
+    const normalizedUser = normalizeUser(usuario);
+    const normalizedType = normalizeType(tipo);
+
+    const userRow = await validateUserCredentials(sheet, normalizedUser, password);
+
+    if (!userRow) {
+      return res.json({ success: false, message: 'Usuario no autorizado' });
+    }
+
+    const storedType = normalizeType(userRow.get('TIPO'));
+
+    if (storedType !== normalizedType) {
+      return res.json({ success: false, message: 'Tipo no autorizado' });
+    }
+
+    // Determinar el rol basado en el TIPO del usuario
+    let role = 'user';
+    if (storedType === 'super') {
+      role = 'superadmin';
+    } else if (storedType === 'administrador') {
+      role = 'admin';
+    }
+    
+    // Validar que los usuarios con TIPO SUPER sean los correos autorizados
+    if (storedType === 'super' && !isSuperadminUser(normalizedUser)) {
+      return res.json({ success: false, message: 'Usuario no autorizado como superadmin' });
+    }
+
+    return res.json({ success: true, tipo: storedType, usuario: normalizedUser, role });
   } catch (error) {
-    console.error('Error al validar contraseña:', error);
-    res.status(500).json({ success: false, error: 'Error al validar contraseña' });
+    console.error('Error al validar usuario:', error);
+    res.status(500).json({ success: false, error: 'Error al validar usuario' });
+  }
+});
+
+/**
+ * Lista usuarios (solo superadmin)
+ * GET /api/users
+ */
+app.get('/api/users', async (req, res) => {
+  try {
+    const doc = await getGoogleSheet();
+    const sheet = await getOrCreateUsersSheet(doc);
+
+    const authUser = req.headers['x-auth-user'] || '';
+    const authPassword = req.headers['x-auth-password'] || '';
+    const authRow = await validateUserCredentials(sheet, authUser, authPassword);
+
+    if (!authRow || !isSuperadminUser(authUser)) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const rows = await sheet.getRows();
+
+    const data = rows.map(row => ({
+      usuario: normalizeUser(row.get('USUARIO')),
+      tipo: normalizeType(row.get('TIPO')),
+      cliente: row.get('CLIENTE') || ''
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error al listar usuarios:', error);
+    res.status(500).json({ success: false, error: 'Error al listar usuarios' });
+  }
+});
+
+/**
+ * Crea o actualiza un usuario (solo superadmin)
+ * POST /api/users
+ * Body: { usuario, tipo, password, cliente, authUser, authPassword }
+ */
+app.post('/api/users', async (req, res) => {
+  try {
+    const { usuario, tipo, password, cliente, authUser, authPassword } = req.body;
+
+    const normalizedUser = normalizeUser(usuario);
+    const normalizedType = normalizeType(tipo);
+
+    if (!normalizedUser || !normalizedType || !password) {
+      return res.status(400).json({ success: false, message: 'Usuario, tipo y contraseña son requeridos' });
+    }
+
+    if (!['administrador', 'mecanico', 'super'].includes(normalizedType)) {
+      return res.status(400).json({ success: false, message: 'Tipo inválido' });
+    }
+    
+    // Validar que solo los correos autorizados puedan tener TIPO SUPER
+    if (normalizedType === 'super' && !isSuperadminUser(normalizedUser)) {
+      return res.status(400).json({ success: false, message: 'Este usuario no puede ser superadmin' });
+    }
+
+    const doc = await getGoogleSheet();
+    const sheet = await getOrCreateUsersSheet(doc);
+
+    const authRow = await validateUserCredentials(sheet, authUser, authPassword);
+    if (!authRow || !isSuperadminUser(authUser)) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const rows = await sheet.getRows();
+    const existingRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+
+    if (existingRow) {
+      existingRow.set('TIPO', normalizedType);
+      existingRow.set('CONTRASEÑA', password);
+      existingRow.set('CLIENTE', cliente || '');
+      await existingRow.save();
+
+      return res.json({ success: true, message: 'Usuario actualizado' });
+    }
+
+    await sheet.addRow({
+      'USUARIO': normalizedUser,
+      'TIPO': normalizedType,
+      'CONTRASEÑA': password,
+      'CLIENTE': cliente || ''
+    });
+
+    res.json({ success: true, message: 'Usuario creado' });
+  } catch (error) {
+    console.error('Error al crear usuario:', error);
+    res.status(500).json({ success: false, error: 'Error al crear usuario' });
   }
 });
 
@@ -72,6 +193,11 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file',
 ];
+
+const RECORDS_SHEET_TITLE = 'REGISTROS';
+const USERS_SHEET_TITLE = 'USUARIOS';
+const SUPERADMIN_1_EMAIL = process.env.SUPERADMIN_1_EMAIL || '';
+const SUPERADMIN_2_EMAIL = process.env.SUPERADMIN_2_EMAIL || '';
 
 /**
  * Inicializa y autentica la conexión con Google Sheets
@@ -109,7 +235,7 @@ async function getGoogleSheet() {
  * Inicializa la hoja de cálculo con encabezados si no existen
  * @param {Object} sheet - Hoja de Google Sheets
  */
-async function initializeSheet(sheet) {
+async function initializeRecordsSheet(sheet) {
   await sheet.loadHeaderRow();
   
   // Si no hay encabezados, crearlos
@@ -132,6 +258,111 @@ async function initializeSheet(sheet) {
       'HORA_DESINSTALACION'
     ]);
   }
+}
+
+/**
+ * Inicializa la hoja de usuarios con encabezados si no existen
+ * @param {Object} sheet - Hoja de Google Sheets
+ */
+async function initializeUsersSheet(sheet) {
+  await sheet.loadHeaderRow();
+
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    await sheet.setHeaderRow([
+      'USUARIO',
+      'TIPO',
+      'CONTRASEÑA',
+      'CLIENTE'
+    ]);
+  }
+}
+
+/**
+ * Obtiene o crea la hoja de registros
+ * @param {GoogleSpreadsheet} doc
+ */
+async function getOrCreateRecordsSheet(doc) {
+  let sheet = doc.sheetsByTitle[RECORDS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: RECORDS_SHEET_TITLE,
+      headerValues: [
+        'ID',
+        'REFERENCIA',
+        'SERIAL',
+        'ESTADO',
+        'USUARIO_PLANTA',
+        'USUARIO_INSTALACION',
+        'USUARIO_DESINSTALACION',
+        'FECHA_ALMACEN',
+        'FECHA_DESPACHO',
+        'FECHA_INSTALACION',
+        'FECHA_DESINSTALACION',
+        'HORA_ALMACEN',
+        'HORA_DESPACHO',
+        'HORA_INSTALACION',
+        'HORA_DESINSTALACION'
+      ]
+    });
+  }
+
+  await initializeRecordsSheet(sheet);
+  return sheet;
+}
+
+/**
+ * Obtiene o crea la hoja de usuarios
+ * @param {GoogleSpreadsheet} doc
+ */
+async function getOrCreateUsersSheet(doc) {
+  let sheet = doc.sheetsByTitle[USERS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: USERS_SHEET_TITLE,
+      headerValues: [
+        'USUARIO',
+        'TIPO',
+        'CONTRASEÑA',
+        'CLIENTE'
+      ]
+    });
+  }
+
+  await initializeUsersSheet(sheet);
+  return sheet;
+}
+
+function normalizeUser(user) {
+  return (user || '').trim().toLowerCase();
+}
+
+function normalizeType(type) {
+  return (type || '').trim().toLowerCase();
+}
+
+function isSuperadminUser(usuario) {
+  const normalizedUser = normalizeUser(usuario);
+  return normalizedUser === normalizeUser(SUPERADMIN_1_EMAIL) ||
+         normalizedUser === normalizeUser(SUPERADMIN_2_EMAIL);
+}
+
+async function validateUserCredentials(sheet, usuario, password) {
+  const rows = await sheet.getRows();
+  const normalizedUser = normalizeUser(usuario);
+  const userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+
+  if (!userRow) {
+    return null;
+  }
+
+  const storedPassword = (userRow.get('CONTRASEÑA') || '').toString();
+  if (storedPassword !== password) {
+    return null;
+  }
+
+  return userRow;
 }
 
 /**
@@ -215,33 +446,7 @@ app.post('/api/save-qr', async (req, res) => {
 
     // Conectar a Google Sheets
     const doc = await getGoogleSheet();
-    let sheet = doc.sheetsByIndex[0];
-
-    // Si no existe la hoja, crearla
-    if (!sheet) {
-      sheet = await doc.addSheet({ 
-        title: 'Escaneos QR',
-        headerValues: [
-          'ID',
-          'REFERENCIA',
-          'SERIAL',
-          'ESTADO',
-          'USUARIO_PLANTA',
-          'USUARIO_INSTALACION',
-          'USUARIO_DESINSTALACION',
-          'FECHA_ALMACEN',
-          'FECHA_DESPACHO',
-          'FECHA_INSTALACION',
-          'FECHA_DESINSTALACION',
-          'HORA_ALMACEN',
-          'HORA_DESPACHO',
-          'HORA_INSTALACION',
-          'HORA_DESINSTALACION'
-        ]
-      });
-    }
-
-    await initializeSheet(sheet);
+    const sheet = await getOrCreateRecordsSheet(doc);
 
     // Buscar si ya existe un registro con esta REFERENCIA y SERIAL
     const existingRecord = await findExistingRecord(sheet, referencia, serial);
@@ -393,14 +598,7 @@ app.get('/api/recent-scans', async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     
     const doc = await getGoogleSheet();
-    const sheet = doc.sheetsByIndex[0];
-    
-    if (!sheet) {
-      return res.json({ success: true, data: [] });
-    }
-
-    // Asegurar que existan encabezados
-    await initializeSheet(sheet);
+    const sheet = await getOrCreateRecordsSheet(doc);
 
     const rows = await sheet.getRows();
     const recentRows = rows.slice(-limit).reverse();
@@ -442,24 +640,7 @@ app.get('/api/recent-scans', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const doc = await getGoogleSheet();
-    const sheet = doc.sheetsByIndex[0];
-    
-    if (!sheet) {
-      return res.json({ 
-        success: true, 
-        data: { 
-          total: 0, 
-          enAlmacen: 0, 
-          despachados: 0,
-          instalados: 0,
-          desinstalados: 0,
-          today: 0 
-        } 
-      });
-    }
-
-    // Asegurar que existan encabezados
-    await initializeSheet(sheet);
+    const sheet = await getOrCreateRecordsSheet(doc);
 
     const rows = await sheet.getRows();
     const today = new Date().toLocaleDateString('es-ES');

@@ -1181,6 +1181,25 @@ input:checked + .slider:before {
     color: white;
 }
 
+.role-badge.superadmin {
+    background: var(--primary-dark);
+    color: white;
+}
+
+/* Gestión de usuarios */
+.user-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 220px 200px;
+    gap: var(--spacing-md);
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .user-form {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Responsive para modal */
 @media (max-width: 480px) {
     .modal-content {
