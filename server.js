@@ -300,6 +300,7 @@ async function initializeRecordsSheet(sheet) {
       'REFERENCIA',
       'SERIAL',
       'ESTADO',
+      'CLIENTE',
       'USUARIO_PLANTA',
       'USUARIO_INSTALACION',
       'USUARIO_DESINSTALACION',
@@ -347,6 +348,7 @@ async function getOrCreateRecordsSheet(doc) {
         'REFERENCIA',
         'SERIAL',
         'ESTADO',
+        'CLIENTE',
         'USUARIO_PLANTA',
         'USUARIO_INSTALACION',
         'USUARIO_DESINSTALACION',
@@ -458,6 +460,7 @@ async function getOrCreateClientRecordsSheet(doc, cliente) {
         'REFERENCIA',
         'SERIAL',
         'ESTADO',
+        'CLIENTE',
         'USUARIO_PLANTA',
         'USUARIO_INSTALACION',
         'USUARIO_DESINSTALACION',
@@ -721,6 +724,7 @@ app.post('/api/save-qr', async (req, res) => {
         'REFERENCIA': referencia,
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
+        'CLIENTE': userClient,
         'USUARIO_PLANTA': userEmail || '',
         'USUARIO_INSTALACION': '',
         'USUARIO_DESINSTALACION': '',
@@ -760,30 +764,59 @@ app.post('/api/save-qr', async (req, res) => {
 
 /**
  * Obtiene los últimos registros de QR escaneados
- * GET /api/recent-scans?limit=10
+ * GET /api/recent-scans?limit=10&superadmin=true
  */
 app.get('/api/recent-scans', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
     const cliente = req.query.cliente || '';
+    const isSuperadminRequest = req.query.superadmin === 'true';
     
     const doc = await getGoogleSheet();
-    let sheet;
-    
-    if (cliente) {
-      sheet = await getOrCreateClientRecordsSheet(doc, cliente);
-    } else {
-      sheet = await getOrCreateRecordsSheet(doc);
-    }
+    let recentRows = [];
 
-    const rows = await sheet.getRows();
-    const recentRows = rows.slice(-limit).reverse();
+    if (cliente) {
+      // Filtrar por cliente específico
+      const sheet = await getOrCreateClientRecordsSheet(doc, cliente);
+      const rows = await sheet.getRows();
+      recentRows = rows.slice(-limit).reverse();
+    } else if (isSuperadminRequest) {
+      // Superadmin: obtener registros de TODOS los clientes
+      await doc.loadInfo();
+      const allRows = [];
+      
+      // Obtener registros de la hoja global REGISTROS
+      const globalSheet = await getOrCreateRecordsSheet(doc);
+      const globalRows = await globalSheet.getRows();
+      allRows.push(...globalRows);
+      
+      // Obtener registros de las hojas de clientes
+      for (const sheet of doc.sheetsByIndex) {
+        if (sheet.title.endsWith('_REGISTROS') && sheet.title !== 'REGISTROS') {
+          const rows = await sheet.getRows();
+          allRows.push(...rows);
+        }
+      }
+      
+      // Ordenar por ID descendente y tomar los últimos limit
+      recentRows = allRows.sort((a, b) => {
+        const idA = parseInt(a.get('ID')) || 0;
+        const idB = parseInt(b.get('ID')) || 0;
+        return idB - idA;
+      }).slice(0, limit);
+    } else {
+      // Usuario regular: obtener registros de su hoja de cliente
+      const sheet = await getOrCreateRecordsSheet(doc);
+      const rows = await sheet.getRows();
+      recentRows = rows.slice(-limit).reverse();
+    }
 
     const data = recentRows.map(row => ({
       id: row.get('ID'),
       referencia: row.get('REFERENCIA'),
       serial: row.get('SERIAL'),
       estado: row.get('ESTADO'),
+      cliente: row.get('CLIENTE'),
       usuarioPlanta: row.get('USUARIO_PLANTA'),
       usuarioInstalacion: row.get('USUARIO_INSTALACION'),
       usuarioDesinstalacion: row.get('USUARIO_DESINSTALACION'),

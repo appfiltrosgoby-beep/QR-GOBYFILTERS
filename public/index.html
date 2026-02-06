@@ -118,6 +118,7 @@
                                         <th>Referencia</th>
                                         <th>Serial</th>
                                         <th>Estado</th>
+                                        <th class="cliente-col" style="display:none;">Cliente</th>
                                         <th>Fecha Almacén</th>
                                         <th>Fecha Despacho</th>
                                     </tr>
@@ -183,6 +184,7 @@
                                         <th>Referencia</th>
                                         <th>Serial</th>
                                         <th>Estado</th>
+                                        <th class="cliente-col" style="display:none;">Cliente</th>
                                         <th>Fecha Almacén</th>
                                         <th>Fecha Despacho</th>
                                     </tr>
@@ -327,7 +329,15 @@
                 <!-- Formulario de login para mecánico (oculto por defecto) -->
                 <form id="userLoginForm" class="password-form hidden" autocomplete="on">
                     <input type="text" id="userUsername" placeholder="Correo mecánico" class="input-password" autocomplete="username">
-                    <input type="password" id="userPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
+                    <div class="password-container">
+                        <input type="password" id="userPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
+                        <button type="button" class="toggle-password-btn" data-target="userPassword">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
                     <div class="password-actions">
                         <button id="cancelUserBtn" type="button" class="btn btn-secondary">Cancelar</button>
                         <button id="submitUserBtn" type="button" class="btn btn-primary">Continuar</button>
@@ -337,7 +347,15 @@
                 <!-- Formulario de login para administrador (oculto por defecto) -->
                 <form id="adminLoginForm" class="password-form hidden" autocomplete="on">
                     <input type="text" id="adminUsername" placeholder="Correo administrador" class="input-password" autocomplete="username">
-                    <input type="password" id="adminPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
+                    <div class="password-container">
+                        <input type="password" id="adminPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
+                        <button type="button" class="toggle-password-btn" data-target="adminPassword">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
                     <div class="password-actions">
                         <button id="cancelAdminEmailBtn" type="button" class="btn btn-secondary">Cancelar</button>
                         <button id="submitAdminEmailBtn" type="button" class="btn btn-primary">Continuar</button>

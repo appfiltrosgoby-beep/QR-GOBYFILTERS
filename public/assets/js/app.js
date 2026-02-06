@@ -558,7 +558,26 @@ function setupEventListeners() {
     if (exportStatsBtn) {
         exportStatsBtn.addEventListener('click', exportStatsToCSV);
     }
-}
+
+    // Event listeners para toggle de contraseña
+    const togglePasswordBtns = document.querySelectorAll('.toggle-password-btn');
+    togglePasswordBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetId = btn.getAttribute('data-target');
+            const passwordInput = document.getElementById(targetId);
+            
+            if (passwordInput) {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    btn.classList.add('visible');
+                } else {
+                    passwordInput.type = 'password';
+                    btn.classList.remove('visible');
+                }
+            }
+        });
+    });
 
 // ============================================
 // GESTIÓN DE CÁMARAS
@@ -879,7 +898,8 @@ async function loadStats() {
         }
         
         // Obtener todos los registros para mostrar en tabla
-        const scansResponse = await fetch(`${API_URL}/api/recent-scans?limit=10000`);
+        const superadminParam = currentUserRole === 'superadmin' ? '&superadmin=true' : '';
+        const scansResponse = await fetch(`${API_URL}/api/recent-scans?limit=10000${superadminParam}`);
         const scansResult = await scansResponse.json();
         
         if (scansResult.success) {
@@ -1085,6 +1105,12 @@ function clearLastResult() {
  * Muestra los registros en la tabla
  */
 function displayRecords(records) {
+    // Mostrar/ocultar columna CLIENTE según el rol
+    const clienteHeaders = document.querySelectorAll('thead .cliente-col');
+    clienteHeaders.forEach(th => {
+        th.style.display = currentUserRole === 'superadmin' ? 'table-cell' : 'none';
+    });
+    
     elements.recordsBody.innerHTML = records.map(record => {
         let estadoClass = 'almacen';
         let estadoEmoji = '📦';
@@ -1108,6 +1134,7 @@ function displayRecords(records) {
                 <td class="content-cell"><strong>${record.referencia}</strong></td>
                 <td class="content-cell">${record.serial}</td>
                 <td><span class="type-badge type-${estadoClass}">${estadoEmoji} ${record.estado}</span></td>
+                <td class="cliente-col" style="display: ${currentUserRole === 'superadmin' ? 'table-cell' : 'none'};">${record.cliente || '-'}</td>
                 <td>${record.fechaAlmacen} <small>${record.horaAlmacen || ''}</small></td>
                 <td>${record.fechaDespacho || '-'} <small>${record.horaDespacho || ''}</small></td>
             </tr>
@@ -1208,6 +1235,12 @@ function displayStatsTable(data) {
     const totalCount = document.getElementById('totalCount');
     const totalLabel = document.getElementById('totalLabel');
     
+    // Mostrar/ocultar columna CLIENTE según el rol
+    const clienteHeaders = document.querySelectorAll('thead .cliente-col');
+    clienteHeaders.forEach(th => {
+        th.style.display = currentUserRole === 'superadmin' ? 'table-cell' : 'none';
+    });
+    
     // Guardar datos filtrados actuales
     currentFilteredData = data;
     
@@ -1230,7 +1263,8 @@ function displayStatsTable(data) {
     }
     
     if (!data || data.length === 0) {
-        statsTableBody.innerHTML = '<tr><td colspan="5" class="no-data">No hay datos para mostrar</td></tr>';
+        const colSpan = currentUserRole === 'superadmin' ? '6' : '5';
+        statsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="no-data">No hay datos para mostrar</td></tr>`;
         return;
     }
     
@@ -1256,6 +1290,7 @@ function displayStatsTable(data) {
                         ${row.estado || 'N/A'}
                     </span>
                 </td>
+                <td class="cliente-col" style="display: ${currentUserRole === 'superadmin' ? 'table-cell' : 'none'};">${row.cliente || 'N/A'}</td>
                 <td>${row.fechaAlmacen || 'N/A'}</td>
                 <td>${row.fechaDespacho || 'N/A'}</td>
             </tr>
@@ -1312,19 +1347,36 @@ function exportStatsToCSV() {
         return;
     }
     
-    // Headers del CSV (sin ID)
-    const headers = ['REFERENCIA', 'SERIAL', 'ESTADO', 'FECHA_ALMACEN', 'FECHA_DESPACHO', 'HORA_ALMACEN', 'HORA_DESPACHO'];
+    // Headers del CSV (sin ID, incluir CLIENTE para superadmin)
+    const headers = currentUserRole === 'superadmin'
+        ? ['REFERENCIA', 'SERIAL', 'ESTADO', 'CLIENTE', 'FECHA_ALMACEN', 'FECHA_DESPACHO', 'HORA_ALMACEN', 'HORA_DESPACHO']
+        : ['REFERENCIA', 'SERIAL', 'ESTADO', 'FECHA_ALMACEN', 'FECHA_DESPACHO', 'HORA_ALMACEN', 'HORA_DESPACHO'];
     
-    // Datos (sin ID)
-    const rows = currentFilteredData.map(row => [
-        row.referencia || '',
-        row.serial || '',
-        row.estado || '',
-        row.fechaAlmacen || '',
-        row.fechaDespacho || '',
-        row.horaAlmacen || '',
-        row.horaDespacho || ''
-    ]);
+    // Datos (sin ID, incluir CLIENTE para superadmin)
+    const rows = currentFilteredData.map(row => {
+        if (currentUserRole === 'superadmin') {
+            return [
+                row.referencia || '',
+                row.serial || '',
+                row.estado || '',
+                row.cliente || '',
+                row.fechaAlmacen || '',
+                row.fechaDespacho || '',
+                row.horaAlmacen || '',
+                row.horaDespacho || ''
+            ];
+        } else {
+            return [
+                row.referencia || '',
+                row.serial || '',
+                row.estado || '',
+                row.fechaAlmacen || '',
+                row.fechaDespacho || '',
+                row.horaAlmacen || '',
+                row.horaDespacho || ''
+            ];
+        }
+    });
     
     // Crear contenido CSV
     let csvContent = headers.join(',') + '\n';
@@ -1378,7 +1430,8 @@ function showToast(message, type = 'info') {
  */
 async function exportToCSV() {
     try {
-        const response = await fetch(`${API_URL}/api/recent-scans?limit=1000`);
+        const superadminParam = currentUserRole === 'superadmin' ? '&superadmin=true' : '';
+        const response = await fetch(`${API_URL}/api/recent-scans?limit=1000${superadminParam}`);
         const result = await response.json();
         
         if (!result.success || result.data.length === 0) {
@@ -1387,17 +1440,36 @@ async function exportToCSV() {
         }
         
         // Crear CSV
-        const headers = ['ID', 'Referencia', 'Serial', 'Estado', 'Fecha Almacén', 'Hora Almacén', 'Fecha Despacho', 'Hora Despacho'];
-        const rows = result.data.map(r => [
-            r.id, 
-            `"${r.referencia}"`, 
-            `"${r.serial}"`, 
-            r.estado,
-            r.fechaAlmacen, 
-            r.horaAlmacen || '',
-            r.fechaDespacho || '', 
-            r.horaDespacho || ''
-        ]);
+        const headers = currentUserRole === 'superadmin'
+            ? ['ID', 'Referencia', 'Serial', 'Estado', 'Cliente', 'Fecha Almacén', 'Hora Almacén', 'Fecha Despacho', 'Hora Despacho']
+            : ['ID', 'Referencia', 'Serial', 'Estado', 'Fecha Almacén', 'Hora Almacén', 'Fecha Despacho', 'Hora Despacho'];
+        
+        const rows = result.data.map(r => {
+            if (currentUserRole === 'superadmin') {
+                return [
+                    r.id, 
+                    `"${r.referencia}"`, 
+                    `"${r.serial}"`, 
+                    r.estado,
+                    r.cliente || '',
+                    r.fechaAlmacen, 
+                    r.horaAlmacen || '',
+                    r.fechaDespacho || '', 
+                    r.horaDespacho || ''
+                ];
+            } else {
+                return [
+                    r.id, 
+                    `"${r.referencia}"`, 
+                    `"${r.serial}"`, 
+                    r.estado,
+                    r.fechaAlmacen, 
+                    r.horaAlmacen || '',
+                    r.fechaDespacho || '', 
+                    r.horaDespacho || ''
+                ];
+            }
+        });
         
         const csv = [
             headers.join(','),

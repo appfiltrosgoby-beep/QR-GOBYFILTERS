@@ -677,9 +677,9 @@ input:checked + .slider:before {
 }
 
 .type-instalado {
-    background: rgba(168, 85, 247, 0.1);
-    color: #20a54c;
-    border: 1px solid rgba(168, 85, 247, 0.3);
+    background: rgba(85, 247, 139, 0.1);
+    color: #067a2d;
+    border: 1px solid rgba(104, 247, 85, 0.3);
 }
 
 .type-desinstalado {
@@ -1099,6 +1099,40 @@ input:checked + .slider:before {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+}
+
+.password-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.password-container .input-password {
+    width: 100%;
+    padding-right: 45px;
+}
+
+.toggle-password-btn {
+    position: absolute;
+    right: var(--spacing-md);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: var(--spacing-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color var(--transition-fast);
+}
+
+.toggle-password-btn:hover {
+    color: var(--primary-color);
+}
+
+.toggle-password-btn.visible {
+    color: var(--primary-color);
 }
 
 .input-password {
