@@ -18,6 +18,8 @@ let currentUserClient = null; // Cliente del usuario logueado
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 let currentFilteredData = []; // Guardar datos filtrados actual
 let editingUser = null; // Usuario que se está editando (para el formulario de usuarios)
+let allRecordsData = []; // Guardar todos los registros para filtrado
+let allUsersData = []; // Guardar todos los usuarios para filtrado
 
 // Elementos del DOM
 const elements = {
@@ -368,6 +370,21 @@ function applyRolePermissions() {
         if (currentUserRole === 'superadmin' && document.getElementById('scannerView').classList.contains('active')) {
             switchView('recordsView');
         }
+        
+        // Mostrar/ocultar filtros de cliente según el rol
+        const filterClienteRecords = document.getElementById('filterClienteRecords');
+        const filterClienteUsers = document.getElementById('filterClienteUsers');
+        const filterClienteStats = document.getElementById('filterClienteStats');
+        
+        if (filterClienteRecords) {
+            filterClienteRecords.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+        }
+        if (filterClienteUsers) {
+            filterClienteUsers.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+        }
+        if (filterClienteStats) {
+            filterClienteStats.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+        }
     }
 }
 
@@ -559,10 +576,31 @@ function setupEventListeners() {
     // Event listeners de estadísticas
     const filterReferencia = document.getElementById('filterReferencia');
     const exportStatsBtn = document.getElementById('exportStatsBtn');
+    const filterClienteRecords = document.getElementById('filterClienteRecords');
+    const filterClienteUsers = document.getElementById('filterClienteUsers');
+    const filterClienteStats = document.getElementById('filterClienteStats');
     
     if (filterReferencia) {
         filterReferencia.addEventListener('change', (e) => {
-            filterStatsByReferencia(e.target.value);
+            filterStats();
+        });
+    }
+    
+    if (filterClienteRecords) {
+        filterClienteRecords.addEventListener('change', (e) => {
+            filterRecordsByCliente(e.target.value);
+        });
+    }
+    
+    if (filterClienteUsers) {
+        filterClienteUsers.addEventListener('change', (e) => {
+            filterUsersByCliente(e.target.value);
+        });
+    }
+    
+    if (filterClienteStats) {
+        filterClienteStats.addEventListener('change', (e) => {
+            filterStats();
         });
     }
     
@@ -876,13 +914,16 @@ async function saveQRCode(qrContent) {
  */
 async function loadRecentScans() {
     try {
-        const clientParam = currentUserClient ? `&cliente=${encodeURIComponent(currentUserClient)}` : '';
+        const clientParam = currentUserRole === 'superadmin' ? '&superadmin=true' : (currentUserClient ? `&cliente=${encodeURIComponent(currentUserClient)}` : '');
         const response = await fetch(`${API_URL}/api/recent-scans?limit=20${clientParam}`);
         const result = await response.json();
         
         if (result.success && result.data.length > 0) {
-            displayRecords(result.data);
+            allRecordsData = result.data;
+            populateClientesSelectRecords();
+            filterRecordsByCliente(''); // Mostrar todos inicialmente
         } else {
+            allRecordsData = [];
             elements.recordsBody.innerHTML = `
                 <tr>
                     <td colspan="6" class="no-data">No hay registros para mostrar</td>
@@ -918,6 +959,7 @@ async function loadStats() {
             allStatsData = scansResult.data || [];
             displayStatsTable(allStatsData);
             populateReferenciasSelect(); // Llenar el select con referencias únicas
+            populateClientesSelectStats(); // Llenar el select con clientes únicos
         }
     } catch (error) {
         console.error('Error al cargar estadísticas:', error);
@@ -1149,8 +1191,11 @@ async function loadUsers() {
         const result = await response.json();
 
         if (result.success) {
-            displayUsers(result.data);
+            allUsersData = result.data;
+            populateClientesSelectUsers();
+            filterUsersByCliente(''); // Mostrar todos inicialmente
         } else {
+            allUsersData = [];
             showToast(result.message || 'No se pudieron cargar usuarios', 'error');
         }
     } catch (error) {
@@ -1500,16 +1545,130 @@ function populateReferenciasSelect() {
 }
 
 /**
- * Filtra los registros de estadísticas por referencia (select)
+ * Filtra los registros de estadísticas por referencia y/o cliente
  */
-function filterStatsByReferencia(referencia = '') {
+function filterStats() {
+    const referencia = document.getElementById('filterReferencia')?.value || '';
+    const cliente = document.getElementById('filterClienteStats')?.value || '';
+    
     let filtered = allStatsData;
     
+    if (cliente) {
+        filtered = filtered.filter(row => row.cliente === cliente);
+    }
+    
     if (referencia) {
-        filtered = allStatsData.filter(row => row.referencia === referencia);
+        filtered = filtered.filter(row => row.referencia === referencia);
     }
     
     displayStatsTable(filtered);
+}
+
+/**
+ * Filtra los registros recientes por cliente
+ */
+function filterRecordsByCliente(cliente = '') {
+    let filtered = allRecordsData;
+    
+    if (cliente) {
+        filtered = allRecordsData.filter(row => row.cliente === cliente);
+    }
+    
+    displayRecords(filtered);
+}
+
+/**
+ * Filtra los usuarios por cliente
+ */
+function filterUsersByCliente(cliente = '') {
+    let filtered = allUsersData;
+    
+    if (cliente) {
+        filtered = allUsersData.filter(user => user.cliente === cliente);
+    }
+    
+    displayUsers(filtered);
+}
+
+/**
+ * Llena el select de clientes únicos para registros
+ */
+function populateClientesSelectRecords() {
+    const filterSelect = document.getElementById('filterClienteRecords');
+    
+    if (!filterSelect || !allRecordsData.length) return;
+    
+    // Obtener clientes únicos
+    const clientes = [...new Set(allRecordsData.map(row => row.cliente).filter(Boolean))].sort();
+    
+    // Guardar la opción actual
+    const currentValue = filterSelect.value;
+    
+    // Reconstruir opciones
+    filterSelect.innerHTML = '<option value="">Todos los clientes</option>';
+    clientes.forEach(cliente => {
+        const option = document.createElement('option');
+        option.value = cliente;
+        option.textContent = cliente;
+        filterSelect.appendChild(option);
+    });
+    
+    // Restaurar selección
+    filterSelect.value = currentValue;
+}
+
+/**
+ * Llena el select de clientes únicos para usuarios
+ */
+function populateClientesSelectUsers() {
+    const filterSelect = document.getElementById('filterClienteUsers');
+    
+    if (!filterSelect || !allUsersData.length) return;
+    
+    // Obtener clientes únicos
+    const clientes = [...new Set(allUsersData.map(user => user.cliente).filter(Boolean))].sort();
+    
+    // Guardar la opción actual
+    const currentValue = filterSelect.value;
+    
+    // Reconstruir opciones
+    filterSelect.innerHTML = '<option value="">Todos los clientes</option>';
+    clientes.forEach(cliente => {
+        const option = document.createElement('option');
+        option.value = cliente;
+        option.textContent = cliente;
+        filterSelect.appendChild(option);
+    });
+    
+    // Restaurar selección
+    filterSelect.value = currentValue;
+}
+
+/**
+ * Llena el select de clientes únicos para estadísticas
+ */
+function populateClientesSelectStats() {
+    const filterSelect = document.getElementById('filterClienteStats');
+    
+    if (!filterSelect || !allStatsData.length) return;
+    
+    // Obtener clientes únicos
+    const clientes = [...new Set(allStatsData.map(row => row.cliente).filter(Boolean))].sort();
+    
+    // Guardar la opción actual
+    const currentValue = filterSelect.value;
+    
+    // Reconstruir opciones
+    filterSelect.innerHTML = '<option value="">Todos los clientes</option>';
+    clientes.forEach(cliente => {
+        const option = document.createElement('option');
+        option.value = cliente;
+        option.textContent = cliente;
+        filterSelect.appendChild(option);
+    });
+    
+    // Restaurar selección
+    filterSelect.value = currentValue;
 }
 
 /**

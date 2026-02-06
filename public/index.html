@@ -95,6 +95,13 @@
                     <div class="card-header">
                         <h2>📋 Registros Recientes</h2>
                         <div class="header-actions">
+                            <select 
+                                id="filterClienteRecords" 
+                                class="input-filter"
+                                style="display:none;"
+                            >
+                                <option value="">Todos los clientes</option>
+                            </select>
                             <button id="refreshBtn" class="btn btn-icon-text">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
@@ -162,6 +169,13 @@
 
                         <!-- Filtro y exportación -->
                         <div class="stats-controls">
+                            <select 
+                                id="filterClienteStats" 
+                                class="input-filter"
+                                style="display:none;"
+                            >
+                                <option value="">Todos los clientes</option>
+                            </select>
                             <select 
                                 id="filterReferencia" 
                                 class="input-filter"
@@ -233,6 +247,13 @@
                     <div class="card-header">
                         <h2>📄 Usuarios registrados</h2>
                         <div class="header-actions">
+                            <select 
+                                id="filterClienteUsers" 
+                                class="input-filter"
+                                style="display:none;"
+                            >
+                                <option value="">Todos los clientes</option>
+                            </select>
                             <button id="refreshUsersBtn" class="btn btn-icon-text">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
