@@ -121,15 +121,17 @@ app.post('/api/validate-user', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const doc = await getGoogleSheet();
-    const globalSheet = await getOrCreateUsersSheet(doc);
 
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
-    const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
-
-    if (!authRow || !isSuperadminRow(authRow)) {
+    
+    // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
+    const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
+    if (!authRow) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
+
+    const globalSheet = await getOrCreateUsersSheet(doc);
 
     // Superadmin puede ver todos los usuarios de todas las hojas
     await doc.loadInfo();
@@ -192,12 +194,14 @@ app.post('/api/users', async (req, res) => {
     }
 
     const doc = await getGoogleSheet();
-    const globalSheet = await getOrCreateUsersSheet(doc);
 
-    const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
-    if (!authRow || !isSuperadminRow(authRow)) {
+    // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
+    const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
+    if (!authRow) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
+
+    const globalSheet = await getOrCreateUsersSheet(doc);
 
     // Determinar en qué hoja guardar
     let targetSheet;
@@ -252,12 +256,14 @@ app.post('/api/users', async (req, res) => {
       }
 
       const doc = await getGoogleSheet();
-      const globalSheet = await getOrCreateUsersSheet(doc);
 
-      const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
-      if (!authRow || !isSuperadminRow(authRow)) {
+      // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
+      const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
+      if (!authRow) {
         return res.status(401).json({ success: false, message: 'No autorizado' });
       }
+
+      const globalSheet = await getOrCreateUsersSheet(doc);
 
       // Buscar usuario en la hoja global
       let rows = await globalSheet.getRows();
@@ -310,12 +316,14 @@ app.post('/api/users', async (req, res) => {
       }
 
       const doc = await getGoogleSheet();
-      const globalSheet = await getOrCreateUsersSheet(doc);
 
-      const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
-      if (!authRow || !isSuperadminRow(authRow)) {
+      // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
+      const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
+      if (!authRow) {
         return res.status(401).json({ success: false, message: 'No autorizado' });
       }
+
+      const globalSheet = await getOrCreateUsersSheet(doc);
 
       // Buscar usuario en la hoja global
       let rows = await globalSheet.getRows();
@@ -528,6 +536,41 @@ function isSuperadminUser(usuario) {
 
 function isSuperadminRow(row) {
   return normalizeType(row.get('TIPO')) === 'super';
+}
+
+/**
+ * Valida credenciales de superadmin buscando en todas las hojas
+ * @param {GoogleSpreadsheet} doc
+ * @param {string} usuario
+ * @param {string} password
+ * @returns {Object|null} Fila del usuario si es válido y superadmin, null en caso contrario
+ */
+async function validateSuperadminCredentials(doc, usuario, password) {
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  const normalizedUser = normalizeUser(usuario);
+  
+  // Buscar primero en hoja global
+  let userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
+  
+  if (!userRow) {
+    // Buscar en hojas de clientes
+    await doc.loadInfo();
+    for (const sheet of doc.sheetsByIndex) {
+      if (sheet.title.endsWith('_USUARIOS')) {
+        userRow = await validateUserCredentials(sheet, normalizedUser, password);
+        if (userRow) {
+          break;
+        }
+      }
+    }
+  }
+  
+  // Verificar que sea superadmin
+  if (!userRow || !isSuperadminRow(userRow)) {
+    return null;
+  }
+  
+  return userRow;
 }
 
 /**
