@@ -941,147 +941,6 @@ async function createUser() {
     if (!usuario || !password) {
         elements.userFormError.textContent = 'Usuario y contraseña son requeridos';
         elements.userFormError.classList.remove('hidden');
-
-        /**
-         * Actualiza un usuario existente
-         */
-        async function updateUser() {
-            if (!editingUser) {
-                showToast('No hay usuario en edición', 'error');
-                return;
-            }
-
-            const password = elements.newUserPassword.value.trim();
-            const cliente = elements.newUserClient.value.trim().toUpperCase();
-            const tipo = elements.newUserType.value;
-
-            if (!password) {
-                elements.userFormError.textContent = 'Contraseña es requerida';
-                elements.userFormError.classList.remove('hidden');
-                return;
-            }
-
-            if (!cliente && tipo !== 'super') {
-                elements.userFormError.textContent = 'El campo Cliente es requerido (excepto para Super Admin)';
-                elements.userFormError.classList.remove('hidden');
-                return;
-            }
-
-            if (!currentUserPassword || currentUserRole !== 'superadmin') {
-                elements.userFormError.textContent = 'No autorizado. Inicia sesión como superadmin.';
-                elements.userFormError.classList.remove('hidden');
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_URL}/api/users/${encodeURIComponent(editingUser)}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tipo,
-                        password,
-                        cliente,
-                        authUser: currentUsername,
-                        authPassword: currentUserPassword
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showToast('Usuario actualizado exitosamente', 'success');
-                    cancelEditUser();
-                    await loadUsers();
-                } else {
-                    elements.userFormError.textContent = result.message || 'No se pudo actualizar el usuario';
-                    elements.userFormError.classList.remove('hidden');
-                }
-            } catch (error) {
-                console.error('Error al actualizar usuario:', error);
-                elements.userFormError.textContent = 'Error al actualizar usuario';
-                elements.userFormError.classList.remove('hidden');
-            }
-        }
-
-        /**
-         * Prepara el formulario para editar un usuario
-         */
-        function editUser(usuario, tipo, cliente) {
-            editingUser = usuario;
-    
-            elements.newUserUsername.value = usuario;
-            elements.newUserUsername.disabled = true;
-            elements.newUserPassword.value = '';
-            elements.newUserClient.value = cliente || '';
-            elements.newUserType.value = tipo || 'mecanico';
-    
-            elements.createUserBtn.classList.add('hidden');
-            elements.updateUserBtn.classList.remove('hidden');
-            elements.cancelEditBtn.classList.remove('hidden');
-    
-            elements.userFormError.classList.add('hidden');
-    
-            // Scroll al formulario
-            document.getElementById('usersView').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        /**
-         * Cancela la edición de usuario
-         */
-        function cancelEditUser() {
-            editingUser = null;
-    
-            elements.newUserUsername.value = '';
-            elements.newUserUsername.disabled = false;
-            elements.newUserPassword.value = '';
-            elements.newUserClient.value = '';
-            elements.newUserType.value = 'administrador';
-    
-            elements.createUserBtn.classList.remove('hidden');
-            elements.updateUserBtn.classList.add('hidden');
-            elements.cancelEditBtn.classList.add('hidden');
-    
-            elements.userFormError.classList.add('hidden');
-        }
-
-        /**
-         * Elimina un usuario
-         */
-        async function deleteUser(usuario) {
-            if (!confirm(`¿Estás seguro de eliminar al usuario "${usuario}"?`)) {
-                return;
-            }
-
-            if (!currentUserPassword || currentUserRole !== 'superadmin') {
-                showToast('No autorizado', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_URL}/api/users/${encodeURIComponent(usuario)}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'x-auth-user': currentUsername || '',
-                        'x-auth-password': currentUserPassword || ''
-                    }
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showToast('Usuario eliminado exitosamente', 'success');
-                    if (editingUser === usuario) {
-                        cancelEditUser();
-                    }
-                    await loadUsers();
-                } else {
-                    showToast(result.message || 'No se pudo eliminar el usuario', 'error');
-                }
-            } catch (error) {
-                console.error('Error al eliminar usuario:', error);
-                showToast('Error al eliminar usuario', 'error');
-            }
-        }
         return;
     }
 
@@ -1128,6 +987,147 @@ async function createUser() {
         console.error('Error al crear usuario:', error);
         elements.userFormError.textContent = 'Error al crear usuario';
         elements.userFormError.classList.remove('hidden');
+    }
+}
+
+/**
+ * Actualiza un usuario existente
+ */
+async function updateUser() {
+    if (!editingUser) {
+        showToast('No hay usuario en edición', 'error');
+        return;
+    }
+
+    const password = elements.newUserPassword.value.trim();
+    const cliente = elements.newUserClient.value.trim().toUpperCase();
+    const tipo = elements.newUserType.value;
+
+    if (!password) {
+        elements.userFormError.textContent = 'Contraseña es requerida';
+        elements.userFormError.classList.remove('hidden');
+        return;
+    }
+
+    if (!cliente && tipo !== 'super') {
+        elements.userFormError.textContent = 'El campo Cliente es requerido (excepto para Super Admin)';
+        elements.userFormError.classList.remove('hidden');
+        return;
+    }
+
+    if (!currentUserPassword || currentUserRole !== 'superadmin') {
+        elements.userFormError.textContent = 'No autorizado. Inicia sesión como superadmin.';
+        elements.userFormError.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/users/${encodeURIComponent(editingUser)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tipo,
+                password,
+                cliente,
+                authUser: currentUsername,
+                authPassword: currentUserPassword
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('Usuario actualizado exitosamente', 'success');
+            cancelEditUser();
+            await loadUsers();
+        } else {
+            elements.userFormError.textContent = result.message || 'No se pudo actualizar el usuario';
+            elements.userFormError.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error al actualizar usuario:', error);
+        elements.userFormError.textContent = 'Error al actualizar usuario';
+        elements.userFormError.classList.remove('hidden');
+    }
+}
+
+/**
+ * Prepara el formulario para editar un usuario
+ */
+function editUser(usuario, tipo, cliente) {
+    editingUser = usuario;
+    
+    elements.newUserUsername.value = usuario;
+    elements.newUserUsername.disabled = true;
+    elements.newUserPassword.value = '';
+    elements.newUserClient.value = cliente || '';
+    elements.newUserType.value = tipo || 'mecanico';
+    
+    elements.createUserBtn.classList.add('hidden');
+    elements.updateUserBtn.classList.remove('hidden');
+    elements.cancelEditBtn.classList.remove('hidden');
+    
+    elements.userFormError.classList.add('hidden');
+    
+    // Scroll al formulario
+    document.getElementById('usersView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/**
+ * Cancela la edición de usuario
+ */
+function cancelEditUser() {
+    editingUser = null;
+    
+    elements.newUserUsername.value = '';
+    elements.newUserUsername.disabled = false;
+    elements.newUserPassword.value = '';
+    elements.newUserClient.value = '';
+    elements.newUserType.value = 'administrador';
+    
+    elements.createUserBtn.classList.remove('hidden');
+    elements.updateUserBtn.classList.add('hidden');
+    elements.cancelEditBtn.classList.add('hidden');
+    
+    elements.userFormError.classList.add('hidden');
+}
+
+/**
+ * Elimina un usuario
+ */
+async function deleteUser(usuario) {
+    if (!confirm(`¿Estás seguro de eliminar al usuario "${usuario}"?`)) {
+        return;
+    }
+
+    if (!currentUserPassword || currentUserRole !== 'superadmin') {
+        showToast('No autorizado', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/users/${encodeURIComponent(usuario)}`, {
+            method: 'DELETE',
+            headers: {
+                'x-auth-user': currentUsername || '',
+                'x-auth-password': currentUserPassword || ''
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('Usuario eliminado exitosamente', 'success');
+            if (editingUser === usuario) {
+                cancelEditUser();
+            }
+            await loadUsers();
+        } else {
+            showToast(result.message || 'No se pudo eliminar el usuario', 'error');
+        }
+    } catch (error) {
+        console.error('Error al eliminar usuario:', error);
+        showToast('Error al eliminar usuario', 'error');
     }
 }
 
