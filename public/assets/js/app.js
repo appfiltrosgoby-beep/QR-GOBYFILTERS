@@ -578,6 +578,7 @@ function setupEventListeners() {
             }
         });
     });
+}
 
 // ============================================
 // GESTIÓN DE CÁMARAS
