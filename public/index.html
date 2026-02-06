@@ -219,7 +219,11 @@
                                 <option value="planta">Planta</option>
                                 <option value="super">Super Admin</option>
                             </select>
-                            <button id="createUserBtn" class="btn btn-primary">Crear/Actualizar</button>
+                            <div style="display: flex; gap: 10px;">
+                                <button id="createUserBtn" class="btn btn-primary" style="flex: 1;">Crear Usuario</button>
+                                <button id="updateUserBtn" class="btn btn-secondary hidden" style="flex: 1;">Actualizar Usuario</button>
+                                <button id="cancelEditBtn" class="btn btn-secondary hidden">Cancelar</button>
+                            </div>
                         </div>
                         <div id="userFormError" class="error-message hidden"></div>
                     </div>
@@ -245,11 +249,12 @@
                                         <th>Usuario</th>
                                         <th>Tipo</th>
                                         <th>Cliente</th>
+                                        <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="usersBody">
                                     <tr>
-                                        <td colspan="3" class="no-data">
+                                        <td colspan="4" class="no-data">
                                             No hay usuarios para mostrar
                                         </td>
                                     </tr>

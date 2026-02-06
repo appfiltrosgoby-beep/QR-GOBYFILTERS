@@ -234,6 +234,123 @@ app.post('/api/users', async (req, res) => {
   } catch (error) {
     console.error('Error al crear usuario:', error);
     res.status(500).json({ success: false, error: 'Error al crear usuario' });
+
+  /**
+   * Elimina un usuario (solo superadmin)
+   * DELETE /api/users/:usuario
+   */
+  app.delete('/api/users/:usuario', async (req, res) => {
+    try {
+      const { usuario } = req.params;
+      const authUser = req.headers['x-auth-user'];
+      const authPassword = req.headers['x-auth-password'];
+
+      const normalizedUser = normalizeUser(usuario);
+
+      if (!normalizedUser) {
+        return res.status(400).json({ success: false, message: 'Usuario es requerido' });
+      }
+
+      const doc = await getGoogleSheet();
+      const globalSheet = await getOrCreateUsersSheet(doc);
+
+      const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
+      if (!authRow || !isSuperadminRow(authRow)) {
+        return res.status(401).json({ success: false, message: 'No autorizado' });
+      }
+
+      // Buscar usuario en la hoja global
+      let rows = await globalSheet.getRows();
+      let userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+    
+      if (userRow) {
+        await userRow.delete();
+        return res.json({ success: true, message: 'Usuario eliminado correctamente' });
+      }
+
+      // Buscar en hojas de clientes
+      await doc.loadInfo();
+      for (const sheet of doc.sheetsByIndex) {
+        if (sheet.title.endsWith('_USUARIOS')) {
+          rows = await sheet.getRows();
+          userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+          if (userRow) {
+            await userRow.delete();
+            return res.json({ success: true, message: 'Usuario eliminado correctamente' });
+          }
+        }
+      }
+
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    } catch (error) {
+      console.error('Error al eliminar usuario:', error);
+      res.status(500).json({ success: false, error: 'Error al eliminar usuario' });
+    }
+  });
+
+  /**
+   * Actualiza un usuario (solo superadmin)
+   * PUT /api/users/:usuario
+   */
+  app.put('/api/users/:usuario', async (req, res) => {
+    try {
+      const { usuario } = req.params;
+      const { tipo, password, cliente, authUser, authPassword } = req.body;
+
+      const normalizedUser = normalizeUser(usuario);
+      const normalizedType = normalizeType(tipo);
+      const normalizedClient = normalizeClient(cliente);
+
+      if (!normalizedUser || !normalizedType || !password) {
+        return res.status(400).json({ success: false, message: 'Usuario, tipo y contraseña son requeridos' });
+      }
+
+      if (!normalizedClient && normalizedType !== 'super') {
+        return res.status(400).json({ success: false, message: 'Cliente es requerido para usuarios no superadmin' });
+      }
+
+      const doc = await getGoogleSheet();
+      const globalSheet = await getOrCreateUsersSheet(doc);
+
+      const authRow = await validateUserCredentials(globalSheet, authUser, authPassword);
+      if (!authRow || !isSuperadminRow(authRow)) {
+        return res.status(401).json({ success: false, message: 'No autorizado' });
+      }
+
+      // Buscar usuario en la hoja global
+      let rows = await globalSheet.getRows();
+      let userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+    
+      if (userRow) {
+        userRow.set('TIPO', normalizedType);
+        userRow.set('CONTRASEÑA', password);
+        userRow.set('CLIENTE', normalizedClient);
+        await userRow.save();
+        return res.json({ success: true, message: 'Usuario actualizado correctamente' });
+      }
+
+      // Buscar en hojas de clientes
+      await doc.loadInfo();
+      for (const sheet of doc.sheetsByIndex) {
+        if (sheet.title.endsWith('_USUARIOS')) {
+          rows = await sheet.getRows();
+          userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+          if (userRow) {
+            userRow.set('TIPO', normalizedType);
+            userRow.set('CONTRASEÑA', password);
+            userRow.set('CLIENTE', normalizedClient);
+            await userRow.save();
+            return res.json({ success: true, message: 'Usuario actualizado correctamente' });
+          }
+        }
+      }
+
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    } catch (error) {
+      console.error('Error al actualizar usuario:', error);
+      res.status(500).json({ success: false, error: 'Error al actualizar usuario' });
+    }
+  });
   }
 });
 
