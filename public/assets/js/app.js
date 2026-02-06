@@ -570,24 +570,24 @@ function setupEventListeners() {
         exportStatsBtn.addEventListener('click', exportStatsToCSV);
     }
 
-    // Event listeners para toggle de contraseña
-    const togglePasswordBtns = document.querySelectorAll('.toggle-password-btn');
-    togglePasswordBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetId = btn.getAttribute('data-target');
-            const passwordInput = document.getElementById(targetId);
-            
-            if (passwordInput) {
-                if (passwordInput.type === 'password') {
-                    passwordInput.type = 'text';
-                    btn.classList.add('visible');
-                } else {
-                    passwordInput.type = 'password';
-                    btn.classList.remove('visible');
-                }
+    // Event listener para toggle de contraseña (delegado)
+    document.addEventListener('click', (e) => {
+        const toggleBtn = e.target.closest('.toggle-password-btn');
+        if (!toggleBtn) return;
+
+        e.preventDefault();
+        const targetId = toggleBtn.getAttribute('data-target');
+        const passwordInput = document.getElementById(targetId);
+
+        if (passwordInput) {
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleBtn.classList.add('visible');
+            } else {
+                passwordInput.type = 'password';
+                toggleBtn.classList.remove('visible');
             }
-        });
+        }
     });
 }
 
