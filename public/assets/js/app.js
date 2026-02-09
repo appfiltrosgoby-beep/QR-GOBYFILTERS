@@ -116,7 +116,7 @@ function showUserEmailForm() {
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
-    currentLoginType = 'mecanico'; // Tipo por defecto
+    currentLoginType = 'user'; // Acepta mecánico y planta
     elements.userUsername.focus();
 }
 

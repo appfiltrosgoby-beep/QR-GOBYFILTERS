@@ -85,9 +85,20 @@ app.post('/api/validate-user', async (req, res) => {
 
     const storedType = normalizeType(userRow.get('TIPO'));
 
-    if (storedType !== normalizedType) {
-      // Permitir que superadmin ingrese por el flujo de administrador
-      if (!(storedType === 'super' && normalizedType === 'administrador')) {
+    // Validar tipo de usuario según el flujo de login
+    if (normalizedType === 'user') {
+      // Flujo "usuarios": acepta mecánico y planta
+      if (!['mecanico', 'planta'].includes(storedType)) {
+        return res.json({ success: false, message: 'Tipo no autorizado para acceso de usuarios' });
+      }
+    } else if (normalizedType === 'administrador') {
+      // Flujo "administrador": acepta administrador y superadmin
+      if (storedType !== 'administrador' && storedType !== 'super') {
+        return res.json({ success: false, message: 'Tipo no autorizado para acceso de administrador' });
+      }
+    } else {
+      // Otros flujos: tipo debe coincidir exactamente
+      if (storedType !== normalizedType) {
         return res.json({ success: false, message: 'Tipo no autorizado' });
       }
     }

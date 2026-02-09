@@ -119,11 +119,14 @@ se detalla la información que debe incluir:
       - Control de sesión y timeout
       - Cambio de rol sin cerrar sesión
    
-   3. Registro de Escaneos
+   3. Registro de Escaneos (Guardado Dual)
       - Almacenamiento automático en Google Sheets
+      - Guardado simultáneo en hoja global y hoja del cliente
+      - Sincronización bidireccional entre hojas
       - Timestamp de fecha y hora
       - Datos del usuario responsable
       - Datos del cliente asociado
+      - Verificación automática de estructura de hojas
    
    4. Visualización de Registros
       - Tabla de registros recientes
@@ -156,6 +159,7 @@ se detalla la información que debe incluir:
       - Puede crear, editar y eliminar usuarios de cualquier cliente
       - Visualiza información de todos los clientes
       - Gestión de configuración global
+      - Ingreso: Opción "Administrador" (el sistema lo reconoce como super)
       - Nivel de experiencia: Alto
       - Frecuencia: Bajo (acceso ocasional)
    
@@ -163,6 +167,7 @@ se detalla la información que debe incluir:
       - Acceso limitado a su cliente asignado
       - Puede ver registros y estadísticas de su cliente
       - Puede crear usuarios dentro de su cliente
+      - Ingreso: Opción "Administrador"
       - Nivel de experiencia: Medio-Alto
       - Frecuencia: Media (varias veces por semana)
    
@@ -171,6 +176,7 @@ se detalla la información que debe incluir:
       - Puede escanear códigos QR
       - Visualiza escaneos propios
       - Puede ver estadísticas básicas
+      - Ingreso: Opción "Usuarios" (el sistema lo identifica automáticamente)
       - Nivel de experiencia: Bajo-Medio
       - Frecuencia: Alta (uso diario)
    
@@ -178,8 +184,12 @@ se detalla la información que debe incluir:
       - Similar a mecánico
       - Acceso para escaneo en planta
       - Visualización de registros
+      - Ingreso: Opción "Usuarios" (el sistema lo identifica automáticamente)
       - Nivel de experiencia: Bajo
       - Frecuencia: Alta (uso diario)
+   
+   NOTA: Los usuarios mecánico y planta comparten la misma opción de ingreso.
+   El sistema diferencia automáticamente el tipo basado en los datos en Google Sheets.
 
 2.4 Restricciones
    REGULACIONES Y NORMAS:
@@ -269,19 +279,23 @@ se detalla la información que debe incluir:
    ================================================================================
    
    RF-001: Login de Usuario
-   Prioridad: ALTA | Estado: Aprobado
+   Prioridad: ALTA | Estado: Implementado
    Descripción: El sistema debe permitir que usuarios válidos se autentiquen mediante
-   usuario y contraseña
-   Entrada: Usuario (string), Contraseña (string), Tipo (usuario|administrador|superadmin)
+   usuario y contraseña. Los usuarios tipo mecánico y planta ingresan por la misma
+   opción, el sistema los diferencia automáticamente.
+   Entrada: Usuario (string), Contraseña (string), Flujo ('user'|'administrador')
    Procesamiento:
      1. Validar formato de entrada
      2. Consultar Google Sheets para verificar credenciales
-     3. Verificar que el tipo de usuario coincida
-     4. Generar sesión/token
-   Salida: Token de sesión, rol del usuario, cliente asignado, mensaje de éxito/error
+     3. Si flujo='user': aceptar tipo mecánico O planta
+     4. Si flujo='administrador': aceptar tipo administrador O super
+     5. Generar sesión/token con el tipo real del usuario
+   Salida: Token de sesión, rol del usuario, tipo real, cliente asignado, mensaje de éxito/error
    Criterios de aceptación:
      - Login exitoso con credenciales correctas
      - Login rechazado con credenciales incorrectas
+     - Mecánico y planta pueden ingresar por opción "usuarios"
+     - Superadmin puede ingresar por opción "administrador"
      - Mensaje de error específico por error
      - Sesión persistente en localStorage
    
@@ -375,21 +389,25 @@ se detalla la información que debe incluir:
      - Precisión del 99.9%
      - Manejo de códigos rotatados/torcidos
    
-   RF-008: Registrar Escaneo en Google Sheets
-   Prioridad: ALTA | Estado: Aprobado
-   Descripción: Cada escaneo must be stored in Google Sheets automatically
+   RF-008: Registrar Escaneo en Google Sheets (Guardado Dual)
+   Prioridad: ALTA | Estado: Implementado
+   Descripción: Cada escaneo debe almacenarse automáticamente en dos ubicaciones:
+   hoja global REGISTROS y hoja específica del cliente
    Entrada: Datos decodificados del QR, usuario, cliente, timestamp
    Procesamiento:
      1. Validar datos antes de guardar
      2. Conectar a Google Sheets API
-     3. Agregar fila a hoja del cliente
-     4. Incluir: código QR, usuario, fecha, hora, cliente
-   Salida: Confirmación de registro exitoso, ID del registro
+     3. Agregar fila a hoja global REGISTROS (todos los clientes)
+     4. Agregar fila a hoja [CLIENTE]_REGISTROS (solo el cliente)
+     5. Incluir: ID, referencia, serial, estado, cliente, usuario, fechas, horas
+     6. Sincronizar ambas hojas para mantener consistencia
+   Salida: Confirmación de registro exitoso, ID del registro en ambas hojas
    Criterios de aceptación:
-     - Registro debe guardar en < 3 segundos
-     - Datos persistentes en Google Sheets
+     - Registro debe guardar en < 3 segundos en ambas hojas
+     - Datos persistentes y sincronizados en ambas ubicaciones
      - Validación de datos incompletos
-     - Manejo de desconexión simultáneo
+     - Manejo de desconexión con reintento automático
+     - Verificación de columna CLIENTE existente (agregar si falta)
    
    RF-009: Mostrar Resultado de Escaneo
    Prioridad: MEDIA | Estado: Aprobado
@@ -629,6 +647,54 @@ se detalla la información que debe incluir:
    Criterios de aceptación:
      - Respuesta en < 1 segundo
      - Indica si sistema está operacional
+   
+   RF-025: Sincronización de Registros entre Hojas
+   Prioridad: ALTA | Estado: Implementado
+   Descripción: Mantener sincronizados los registros entre hoja global y hojas de cliente
+   Entrada: Actualización de estado de producto (DESPACHADO, INSTALADO, DESINSTALADO)
+   Procesamiento:
+     1. Buscar registro en hoja del cliente
+     2. Buscar mismo registro en hoja global REGISTROS
+     3. Actualizar ambos registros simultáneamente
+     4. Verificar que ambas actualizaciones sean exitosas
+   Salida: Confirmación de sincronización exitosa
+   Criterios de aceptación:
+     - Actualizaciones atómicas (ambas o ninguna)
+     - Mismo estado en ambas hojas
+     - Logs de sincronización en caso de fallo
+     - Identificación por REFERENCIA y SERIAL
+   
+   RF-026: Verificación y Corrección de Estructura de Hojas
+   Prioridad: MEDIA | Estado: Implementado
+   Descripción: Validar que hojas de registros tengan todas las columnas necesarias
+   Entrada: Conexión inicial a Google Sheets o creación de nueva hoja
+   Procesamiento:
+     1. Verificar existencia de columnas requeridas
+     2. Detectar si falta columna CLIENTE u otras
+     3. Agregar columnas faltantes en posición correcta
+     4. Registrar en log las modificaciones realizadas
+   Salida: Hoja con estructura completa y correcta
+   Criterios de aceptación:
+     - Detección automática de columnas faltantes
+     - Adición sin afectar datos existentes
+     - Log de advertencia cuando se agrega columna
+     - Compatible con hojas legacy (sin CLIENTE)
+   
+   RF-027: Guardado Dual de Usuarios en Hoja Global
+   Prioridad: ALTA | Estado: Implementado
+   Descripción: Usuarios de clientes también se guardan en hoja global USUARIOS
+   Entrada: Creación de nuevo usuario (no superadmin)
+   Procesamiento:
+     1. Validar datos de usuario
+     2. Guardar en hoja [CLIENTE]_USUARIOS
+     3. Guardar también en hoja global USUARIOS
+     4. Evitar duplicados en hoja global
+   Salida: Usuario registrado en ambas ubicaciones
+   Criterios de aceptación:
+     - Usuario visible en hoja global y hoja de cliente
+     - Sin duplicados en ninguna hoja
+     - Superadmins solo en hoja global
+     - Otros usuarios en ambas hojas
 
 3.2 Requisitos No-Funcionales
 
@@ -942,19 +1008,22 @@ CASO DE USO 1: Escaneo de Código QR por Operario
      4. Usuario acepta permisos
      5. Usuario apunta cámara al código QR
      6. Sistema detecta y decodifica QR
-     7. Sistema registra en Google Sheets
-     8. Sistema muestra confirmación al usuario
-   Flujo Alternativo A - Cámara no disponible:
-     1. En paso 4, sistema muestra error
-     2. Usuario ve "Cámara no disponible"
-   Postcondición: Escaneo registrado en Google Sheets
-
-CASO DE USO 2: Login de Usuario
-   Actor Primario: Cualquier usuario
+     7. Sistema registra en Goo (Mecánico/Planta)
+   Actor Primario: Mecánico o Planta
    Precondición: Usuario no autenticado
    Flujo Principal:
      1. Usuario abre aplicación
      2. Ve modal de login
+     3. Selecciona opción "Usuarios"
+     4. Ingresa usuario y contraseña
+     5. Hace click en "Ingresar"
+     6. Sistema valida contra Google Sheets
+     7. Sistema identifica si es mecánico o planta automáticamente
+     8. Sistema crea sesión con rol 'user'
+     9. Interfaz muestra funcionalidades de usuario
+   Postcondición: Usuario autenticado como mecánico o planta
+   Notas: El sistema diferencia el tipo internamente pero ambos tienen
+   los mismos permisos de acceso (rol 'user')
      3. Selecciona tipo de usuario
      4. Ingresa usuario y contraseña
      5. Hace click en "Ingresar"
@@ -989,21 +1058,64 @@ B. ESTRUCTURA DE GOOGLE SHEETS
 ================================================================================
 
 HOJA GLOBAL: "USUARIOS"
-   - USUARIO: Nombre único del usuario (superadmins)
+   Descripción: Almacena TODOS los usuarios del sistema
+   Columnas:
+   - USUARIO: Nombre único del usuario (email o username)
    - TIPO: super, administrador, mecanico, planta
-   - CONTRASEÑA: Texto plano (mejorar con hash)
+   - CONTRASEÑA: Texto plano (mejorar con hash en futuro)
    - CLIENTE: Nombre del cliente asociado
-   - FECHA_CREACION: Timestamp de creación
-   - ACTIVO: sí/no
+   Notas:
+   - Superadmins solo aparecen aquí
+   - Usuarios de clientes aparecen aquí Y en su hoja de cliente
+   - Permite vista consolidada para superadmin
+
+HOJA POR CLIENTE: "[CLIENTE]_USUARIOS"
+   Descripción: Usuarios específicos de cada cliente
+   Columnas:
+   - USUARIO: Nombre del usuario
+   - TIPO: administrador, mecanico, planta (no incluye super)
+   - CONTRASEÑA: Contraseña del usuario
+   - CLIENTE: Nombre del cliente (redundante pero útil)
+   Notas:
+   - Solo usuarios de ese cliente específico
+   - Sincronizada con hoja global USUARIOS
+
+HOJA GLOBAL: "REGISTROS"
+   Descripción: TODOS los escaneos de TODOS los clientes
+   Columnas:
+   - ID: Identificador único global
+   - REFERENCIA: Referencia del producto (ej: OG971390)
+   - SERIAL: Serial del producto (ej: 202630010002)
+   - ESTADO: EN ALMACEN | DESPACHADO | INSTALADO | DESINSTALADO
+   - CLIENTE: Cliente asociado al registro (IMPORTANTE para filtrado)
+   - USUARIO_PLANTA: Usuario que registró en almacén
+   - USUARIO_INSTALACION: Usuario que instaló
+   - USUARIO_DESINSTALACION: Usuario que desinstaló
+   - FECHA_ALMACEN: Fecha de registro en almacén
+   - FECHA_DESPACHO: Fecha de despacho
+   - FECHA_INSTALACION: Fecha de instalación
+   - FECHA_DESINSTALACION: Fecha de desinstalación
+   - HORA_ALMACEN: Hora de registro en almacén
+   - HORA_DESPACHO: Hora de despacho
+   - HORA_INSTALACION: Hora de instalación
+   - HORA_DESINSTALACION: Hora de desinstalación
+   Notas:
+   - Vista consolidada para superadmin
+   - Sincronizada con hojas de cliente
+   - Columna CLIENTE agregada automáticamente si no existe
 
 HOJA POR CLIENTE: "[CLIENTE]_REGISTROS"
-   - TIMESTAMP: ISO 8601 UTC
-   - CODIGO_QR: Dato leído del código
-   - USUARIO: Quién escaneó
-   - CLIENTE: Cliente asociado
-   - DISPOSITIVO: Info del dispositivo
-   - ESTADO: procesado/pendiente
-   - NOTAS: Comentarios adicionales
+   Descripción: Registros específicos de cada cliente
+   Columnas: (Idénticas a REGISTROS global)
+   - ID: Identificador único dentro del cliente
+   - REFERENCIA, SERIAL, ESTADO, CLIENTE
+   - USUARIO_PLANTA, USUARIO_INSTALACION, USUARIO_DESINSTALACION
+   - FECHA_ALMACEN, FECHA_DESPACHO, FECHA_INSTALACION, FECHA_DESINSTALACION
+   - HORA_ALMACEN, HORA_DESPACHO, HORA_INSTALACION, HORA_DESINSTALACION
+   Notas:
+   - Solo registros de ese cliente
+   - Sincronizada bidireccionalmente con hoja global
+   - Permite acceso restringido por cliente
 
 
 C. ARQUITECTURA DEL SISTEMA
@@ -1063,8 +1175,16 @@ E. CONTROL DE VERSIONES
    Versión | Fecha | Autor | Cambios
    --------|-------|-------|---------------------------
    1.0     | 2026-02-09 | Equipo Goby | Versión inicial del SRS
-   1.1     | TBD | TBD | Ajustes post-planificación
+   1.1     | 2026-02-09 | Equipo Goby | Guardado dual, sincronización hojas
    2.0     | TBD | TBD | Nuevas funcionalidades
+
+CAMBIOS VERSIÓN 1.1 (2026-02-09):
+   - RF-008 actualizado: Guardado dual en hoja global + hoja cliente
+   - RF-025 nuevo: Sincronización bidireccional entre hojas
+   - RF-026 nuevo: Verificación automática de estructura de hojas
+   - RF-027 nuevo: Guardado dual de usuarios en hoja global
+   - Apéndice B actualizado: Estructura detallada de Google Sheets
+   - Total de requisitos funcionales: 24 → 27
 
 
 F. MEJORAS FUTURAS
@@ -1121,7 +1241,7 @@ SECCIONES PRINCIPALES:
       2.5 Suposiciones y Dependencias
    
    3. REQUISITOS ESPECÍFICOS
-      3.1 Requisitos Funcionales (RF-001 a RF-024)
+      3.1 Requisitos Funcionales (RF-001 a RF-027)
       3.2 Requisitos No-Funcionales (NRF-001 a NRF-042)
    
    4. APÉNDICES:
@@ -1133,13 +1253,14 @@ SECCIONES PRINCIPALES:
       F. Mejoras Futuras
       G. Riesgos y Mitigación
 
-REQUISITOS FUNCIONALES (24 Total):
+REQUISITOS FUNCIONALES (27 Total):
    - Autenticación: RF-001 a RF-004
    - Escaneo: RF-005 a RF-009
    - Registros: RF-010 a RF-014
    - Estadísticas: RF-015 a RF-017
    - Exportación: RF-018 a RF-019
    - Usuarios: RF-020 a RF-023
+   - Sistema: RF-024 a RF-027 (incluye guardado dual y sincronización)
    - Sistema: RF-024
 
 REQUISITOS NO-FUNCIONALES (42 Total):
@@ -1270,9 +1391,19 @@ FIN DEL DOCUMENTO IEEE 830 - ESPECIFICACIÓN DE REQUISITOS DE SOFTWARE
 ================================================================================
 
 Documento completado: 2026-02-09
-Líneas totales: Aprox. 1200+
-Requisitos funcionales: 24
+Última actualización: 2026-02-09 (v1.1 - Guardado dual y sincronización)
+Líneas totales: Aprox. 1300+
+Requisitos funcionales: 27 (24 originales + 3 nuevos)
 Requisitos no-funcionales: 42
 Casos de uso: 4
 Apéndices: 7
 Estado: LISTO PARA IMPLEMENTACIÓN
+
+Cambios en v1.1:
+- RF-008: Actualizado con guardado dual (global + cliente)
+- RF-001: Actualizado - Mecánico y Planta ingresan por misma opción "Usuarios"
+- Apéndice B: Estructura de Google Sheets actualizada y detallada
+- Casos de Uso: Actualizados para reflejar login unificado usuarios
+- RF-026: Verificación automática de estructura de hojas
+- RF-027: Guardado dual de usuarios en hoja global
+- Apéndice B: Estructura de Google Sheets actualizada y detallada
