@@ -359,18 +359,33 @@ function applyRolePermissions() {
         if (document.getElementById('usersView').classList.contains('active')) {
             switchView('scannerView');
         }
+    } else if (currentUserRole === 'admin') {
+        // Admin: ocultar estadísticas, mostrar escáner, registros y usuarios
+        if (statsNavBtn) {
+            statsNavBtn.style.display = 'none';
+        }
+        if (usersNavBtn) {
+            usersNavBtn.style.display = 'flex';
+        }
+        if (scannerNavBtn) {
+            scannerNavBtn.style.display = 'flex';
+        }
+        // Si está en vista de estadísticas, redirigir a escáner
+        if (document.getElementById('statsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
     } else {
-        // Admin y superadmin: mostrar estadísticas
+        // Superadmin: mostrar estadísticas, registros y usuarios (ocultar escáner)
         if (statsNavBtn) {
             statsNavBtn.style.display = 'flex';
         }
         if (usersNavBtn) {
-            usersNavBtn.style.display = currentUserRole === 'superadmin' ? 'flex' : 'none';
+            usersNavBtn.style.display = 'flex';
         }
         if (scannerNavBtn) {
-            scannerNavBtn.style.display = currentUserRole === 'superadmin' ? 'none' : 'flex';
+            scannerNavBtn.style.display = 'none';
         }
-        if (currentUserRole === 'superadmin' && document.getElementById('scannerView').classList.contains('active')) {
+        if (document.getElementById('scannerView').classList.contains('active')) {
             switchView('recordsView');
         }
         
@@ -1183,7 +1198,7 @@ async function deleteUser(usuario) {
  * Carga usuarios registrados (solo superadmin)
  */
 async function loadUsers() {
-    if (currentUserRole !== 'superadmin' || !currentUserPassword) {
+    if ((currentUserRole !== 'superadmin' && currentUserRole !== 'admin') || !currentUserPassword) {
         return;
     }
 
@@ -1226,8 +1241,8 @@ function displayUsers(users) {
     }
 
     elements.usersBody.innerHTML = users.map(user => {
-        // Solo el superadmin puede editar y eliminar usuarios
-        const actionButtons = currentUserRole === 'superadmin' ? `
+        // Superadmin y admin pueden editar y eliminar usuarios
+        const actionButtons = (currentUserRole === 'superadmin' || currentUserRole === 'admin') ? `
             <div style="display: flex; gap: 8px; justify-content: center;">
                 <button class="btn-icon-small btn-edit" onclick="editUser('${user.usuario}', '${user.tipo}', '${user.cliente || ''}')" title="Editar">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

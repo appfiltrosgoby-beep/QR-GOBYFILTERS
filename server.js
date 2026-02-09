@@ -136,39 +136,53 @@ app.get('/api/users', async (req, res) => {
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
     
-    // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
-    const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
-    if (!authRow) {
+    // Validar que el usuario autenticado sea superadmin o administrador
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    if (!authData) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
+    const { tipo: authTipo, cliente: authCliente } = authData;
     const globalSheet = await getOrCreateUsersSheet(doc);
 
-    // Superadmin puede ver todos los usuarios de todas las hojas
     await doc.loadInfo();
     const allUsers = [];
     
-    // Agregar usuarios de la hoja global (superadmins)
-    const globalRows = await globalSheet.getRows();
-    for (const row of globalRows) {
-      allUsers.push({
-        usuario: normalizeUser(row.get('USUARIO')),
-        tipo: normalizeType(row.get('TIPO')),
-        cliente: row.get('CLIENTE') || ''
-      });
-    }
-    
-    // Agregar usuarios de todas las hojas de clientes
-    for (const sheet of doc.sheetsByIndex) {
-      if (sheet.title.endsWith('_USUARIOS') && sheet.title !== 'USUARIOS') {
-        const rows = await sheet.getRows();
-        for (const row of rows) {
-          allUsers.push({
-            usuario: normalizeUser(row.get('USUARIO')),
-            tipo: normalizeType(row.get('TIPO')),
-            cliente: row.get('CLIENTE') || ''
-          });
+    if (authTipo === 'super') {
+      // Superadmin puede ver todos los usuarios de todas las hojas
+      // Agregar usuarios de la hoja global (superadmins)
+      const globalRows = await globalSheet.getRows();
+      for (const row of globalRows) {
+        allUsers.push({
+          usuario: normalizeUser(row.get('USUARIO')),
+          tipo: normalizeType(row.get('TIPO')),
+          cliente: row.get('CLIENTE') || ''
+        });
+      }
+      
+      // Agregar usuarios de todas las hojas de clientes
+      for (const sheet of doc.sheetsByIndex) {
+        if (sheet.title.endsWith('_USUARIOS') && sheet.title !== 'USUARIOS') {
+          const rows = await sheet.getRows();
+          for (const row of rows) {
+            allUsers.push({
+              usuario: normalizeUser(row.get('USUARIO')),
+              tipo: normalizeType(row.get('TIPO')),
+              cliente: row.get('CLIENTE') || ''
+            });
+          }
         }
+      }
+    } else {
+      // Administrador solo puede ver usuarios de su cliente
+      const clientSheet = await getOrCreateClientUsersSheet(doc, authCliente);
+      const rows = await clientSheet.getRows();
+      for (const row of rows) {
+        allUsers.push({
+          usuario: normalizeUser(row.get('USUARIO')),
+          tipo: normalizeType(row.get('TIPO')),
+          cliente: row.get('CLIENTE') || ''
+        });
       }
     }
 
@@ -206,10 +220,24 @@ app.post('/api/users', async (req, res) => {
 
     const doc = await getGoogleSheet();
 
-    // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
-    const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
-    if (!authRow) {
+    // Validar que el usuario autenticado sea superadmin o administrador
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    if (!authData) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const { tipo: authTipo, cliente: authCliente } = authData;
+
+    // Validaciones adicionales para administradores
+    if (authTipo === 'administrador') {
+      // Admin no puede crear superadmins
+      if (normalizedType === 'super') {
+        return res.status(403).json({ success: false, message: 'Administrador no puede crear superadmins' });
+      }
+      // Admin solo puede crear usuarios de su propio cliente
+      if (normalizedClient !== authCliente) {
+        return res.status(403).json({ success: false, message: 'Solo puede crear usuarios de su cliente' });
+      }
     }
 
     const globalSheet = await getOrCreateUsersSheet(doc);
@@ -284,37 +312,70 @@ app.post('/api/users', async (req, res) => {
 
       const doc = await getGoogleSheet();
 
-      // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
-      const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
-      if (!authRow) {
+      // Validar que el usuario autenticado sea superadmin o administrador
+      const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+      if (!authData) {
         return res.status(401).json({ success: false, message: 'No autorizado' });
       }
 
+      const { tipo: authTipo, cliente: authCliente } = authData;
+
       const globalSheet = await getOrCreateUsersSheet(doc);
 
-      // Buscar usuario en la hoja global
+      // Buscar el usuario que se va a eliminar para validar permisos
       let rows = await globalSheet.getRows();
       let userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
-    
-      if (userRow) {
-        await userRow.delete();
-        return res.json({ success: true, message: 'Usuario eliminado correctamente' });
+      let userCliente = '';
+      let userTipo = '';
+      
+      if (!userRow) {
+        // Buscar en hojas de clientes
+        await doc.loadInfo();
+        for (const sheet of doc.sheetsByIndex) {
+          if (sheet.title.endsWith('_USUARIOS')) {
+            rows = await sheet.getRows();
+            userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+            if (userRow) {
+              userCliente = userRow.get('CLIENTE') || '';
+              userTipo = normalizeType(userRow.get('TIPO'));
+              break;
+            }
+          }
+        }
+      } else {
+        userCliente = userRow.get('CLIENTE') || '';
+        userTipo = normalizeType(userRow.get('TIPO'));
       }
 
-      // Buscar en hojas de clientes
-      await doc.loadInfo();
-      for (const sheet of doc.sheetsByIndex) {
-        if (sheet.title.endsWith('_USUARIOS')) {
-          rows = await sheet.getRows();
-          userRow = rows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
-          if (userRow) {
-            await userRow.delete();
-            return res.json({ success: true, message: 'Usuario eliminado correctamente' });
-          }
+      if (!userRow) {
+        return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+      }
+
+      // Validaciones para administrador
+      if (authTipo === 'administrador') {
+        // Admin no puede eliminar superadmins
+        if (userTipo === 'super') {
+          return res.status(403).json({ success: false, message: 'No autorizado para eliminar superadmins' });
+        }
+        // Admin solo puede eliminar usuarios de su cliente
+        if (userCliente !== authCliente) {
+          return res.status(403).json({ success: false, message: 'Solo puede eliminar usuarios de su cliente' });
         }
       }
 
-      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+      // Eliminar el usuario
+      await userRow.delete();
+      
+      // Si el usuario también existe en la hoja global y estamos en una hoja de cliente, eliminarlo también
+      if (authTipo === 'super' && userTipo !== 'super') {
+        const globalRows = await globalSheet.getRows();
+        const globalUserRow = globalRows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+        if (globalUserRow) {
+          await globalUserRow.delete();
+        }
+      }
+
+      return res.json({ success: true, message: 'Usuario eliminado correctamente' });
     } catch (error) {
       console.error('Error al eliminar usuario:', error);
       res.status(500).json({ success: false, error: 'Error al eliminar usuario' });
@@ -344,10 +405,24 @@ app.post('/api/users', async (req, res) => {
 
       const doc = await getGoogleSheet();
 
-      // Validar que el usuario autenticado sea superadmin (buscar en todas las hojas)
-      const authRow = await validateSuperadminCredentials(doc, authUser, authPassword);
-      if (!authRow) {
+      // Validar que el usuario autenticado sea superadmin o administrador
+      const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+      if (!authData) {
         return res.status(401).json({ success: false, message: 'No autorizado' });
+      }
+
+      const { tipo: authTipo, cliente: authCliente } = authData;
+
+      // Validaciones adicionales para administradores
+      if (authTipo === 'administrador') {
+        // Admin no puede editar superadmins
+        if (normalizedType === 'super') {
+          return res.status(403).json({ success: false, message: 'Administrador no puede crear/editar superadmins' });
+        }
+        // Admin solo puede editar usuarios de su propio cliente
+        if (normalizedClient !== authCliente) {
+          return res.status(403).json({ success: false, message: 'Solo puede editar usuarios de su cliente' });
+        }
       }
 
       const globalSheet = await getOrCreateUsersSheet(doc);
@@ -570,6 +645,48 @@ function isSuperadminUser(usuario) {
 
 function isSuperadminRow(row) {
   return normalizeType(row.get('TIPO')) === 'super';
+}
+
+/**
+ * Valida credenciales de administrador o superadmin y retorna el row con información
+ * @param {GoogleSpreadsheet} doc
+ * @param {string} usuario
+ * @param {string} password
+ * @returns {Promise<{row: Object, tipo: string, cliente: string} | null>}
+ */
+async function validateAdminOrSuperadminCredentials(doc, usuario, password) {
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  const normalizedUser = normalizeUser(usuario);
+  
+  // Buscar primero en hoja global
+  let userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
+  
+  if (!userRow) {
+    // Buscar en hojas de clientes
+    await doc.loadInfo();
+    for (const sheet of doc.sheetsByIndex) {
+      if (sheet.title.endsWith('_USUARIOS')) {
+        userRow = await validateUserCredentials(sheet, normalizedUser, password);
+        if (userRow) {
+          break;
+        }
+      }
+    }
+  }
+  
+  if (!userRow) {
+    return null;
+  }
+  
+  const tipo = normalizeType(userRow.get('TIPO'));
+  const cliente = userRow.get('CLIENTE') || '';
+  
+  // Verificar que sea superadmin o administrador
+  if (tipo !== 'super' && tipo !== 'administrador') {
+    return null;
+  }
+  
+  return { row: userRow, tipo, cliente };
 }
 
 /**
