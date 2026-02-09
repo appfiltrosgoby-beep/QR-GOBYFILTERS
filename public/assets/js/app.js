@@ -374,6 +374,12 @@ function applyRolePermissions() {
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
+        
+        // Ocultar formulario de crear usuarios (solo pueden ver)
+        const userForm = document.querySelector('.user-form');
+        if (userForm) {
+            userForm.style.display = 'none';
+        }
     } else {
         // Superadmin: mostrar estadísticas, registros y usuarios (ocultar escáner)
         if (statsNavBtn) {
@@ -387,6 +393,12 @@ function applyRolePermissions() {
         }
         if (document.getElementById('scannerView').classList.contains('active')) {
             switchView('recordsView');
+        }
+        
+        // Mostrar formulario de crear usuarios (solo superadmin)
+        const userForm = document.querySelector('.user-form');
+        if (userForm) {
+            userForm.style.display = 'block';
         }
         
         // Mostrar/ocultar filtros de cliente según el rol
@@ -1027,7 +1039,7 @@ async function createUser() {
                 usuario,
                 tipo,
                 password,
-                cliente,
+                cliente: currentUserRole === 'admin' ? currentUserClient : cliente,
                 authUser: currentUsername,
                 authPassword: currentUserPassword
             })
@@ -1375,6 +1387,7 @@ function displayRecords(records) {
                 <td class="content-cell">${record.serial}</td>
                 <td><span class="type-badge type-${estadoClass}">${estadoEmoji} ${record.estado}</span></td>
                 <td class="cliente-col" style="display: ${currentUserRole === 'superadmin' ? 'table-cell' : 'none'};">${record.cliente || '-'}</td>
+                <td>${record.usuarioPlanta || '-'}</td>
                 <td>${record.fechaAlmacen} <small>${record.horaAlmacen || ''}</small></td>
                 <td>${record.fechaDespacho || '-'} <small>${record.horaDespacho || ''}</small></td>
             </tr>
