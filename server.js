@@ -432,26 +432,35 @@ async function getGoogleSheet() {
 async function initializeRecordsSheet(sheet) {
   await sheet.loadHeaderRow();
   
+  const requiredHeaders = [
+    'ID',
+    'REFERENCIA',
+    'SERIAL',
+    'ESTADO',
+    'CLIENTE',
+    'USUARIO_PLANTA',
+    'USUARIO_INSTALACION',
+    'USUARIO_DESINSTALACION',
+    'FECHA_ALMACEN',
+    'FECHA_DESPACHO',
+    'FECHA_INSTALACION',
+    'FECHA_DESINSTALACION',
+    'HORA_ALMACEN',
+    'HORA_DESPACHO',
+    'HORA_INSTALACION',
+    'HORA_DESINSTALACION'
+  ];
+  
   // Si no hay encabezados, crearlos
   if (!sheet.headerValues || sheet.headerValues.length === 0) {
-    await sheet.setHeaderRow([
-      'ID',
-      'REFERENCIA',
-      'SERIAL',
-      'ESTADO',
-      'CLIENTE',
-      'USUARIO_PLANTA',
-      'USUARIO_INSTALACION',
-      'USUARIO_DESINSTALACION',
-      'FECHA_ALMACEN',
-      'FECHA_DESPACHO',
-      'FECHA_INSTALACION',
-      'FECHA_DESINSTALACION',
-      'HORA_ALMACEN',
-      'HORA_DESPACHO',
-      'HORA_INSTALACION',
-      'HORA_DESINSTALACION'
-    ]);
+    await sheet.setHeaderRow(requiredHeaders);
+  } else {
+    // Verificar si falta la columna CLIENTE y agregarla
+    if (!sheet.headerValues.includes('CLIENTE')) {
+      console.log('⚠️ Agregando columna CLIENTE a hoja:', sheet.title);
+      await sheet.setHeaderRow([...sheet.headerValues.slice(0, 4), 'CLIENTE', ...sheet.headerValues.slice(4)]);
+      await sheet.loadHeaderRow(); // Recargar headers
+    }
   }
 }
 
@@ -790,12 +799,14 @@ app.post('/api/save-qr', async (req, res) => {
 
     const { referencia, serial } = parsedData;
 
-    // Conectar a Google Sheets y obtener hoja del cliente
+    // Conectar a Google Sheets y obtener hojas
     const doc = await getGoogleSheet();
     const sheet = await getOrCreateClientRecordsSheet(doc, userClient);
+    const globalSheet = await getOrCreateRecordsSheet(doc);
 
     // Buscar si ya existe un registro con esta REFERENCIA y SERIAL
     const existingRecord = await findExistingRecord(sheet, referencia, serial);
+    const existingGlobalRecord = await findExistingRecord(globalSheet, referencia, serial);
     const now = new Date();
     const fecha = now.toLocaleDateString('es-ES');
     const hora = now.toLocaleTimeString('es-ES');
@@ -810,6 +821,14 @@ app.post('/api/save-qr', async (req, res) => {
         existingRecord.set('FECHA_DESPACHO', fecha);
         existingRecord.set('HORA_DESPACHO', hora);
         await existingRecord.save();
+
+        // Actualizar también en hoja global
+        if (existingGlobalRecord) {
+          existingGlobalRecord.set('ESTADO', 'DESPACHADO');
+          existingGlobalRecord.set('FECHA_DESPACHO', fecha);
+          existingGlobalRecord.set('HORA_DESPACHO', hora);
+          await existingGlobalRecord.save();
+        }
 
         return res.json({ 
           success: true, 
@@ -831,6 +850,15 @@ app.post('/api/save-qr', async (req, res) => {
         existingRecord.set('FECHA_INSTALACION', fecha);
         existingRecord.set('HORA_INSTALACION', hora);
         await existingRecord.save();
+
+        // Actualizar también en hoja global
+        if (existingGlobalRecord) {
+          existingGlobalRecord.set('ESTADO', 'INSTALADO');
+          existingGlobalRecord.set('USUARIO_INSTALACION', userEmail || '');
+          existingGlobalRecord.set('FECHA_INSTALACION', fecha);
+          existingGlobalRecord.set('HORA_INSTALACION', hora);
+          await existingGlobalRecord.save();
+        }
 
         return res.json({ 
           success: true, 
@@ -854,6 +882,15 @@ app.post('/api/save-qr', async (req, res) => {
         existingRecord.set('FECHA_DESINSTALACION', fecha);
         existingRecord.set('HORA_DESINSTALACION', hora);
         await existingRecord.save();
+
+        // Actualizar también en hoja global
+        if (existingGlobalRecord) {
+          existingGlobalRecord.set('ESTADO', 'DESINSTALADO');
+          existingGlobalRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+          existingGlobalRecord.set('FECHA_DESINSTALACION', fecha);
+          existingGlobalRecord.set('HORA_DESINSTALACION', hora);
+          await existingGlobalRecord.save();
+        }
 
         return res.json({ 
           success: true, 
@@ -891,10 +928,11 @@ app.post('/api/save-qr', async (req, res) => {
     } else {
       // PRIMER ESCANEO: Crear nuevo registro EN ALMACEN
       const rows = await sheet.getRows();
+      const globalRows = await globalSheet.getRows();
       const nextId = rows.length + 1;
+      const nextGlobalId = globalRows.length + 1;
 
-      await sheet.addRow({
-        'ID': nextId,
+      const newRecordData = {
         'REFERENCIA': referencia,
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
@@ -910,6 +948,18 @@ app.post('/api/save-qr', async (req, res) => {
         'HORA_DESPACHO': '',
         'HORA_INSTALACION': '',
         'HORA_DESINSTALACION': ''
+      };
+
+      // Guardar en hoja del cliente
+      await sheet.addRow({
+        'ID': nextId,
+        ...newRecordData
+      });
+
+      // Guardar también en hoja global REGISTROS
+      await globalSheet.addRow({
+        'ID': nextGlobalId,
+        ...newRecordData
       });
 
       res.json({ 
