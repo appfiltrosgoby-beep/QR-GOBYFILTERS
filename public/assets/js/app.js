@@ -954,8 +954,11 @@ async function loadStats() {
         }
         
         // Obtener todos los registros para mostrar en tabla
-        const superadminParam = currentUserRole === 'superadmin' ? '&superadmin=true' : '';
-        const scansResponse = await fetch(`${API_URL}/api/recent-scans?limit=10000${superadminParam}`);
+        // Superadmin ve todo, admin/user ven solo su cliente
+        const scansParam = currentUserRole === 'superadmin' 
+            ? '&superadmin=true' 
+            : (currentUserClient ? `&cliente=${encodeURIComponent(currentUserClient)}` : '');
+        const scansResponse = await fetch(`${API_URL}/api/recent-scans?limit=10000${scansParam}`);
         const scansResult = await scansResponse.json();
         
         if (scansResult.success) {
@@ -1766,8 +1769,11 @@ function showToast(message, type = 'info') {
  */
 async function exportToCSV() {
     try {
-        const superadminParam = currentUserRole === 'superadmin' ? '&superadmin=true' : '';
-        const response = await fetch(`${API_URL}/api/recent-scans?limit=1000${superadminParam}`);
+        // Superadmin ve todo, admin/user ven solo su cliente
+        const scansParam = currentUserRole === 'superadmin' 
+            ? '&superadmin=true' 
+            : (currentUserClient ? `&cliente=${encodeURIComponent(currentUserClient)}` : '');
+        const response = await fetch(`${API_URL}/api/recent-scans?limit=1000${scansParam}`);
         const result = await response.json();
         
         if (!result.success || result.data.length === 0) {
