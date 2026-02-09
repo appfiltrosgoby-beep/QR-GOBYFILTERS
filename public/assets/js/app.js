@@ -116,6 +116,7 @@ function showUserEmailForm() {
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
+    currentLoginType = 'mecanico'; // Tipo por defecto
     elements.userUsername.focus();
 }
 
@@ -177,8 +178,10 @@ async function validateUserLogin() {
     currentUsername = usuario;
     currentUserPassword = password;
     currentUserClient = result.cliente || '';
+    currentUserRole = result.role || 'user'; // Guardar el rol retornado
     localStorage.setItem('userName', usuario);
     localStorage.setItem('userClient', result.cliente || '');
+    localStorage.setItem('userRole', currentUserRole);
     sessionStorage.setItem('userPassword', password);
     loginAsUser();
 }
