@@ -234,6 +234,20 @@ app.post('/api/users', async (req, res) => {
       'CLIENTE': normalizedClient
     });
 
+    // Guardar tambien en la hoja global USUARIOS para no-superadmins
+    if (normalizedType !== 'super') {
+      const globalRows = await globalSheet.getRows();
+      const globalUserRow = globalRows.find(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+      if (!globalUserRow) {
+        await globalSheet.addRow({
+          'USUARIO': normalizedUser,
+          'TIPO': normalizedType,
+          'CONTRASEÑA': password,
+          'CLIENTE': normalizedClient
+        });
+      }
+    }
+
     res.json({ success: true, message: 'Usuario creado' });
   } catch (error) {
     console.error('Error al crear usuario:', error);
