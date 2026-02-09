@@ -238,6 +238,8 @@ app.post('/api/users', async (req, res) => {
   } catch (error) {
     console.error('Error al crear usuario:', error);
     res.status(500).json({ success: false, error: 'Error al crear usuario' });
+  }
+});
 
   /**
    * Elimina un usuario (solo superadmin)
@@ -359,8 +361,6 @@ app.post('/api/users', async (req, res) => {
       res.status(500).json({ success: false, error: 'Error al actualizar usuario' });
     }
   });
-  }
-});
 
 // Servir index.html desde la raíz (fallback para SPA)
 app.get('/', (req, res) => {

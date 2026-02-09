@@ -1,0 +1,1278 @@
+================================================================================
+ESTÁNDAR IEEE 830: ESPECIFICACIÓN DE REQUISITOS DE SOFTWARE (SRS)
+================================================================================
+
+El estándar IEEE 830 define la estructura y contenido recomendado para un 
+documento de Especificación de Requisitos de Software (SRS). A continuación 
+se detalla la información que debe incluir:
+
+================================================================================
+1. INTRODUCCIÓN
+================================================================================
+
+1.1 Propósito
+   - Documento de especificación de requisitos para el Sistema de Trazabilidad con QR
+   - Audiencia: Equipo de desarrollo, stakeholders de Industrias Goby, clientes
+   - Contexto: Aplicación web para escaneo de códigos QR con registro en Google Sheets
+     facilitando la trazabilidad de filtros y productos Goby
+
+1.2 Alcance
+   - El software es una aplicación web para escaneo de códigos QR en Industrias Goby sas
+   - Objetivos:
+     * Permitir escaneo rápido y confiable de códigos QR
+     * Registrar automáticamente escaneos en Google Sheets
+     * Gestionar múltiples usuarios con diferentes roles y permisos
+     * Proporcionar estadísticas de escaneos por cliente
+     * Mantener trazabilidad completa de productos
+   - Beneficios:
+     * Automatización del proceso de registro
+     * Reducción de errores manuales
+     * Mejor control y seguimiento de inventario
+     * Acceso centralizado a través de Google Sheets
+   - Límites del alcance:
+     * No incluye generación de códigos QR (asume códigos existentes)
+     * No incluye sincronización con sistemas ERP externos
+     * No incluye funcionalidades de impresión de etiquetas
+     * No incluye análisis predictivo avanzado
+
+1.3 Definiciones, Acrónimos y Abreviaturas
+   - QR: Código de respuesta rápida (Quick Response Code)
+   - SRS: Especificación de Requisitos de Software
+   - API: Interfaz de Programación de Aplicaciones
+   - JWT: JSON Web Token
+   - CORS: Intercambio de Recursos entre Orígenes
+   - Superadmin: Administrador con acceso total al sistema
+   - Admin: Administrador restringido a su cliente
+   - Mecánico: Operario que realiza escaneos
+   - Planta: Usuario de planta con permisos de escaneo
+   - Cliente: Entidad organizacional en Google Sheets
+   - Trazabilidad: Capacidad de rastrear un producto desde origen a destino
+   - Google Sheets: Hoja de cálculo en línea de Google
+   - Escaneo: Acción de leer un código QR con la cámara
+
+1.4 Referencias
+   ESTÁNDARES Y NORMATIVAS:
+   - IEEE 830-1998: Software Requirements Specifications
+   - RFC 3986: Uniform Resource Identifier (URI)
+   - RFC 7231: HTTP/1.1 Semantics and Content
+   - WCAG 2.1: Web Content Accessibility Guidelines
+   - OWASP Top 10: Web Application Security
+   - RFC 8174: Ambiguity of Uppercase vs. Lowercase in RFC 2119
+   - UTF-8 Specification (RFC 3629)
+   
+   DOCUMENTACIÓN TÉCNICA:
+   - Express.js Documentation: https://expressjs.com
+   - Google Sheets API Documentation: https://developers.google.com/sheets
+   - html5-qrcode GitHub: https://github.com/mebjas/html5-qrcode
+   - MDN Web Docs: https://developer.mozilla.org
+   
+   DOCUMENTOS INTERNOS:
+   - Arquitectura del Sistema (diagrama)
+   - Plan de Deployment
+   - Guía de Configuración
+   - Manual del Usuario
+   - Plan de Testing
+   
+   OTROS DOCUMENTOS:
+   - Especificación de Datos (estructura Google Sheets)
+   - Diagrama de Casos de Uso
+   - Diagrama UML de Clases
+
+1.5 Visión General del Documento
+   - Estructura del documento SRS
+   - Cómo está organizado
+   - Cómo leerlo e interpretarlo
+
+================================================================================
+2. DESCRIPCIÓN GENERAL DEL PRODUCTO
+================================================================================
+
+2.1 Perspectiva del Producto
+   - El sistema es una aplicación web independiente orientada a navegadores
+   - Se integra principalmente con Google Sheets como base de datos
+   - Utiliza Google Auth Library para autenticación segura
+   - Interfaz con:
+     * Cámaras web/móviles para captura de códigos QR
+     * Servicio de Google Sheets para almacenamiento de datos
+     * Google Drive para gestión de documentos
+   - Arquitectura:
+     * Frontend: Aplicación web HTML5/CSS/JavaScript
+     * Backend: Servidor Node.js + Express
+     * Base de datos: Google Sheets (múltiples hojas por cliente)
+   - Contexto del sistema:
+     [USUARIO] ---> [WEB APP] <---> [SERVER NODE.JS] <---> [GOOGLE SHEETS]
+                         |                    |
+                      Cámara              Google Auth
+
+2.2 Funciones del Producto
+   FUNCIONES PRINCIPALES:
+   
+   1. Escaneo de Códigos QR
+      - Iniciar/detener escáner desde cámara del dispositivo
+      - Captura automática de datos del QR
+      - Validación de formato de código
+      - Visualización inmediata de resultado
+   
+   2. Autenticación y Gestión de Usuarios
+      - Login con usuario y contraseña
+      - Roles diferenciados (Superadmin, Admin, Mecánico, Planta)
+      - Control de sesión y timeout
+      - Cambio de rol sin cerrar sesión
+   
+   3. Registro de Escaneos
+      - Almacenamiento automático en Google Sheets
+      - Timestamp de fecha y hora
+      - Datos del usuario responsable
+      - Datos del cliente asociado
+   
+   4. Visualización de Registros
+      - Tabla de registros recientes
+      - Filtrado por cliente y rango de fechas
+      - Búsqueda avanzada
+      - Paginación de resultados
+   
+   5. Estadísticas
+      - Contador de escaneos totales
+      - Escaneos del día actual
+      - Escaneos por cliente
+      - Gráficos y reportes básicos
+   
+   6. Exportación de Datos
+      - Exportar registros a CSV
+      - Exportar estadísticas
+      - Filtrado antes de exportar
+   
+   7. Gestión de Usuarios (Superadmin)
+      - Crear nuevos usuarios
+      - Actualizar datos de usuarios
+      - Eliminar usuarios
+      - Asignar roles y clientes
+
+2.3 Características del Usuario
+   TIPOS DE USUARIOS:
+   
+   1. SUPERADMIN
+      - Acceso total al sistema
+      - Puede crear, editar y eliminar usuarios de cualquier cliente
+      - Visualiza información de todos los clientes
+      - Gestión de configuración global
+      - Nivel de experiencia: Alto
+      - Frecuencia: Bajo (acceso ocasional)
+   
+   2. ADMINISTRADOR
+      - Acceso limitado a su cliente asignado
+      - Puede ver registros y estadísticas de su cliente
+      - Puede crear usuarios dentro de su cliente
+      - Nivel de experiencia: Medio-Alto
+      - Frecuencia: Media (varias veces por semana)
+   
+   3. MECÁNICO
+      - Acceso principal: Escáner
+      - Puede escanear códigos QR
+      - Visualiza escaneos propios
+      - Puede ver estadísticas básicas
+      - Nivel de experiencia: Bajo-Medio
+      - Frecuencia: Alta (uso diario)
+   
+   4. PLANTA
+      - Similar a mecánico
+      - Acceso para escaneo en planta
+      - Visualización de registros
+      - Nivel de experiencia: Bajo
+      - Frecuencia: Alta (uso diario)
+
+2.4 Restricciones
+   REGULACIONES Y NORMAS:
+   - Cumplimiento con RGPD para datos de usuarios (si aplica)
+   - Protección de datos según legislación local
+   - Auditoría de accesos a datos sensibles
+   - Términos de servicio de Google APIs
+   
+   RESTRICCIONES DE HARDWARE:
+   - Dispositivo con cámara web o móvil
+   - Conexión a internet (mínimo 2Mbps recomendado)
+   - Memoria RAM mínima: 2GB en dispositivo cliente
+   - Navegador moderno (Chrome 90+, Firefox 85+, Safari 14+)
+   
+   RESTRICCIONES DE SOFTWARE:
+   - Node.js >= 16.0.0
+   - npm >= 8.0.0
+   - Express 4.18.2+
+   - Google Sheets API activa en proyecto Google Cloud
+   - Credenciales de autenticación configuradas
+   
+   RESTRICCIONES DE INTERFAZ:
+   - Resolución mínima: 320px ancho (mobile)
+   - Resolución máxima: 2560px ancho (optimizada hasta HD)
+   - Velocidad de conexión mínima 1 Mbps para escaneo fluido
+   
+   RESTRICCIONES DE MEMORIA:
+   - Frontend: máximo 50MB en caché del navegador
+   - Backend: máximo 512MB en servidor (recomendado 1GB)
+   - Límites de Google Sheets: 10 millones de celdas por hoja
+   
+   RESTRICCIONES DE SEGURIDAD:
+   - Contraseñas mínimo 6 caracteres
+   - HTTPS obligatorio en producción
+   - Validación de sesión cada 30 minutos
+   - Encriptación de credenciales en tránsito
+   - Logs de auditoría de accesos
+   - Tokens JWT con expiración
+   - Validación de CORS restringida
+   - Rate limiting en endpoints críticos
+
+2.5 Suposiciones y Dependencias
+   SUPOSICIONES:
+   - Los usuarios tienen acceso a internet de forma confiable
+   - Los códigos QR existen y son válidos (formato correcto)
+   - Los clientes tienen cuenta de Google activa
+   - La estructura de Google Sheets se mantendrá consistente
+   - Los usuarios conocen sus credenciales de acceso
+   - Los dispositivos tienen cámaras funcionales
+   - La legislación de protección de datos se mantendrá estable
+   
+   DEPENDENCIAS:
+   - Google APIs (especialmente Google Sheets API)
+   - Google Cloud Platform para credenciales
+   - Servicio de hosting (Render.com o similar)
+   - Disponibilidad de Google Sheets como BD
+   - Librerías externas:
+     * html5-qrcode (escaneo QR)
+     * googleapis y google-spreadsheet (integración)
+     * google-auth-library (autenticación)
+     * express (framework web)
+     * cors y body-parser (middlewares)
+   
+   FACTORES FUTUROS:
+   - Posible migración a BD relacional (MySQL, PostgreSQL)
+   - Integración con sistemas ERP
+   - Ampliación de funcionalidades de análisis
+   - Soporte multidispositivo mejorado
+   - API pública para terceros
+   - Integración con sistemas de facturación
+   
+   HIPÓTESIS SOBRE USUARIO:
+   - Los usuarios prefieren interfaz simple e intuitiva
+   - El escaneo rápido es prioritario para operarios
+   - Los administradores necesitan visibilidad completa
+   - Los usuarios no quieren instalar aplicaciones (web-first)
+   - Se requiere acceso desde múltiples dispositivos
+
+================================================================================
+3. REQUISITOS ESPECÍFICOS
+================================================================================
+
+3.1 Requisitos Funcionales
+
+   ================================================================================
+   MÓDULO 1: AUTENTICACIÓN Y CONTROL DE ACCESO
+   ================================================================================
+   
+   RF-001: Login de Usuario
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El sistema debe permitir que usuarios válidos se autentiquen mediante
+   usuario y contraseña
+   Entrada: Usuario (string), Contraseña (string), Tipo (usuario|administrador|superadmin)
+   Procesamiento:
+     1. Validar formato de entrada
+     2. Consultar Google Sheets para verificar credenciales
+     3. Verificar que el tipo de usuario coincida
+     4. Generar sesión/token
+   Salida: Token de sesión, rol del usuario, cliente asignado, mensaje de éxito/error
+   Criterios de aceptación:
+     - Login exitoso con credenciales correctas
+     - Login rechazado con credenciales incorrectas
+     - Mensaje de error específico por error
+     - Sesión persistente en localStorage
+   
+   RF-002: Logout de Usuario
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El sistema debe permitir que el usuario cierre sesión
+   Entrada: Click en botón Logout
+   Procesamiento:
+     1. Limpiar datos de sesión
+     2. Limpiar localStorage
+     3. Regresar a pantalla de login
+   Salida: Pantalla de login mostrada, sesión eliminada
+   Criterios de aceptación:
+     - No se puede acceder a funcionalidades tras logout
+     - Datos sensibles eliminados de memoria
+   
+   RF-003: Control de Acceso por Rol
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El sistema debe aplicar permisos según el rol del usuario
+   Entrada: Rol del usuario (superadmin|admin|mecanico|planta)
+   Procesamiento:
+     1. Validar rol del usuario
+     2. Aplicar permisos en interfaz (mostrar/ocultar opciones)
+     3. Validar en servidor antes de procesar solicitudes
+   Salida: Interfaz personalizada por rol, solicitudes rechazadas si no autorizado
+   Criterios de aceptación:
+     - Superadmin: acceso a todas las funcionales
+     - Admin: acceso a su cliente únicamente
+     - Mecánico/Planta: acceso solo a escaneo y registros propios
+   
+   RF-004: Gestión de Sesión
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El sistema debe gestionar timeouts de sesión
+   Entrada: Inactividad > 30 minutos
+   Procesamiento:
+     1. Monitorear actividad del usuario
+     2. Si inactividad > 30 min, cerrar sesión
+     3. Mostrar advertencia antes de cerrar
+   Salida: Sesión cerrada, usuario redirigido a login
+   Criterios de aceptación:
+     - Timeout automático después de 30 minutos
+     - Advertencia con 2 minutos de anticipación
+   
+   ================================================================================
+   MÓDULO 2: ESCANEO DE CÓDIGOS QR
+   ================================================================================
+   
+   RF-005: Iniciar Escáner
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El usuario debe poder iniciar el escáner desde la cámara del dispositivo
+   Entrada: Click en botón "Iniciar Escaneo"
+   Procesamiento:
+     1. Solicitar permisos de cámara al navegador
+     2. Inicializar librería html5-qrcode
+     3. Mostrar vista previa de cámara
+     4. Comenzar lectura de codes
+   Salida: Cámara activa mostrando previa en pantalla
+   Criterios de aceptación:
+     - Cámara se inicia sin retrasos
+     - Previa clara y en tiempo real
+     - Botón "Detener" se habilita
+     - Manejo de errores de permisos
+   
+   RF-006: Detener Escáner
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El usuario debe poder detener el escaneo en cualquier momento
+   Entrada: Click en botón "Detener"
+   Procesamiento:
+     1. Detener captura de cámara
+     2. Liberar acceso a dispositivo
+     3. Limpiar vista previa
+     4. Resetear estado
+   Salida: Cámara apagada, interfaz vuelve a estado inicial
+   Criterios de aceptación:
+     - Cámara se apaga inmediatamente
+     - Recursos liberados correctamente
+     - Se puede reiniciar escaneo sin problemas
+   
+   RF-007: Decodificar Código QR
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: El sistema debe decodificar el código QR capturado
+   Entrada: Imagen de cámara con código QR válido
+   Procesamiento:
+     1. Analizar imagen de frame de cámara
+     2. Detectar patrón de código QR
+     3. Decodificar datos contenidos
+     4. Validar formato de datos
+   Salida: String con datos del código QR decodificado
+   Criterios de aceptación:
+     - Decodificación en < 500ms
+     - Precisión del 99.9%
+     - Manejo de códigos rotatados/torcidos
+   
+   RF-008: Registrar Escaneo en Google Sheets
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: Cada escaneo must be stored in Google Sheets automatically
+   Entrada: Datos decodificados del QR, usuario, cliente, timestamp
+   Procesamiento:
+     1. Validar datos antes de guardar
+     2. Conectar a Google Sheets API
+     3. Agregar fila a hoja del cliente
+     4. Incluir: código QR, usuario, fecha, hora, cliente
+   Salida: Confirmación de registro exitoso, ID del registro
+   Criterios de aceptación:
+     - Registro debe guardar en < 3 segundos
+     - Datos persistentes en Google Sheets
+     - Validación de datos incompletos
+     - Manejo de desconexión simultáneo
+   
+   RF-009: Mostrar Resultado de Escaneo
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: El sistema debe mostrar el resultado del escaneo al usuario
+   Entrada: Datos del código decodificado
+   Procesamiento:
+     1. Formatear datos para presentación
+     2. Mostrar en tarjeta de resultado
+     3. Incluir timestamp del escaneo
+     4. Mostrar confirmación visual (✓)
+   Salida: Tarjeta con datos del código y confirmación
+   Criterios de aceptación:
+     - Resultado visible en < 1 segundo
+     - Incluye timestamp legible
+     - Botón para limpiar resultado
+   
+   ================================================================================
+   MÓDULO 3: GESTIÓN DE REGISTROS
+   ================================================================================
+   
+   RF-010: Listar Registros Recientes
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: Mostrar tabla con registros recientes de escaneos
+   Entrada: Cambio de vista a "Registros", filtros opcionales
+   Procesamiento:
+     1. Consultar Google Sheets
+     2. Obtener últimos 100 registros (por defecto)
+     3. Filtrar según cliente del usuario
+     4. Ordenar por fecha descendente
+   Salida: Tabla HTML con registros: código QR, usuario, date, hora, cliente
+   Criterios de aceptación:
+     - Carga en < 2 segundos
+     - Separación clara de registros
+     - Información completa visible
+   
+   RF-011: Filtrar Registros por Cliente
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Permitir filtrado de registros actuales por cliente
+   Entrada: Selección de cliente en dropdown
+   Procesamiento:
+     1. Filtrar registros cargados
+     2. Actualizar tabla
+     3. Actualizar contadores
+   Salida: Tabla actualizada con registros del cliente seleccionado
+   Criterios de aceptación:
+     - Filtrado inmediato (< 500ms)
+     - Otros filtros se mantienen
+   
+   RF-012: Filtrar Registros por Fecha
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Permitir filtrado de registros por rango de fechas
+   Entrada: Fecha inicial y final en formato date picker
+   Procesamiento:
+     1. Validar rango de fechas
+     2. Filtrar registros en ese rango
+     3. Actualizar tabla
+   Salida: Tabla con registros en el rango seleccionado
+   Criterios de aceptación:
+     - Ambas fechas requeridas para filtrar
+     - Validación de rango lógico
+     - Filtrado instantáneo
+   
+   RF-013: Búsqueda de Registros
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Búsqueda por código QR o usuario en registros
+   Entrada: Término de búsqueda en campo de texto
+   Procesamiento:
+     1. Validar entrada de búsqueda
+     2. Buscar en todos los campos
+     3. Aplicar filtro en tiempo real
+   Salida: Registros que coinciden con búsqueda
+   Criterios de aceptación:
+     - Búsqueda case-insensitive
+     - Resultados en < 200ms
+     - Búsqueda vacía muestra todos
+   
+   RF-014: Paginación de Registros
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Dividir registros en páginas para mejor desempeño
+   Entrada: Cambio de página o registros por página
+   Procesamiento:
+     1. Dividir registros en páginas de 20 items
+     2. Actualizar tabla
+     3. Actualizar controles de paginación
+   Salida: Página de registros solicitada
+   Criterios de aceptación:
+     - Máximo 20 registros por página
+     - Navegación clara entre páginas
+   
+   ================================================================================
+   MÓDULO 4: ESTADÍSTICAS Y REPORTES
+   ================================================================================
+   
+   RF-015: Mostrar Contador de Escaneos Totales
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Mostrar el total de escaneos realizados
+   Entrada: Datos de registros
+   Procesamiento:
+     1. Contar todos los registros
+     2. Aquellos permitidos por rol
+     3. Actualizar display
+   Salida: Número total de escaneos en la app
+   Criterios de aceptación:
+     - Actualización en tiempo real
+     - Respeta permisos de rol
+   
+   RF-016: Mostrar Escaneos del Día
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Mostrar contador de escaneos realizados hoy
+   Entrada: Fecha actual del servidor
+   Procesamiento:
+     1. Filtrar registros de hoy
+     2. Contar registros
+     3. Actualizar display
+   Salida: Número de escaneos de hoy
+   Criterios de aceptación:
+     - Usa fecha del servidor (UTC)
+     - Se resetea a medianoche
+   
+   RF-017: Mostrar Estadísticas por Cliente
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Mostrar tabla con estadísticas de escaneos por cliente
+   Entrada: Datos de todos los registros
+   Procesamiento:
+     1. Agrupar por cliente
+     2. Contar escaneos por cliente
+     3. Crear tabla con resultados
+   Salida: Tabla: Cliente | Total de Escaneos | % del Total
+   Criterios de aceptación:
+     - Datos precisos y actualizados
+     - Incluir porcentaje del total
+   
+   ================================================================================
+   MÓDULO 5: EXPORTACIÓN DE DATOS
+   ================================================================================
+   
+   RF-018: Exportar Registros a CSV
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Permitir descarga de registros en formato CSV
+   Entrada: Click en botón "Exportar", filtros aplicados
+   Procesamiento:
+     1. Compilar registros visibles en tabla
+     2. Convertir a formato CSV
+     3. Generar archivo descargarble
+   Salida: Archivo .csv con encabezados y registros
+   Criterios de aceptación:
+     - Incluir todos los campos de registros
+     - Nombres de encabezados claros
+     - Respeta filtros actuales
+     - Descarga automática del navegador
+   
+   RF-019: Exportar Estadísticas
+   Prioridad: BAJA | Estado: Aprobado
+   Descripción: Exportar datos de estadísticas a CSV
+   Entrada: Click en botón "Exportar"
+   Procesamiento:
+     1. Compilar tabla de estadísticas
+     2. Convertir a formato CSV
+     3. Generar archivo descargable
+   Salida: Archivo .csv con estadísticas por cliente
+   Criterios de aceptación:
+     - Datos precisos
+     - Formato legible en Excel/Sheets
+   
+   ================================================================================
+   MÓDULO 6: GESTIÓN DE USUARIOS (Superadmin)
+   ================================================================================
+   
+   RF-020: Listar Usuarios
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: Mostrar tabla con todos los usuarios del sistema
+   Entrada: Acceso a vista de Usuarios por Superadmin
+   Procesamiento:
+     1. Validar que usuario es superadmin
+     2. Consultar todos los usuarios de Google Sheets
+     3. Crear tabla con información
+   Salida: Tabla: Usuario | Tipo | Cliente | Acciones
+   Criterios de aceptación:
+     - Solo superadmin puede ver
+     - Información completa de usuarios
+   
+   RF-021: Crear Nuevo Usuario
+   Prioridad: ALTA | Estado: Aprobado
+   Descripción: Permitir que superadmin cree nuevos usuarios
+   Entrada: Formulario: usuario, contraseña, tipo, cliente
+   Procesamiento:
+     1. Validar campos requeridos
+     2. Validar que usuario no existe
+     3. Guardar en Google Sheets
+     4. Asignar a hoja del cliente
+   Salida: Confirmación de creación, usuario disponible para login
+   Criterios de aceptación:
+     - Validación de campos
+     - Usuario único
+     - Contraseña almacenada (considerar hash futuro)
+     - Mensaje de éxito
+   
+   RF-022: Actualizar Usuario
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Permitir edición de datos de usuarios existentes
+   Entrada: Formulario pre-cargado con datos del usuario
+   Procesamiento:
+     1. Validar cambios
+     2. Actualizar fila en Google Sheets
+     3. Refrescar tabla
+   Salida: Datos actualizados del usuario
+   Criterios de aceptación:
+     - Cambios persistentes
+     - Validación de tipos
+   
+   RF-023: Eliminar Usuario
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: Permitir eliminación de usuarios
+   Entrada: Click en botón "Eliminar" con confirmación
+   Procesamiento:
+     1. Mostrar confirmación
+     2. Eliminar fila de Google Sheets
+     3. Refrescar tabla
+   Salida: Usuario removido del sistema
+   Criterios de aceptación:
+     - Confirmación obligatoria
+     - Usuario no puede más loguerse
+     - Registros históricos se mantienen
+   
+   ================================================================================
+   MÓDULO 7: INFORMACIÓN DEL SISTEMA
+   ================================================================================
+   
+   RF-024: Health Check del Servidor
+   Prioridad: MEDIA | Estado: Aprobado
+   Descripción: EndPoint para verificar estado del servidor
+   Entrada: Request GET a /api/health
+   Procesamiento:
+     1. Verificar disponibilidad del servidor
+     2. Retornar status
+   Salida: JSON: { status: 'ok', message: '...' }
+   Criterios de aceptación:
+     - Respuesta en < 1 segundo
+     - Indica si sistema está operacional
+
+3.2 Requisitos No-Funcionales
+
+   3.2.1 Requisitos de Rendimiento
+      NRF-001: Tiempo de Respuesta del Escaneo
+      - Decodificación de QR: < 500ms
+      - Almacenamiento en Google Sheets: < 3 segundos
+      - Tiempo total de escaneo: < 4 segundos
+      - UI responsiva: máximo 100ms para acciones
+      
+      NRF-002: Carga de Registros
+      - Carga inicial de tabla: < 2 segundos para 100 registros
+      - Filtrado: < 500ms
+      - Búsqueda: < 200ms
+      
+      NRF-003: Capacidad de Usuarios Concurrentes
+      - Mínimo 50 usuarios simultáneos
+      - Máximo 200 usuarios recomendado
+      - Degradación gradual después de límite
+      
+      NRF-004: Volumen de Datos
+      - Hasta 100,000 registros en Google Sheets
+      - Escalable según crecimiento
+      - Archivado manual de datos históricos
+      
+      NRF-005: Optimización Móvil
+      - Carga en dispositivos móviles: < 3 segundos
+      - Interfaz responsive en screens >= 320px
+      - Datos reducidos en conexiones lentas
+      
+      NRF-006: Caché de Datos
+      - Caché local de últimos 50 registros
+      - No refrescar automáticamente más de cada 30 segundos
+      - Opción manual de refrescar
+
+   3.2.2 Requisitos de Seguridad
+      NRF-007: Autenticación
+      - Autenticación basada en usuario/contraseña
+      - Contraseñas mínimo 6 caracteres (futuro: 12 caracteres)
+      - HTTPS obligatorio en producción
+      - Sessions con token JWT
+      - Expiración de sesiones tras 30 minutos inactividad
+      - Almacenamiento seguro de credenciales en Google Sheets
+      
+      NRF-008: Autorización
+      - Control de acceso basado en rol (RBAC)
+      - Validación de permisos en servidor (no solo cliente)
+      - Superadmin: acceso total
+      - Admin: acceso solo a su cliente
+      - Mecánico/Planta: acceso solo a escaneo
+      - Restricción de datos por cliente
+      
+      NRF-009: Encriptación de Datos
+      - Encriptación en tránsito: HTTPS/TLS 1.2+
+      - Encriptación en reposo (futuro): AES-256
+      - Credenciales de Google: almacenadas en variables de entorno
+      - Datos sensibles no loguear en consola
+      
+      NRF-010: Protección contra Vulnerabilidades
+      - Validación de inputs en cliente y servidor
+      - Sanitización de datos antes de usar
+      - Protección contra SQL Injection (no aplica, Google Sheets)
+      - Protección contra XSS: escape de outputs
+      - Rate limiting en endpoints de login
+      - CORS configurado restrictivamente
+      - No exponer errores técnicos al usuario
+      - Validación de todas las solicitudes POST
+      
+      NRF-011: Auditoría y Logs
+      - Registrar todos los logins (exitosos y fallidos)
+      - Registrar operaciones de administración
+      - Logs incluyen: usuario, acción, timestamp, resultado
+      - Retención de logs: mínimo 90 días
+      - Acceso a logs solo para superadmin
+      
+      NRF-012: Cambio de Contraseña
+      - Usuarios pueden cambiar su propia contraseña (futuro)
+      - Superadmin puede resetear contraseñas
+      - Confirmación de contraseña actual requerida
+      - Validación de nueva contraseña
+
+   3.2.3 Requisitos de Disponibilidad
+      NRF-013: Uptime del Sistema
+      - Disponibilidad objetivo: 99% (87.6 horas downtime/año)
+      - SLA: 99% en horario laboral
+      - Monitoreo 24/7 de disponibilidad
+      - Health check cada 5 minutos
+      
+      NRF-014: Ventanas de Mantenimiento
+      - Mantenimiento: domingos 00:00-06:00 UTC
+      - Anuncio previo 7 días antes
+      - Máximo 6 horas de downtime programado/mes
+      - Migración de datos en horario no-laboral
+      
+      NRF-015: Recuperación ante Fallos
+      - RTO (Recovery Time Objective): < 30 minutos
+      - RPO (Recovery Point Objective): < 1 hora de datos
+      - Failover automático si es posible
+      - Plan de recuperación documentado
+      - Pruebas de recuperación cada trimestre
+      
+      NRF-016: Backup y Restauración
+      - Backup automático diario de Google Sheets
+      - Redundancia: múltiples copias de datos
+      - Restauración posible a cualquier punto en 30 días
+      - Verificación de integridad de backups
+      - Almacenamiento seguro de backups
+
+   3.2.4 Requisitos de Confiabilidad
+      NRF-017: Tasa de Error Aceptable
+      - Tasa de error en escaneo: < 0.1%
+      - Tasa de error en almacenamiento: < 0.01%
+      - Tasa de error de autenticación: < 0.5%
+      - MTBF (Mean Time Between Failures): > 720 horas
+      
+      NRF-018: Detección de Errores
+      - Detección automática de fallos de conexión
+      - Validación de integridad de datos
+      - Alertas para operadores
+      - Logs detallados de errores
+      - Notificación al usuario de problemas
+      
+      NRF-019: Recuperación ante Fallos
+      - Reintento automático de operaciones fallidas (3 intentos)
+      - Cola de escaneos pendientes si Google Sheets no disponible
+      - Sincronización cuando conexión se restablece
+      - Notificación al usuario de sincronización pendiente
+      - No perder datos en ninguna circunstancia
+
+   3.2.5 Requisitos de Mantenibilidad
+      NRF-020: Documentación
+      - README con instrucciones de setup
+      - Documentación de API endpoints
+      - Guía de variables de entorno
+      - Diagrama de arquitectura
+      - Manual de usuario
+      - Procedimientos de deployment
+      - Changelog de versiones
+      
+      NRF-021: Facilidad de Modificación
+      - Código modular y desacoplado
+      - Funciones < 50 líneas (promedio)
+      - Naming claro y descriptivo
+      - Separación de concerns
+      - Configuración externizada
+      
+      NRF-022: Estándares de Código
+      - Seguir ESLint standard
+      - Comentarios en código complejo
+      - JSDoc para funciones públicas
+      - Indentación 4 espacios
+      - Máximo 100 caracteres por línea
+      - Variables const/let, no var
+      
+      NRF-023: Modularidad
+      - Frontend: módulos separados por funcionalidad
+      - Backend: rutas separadas por recurso
+      - Funciones reutilizables
+      - Utilidades en módulos helper
+      - DRY (Don't Repeat Yourself)
+      - Bajo acoplamiento
+
+   3.2.6 Requisitos de Portabilidad
+      NRF-024: Plataformas Objetivo
+      - Frontend: Cualquier navegador moderno (web-first)
+      - Soporta Windows, macOS, Linux en cliente
+      - Android e iOS a través de navegador web
+      - Progresive Web App (PWA) futuro
+      - No requiere instalación en cliente
+      
+      NRF-025: Navegadores Soportados
+      - Chrome 90+
+      - Firefox 85+
+      - Safari 14+
+      - Edge 90+
+      - Mobile Safari en iOS 14+
+      - Chrome/Firefox en Android 10+
+      - Graceful degradation en navegadores antiguos
+      
+      NRF-026: Servidor y Backend
+      - Node.js 16+ (compatible hasta LTS más reciente)
+      - Deployment en Render, Heroku, o similar
+      - Compatible con Linux/macOS/Windows en desarrollo
+      - Independiente de path absoluto del servidor
+      
+      NRF-027: Base de Datos
+      - Google Sheets API (multiplataforma)
+      - Funciona en cualquier zona horaria
+      - Codificación UTF-8 para caracteres especiales
+      
+      NRF-028: Compatibilidad Hacia Adelante
+      - Versionado semántico (major.minor.patch)
+      - Cambios breaking comunicados 1 versión anterior
+      - API backwards compatible cuando posible
+      - Migrations para cambios de estructura
+
+   3.2.7 Requisitos de Usabilidad
+      NRF-029: Facilidad de Uso
+      - Interfaz intuitiva sin necesidad de manual
+      - Call-to-action claros y visibles
+      - Flujo de escaneo en máximo 3 clicks
+      - Confirmaciones visuales de acciones
+      - Mensajes de error en lenguaje usuario
+      - Focus order lógico en formularios
+      
+      NRF-030: Tiempo de Capacitación
+      - Operario nuevo: < 30 minutos aprender a usar
+      - Admin: < 1 hora para todas las funciones
+      - Help tooltips para funciones complejas
+      - Tutorial interactivo (futuro)
+      
+      NRF-031: Accesibilidad
+      - Cumplir WCAG 2.1 AA (mínimo)
+      - Contraste de colores 4.5:1 para texto
+      - Componentes navegables con teclado
+      - Labels asociadas a inputs
+      - Soportar lectores de pantalla (evaluación futura)
+      - Tamaño mínimo de fuente 14px
+      - Elementos interactivos >= 44x44px
+      
+      NRF-032: Idiomas Soportados
+      - Español (principal): interfaz completa
+      - Inglés (futuro): interfaz completa
+      - Soporte para caracteres UTF-8 en datos
+      
+      NRF-033: Interfaz de Usuario
+      - Responsive design (mobile-first)
+      - Tema light (actual)
+      - Tema dark (futuro)
+      - Coherencia visual en toda la app
+      - Icónos auxiliares para mejor UX
+      - Animaciones fluidas (< 300ms)
+      - Sin animaciones en dispositivos lento
+
+   3.2.8 Requisitos de Escalabilidad
+      NRF-034: Crecimiento de Datos
+      - Diseñado para crecer a 1M de registros
+      - Arquitectura preparada para caché distribuido
+      - Índices en Google Sheets (múltiples hojas)
+      - Posibilidad de archivado histórico
+      
+      NRF-035: Crecimiento de Usuarios
+      - Arquitectura escalable a 1000+ usuarios
+      - Usuarios adicionales sin cambios código
+      - Load balancing ready (futuro)
+      
+      NRF-036: Flexibilidad Funcional
+      - Arquitectura modular para nuevas funciones
+      - API preparada para terceros (futuro)
+      - Plugin system (futuro)
+      - Migraciones de datos sin downtime
+      - Nuevas funcionalidades sin afectar existentes
+      
+      NRF-037: Escalabilidad Técnica
+      - Separation of concerns para scaling independiente
+      - Base de datos escalable (Google Sheets -> SQL)
+      - Caché layer (Redis) para datos frecuentes
+      - CDN para assets estáticos (futuro)
+      - Microservicios (futuro)
+
+   3.2.9 Requisitos de Interfaz
+      NRF-038: Interfaz con Usuario
+      - Web interface responsive
+      - Touch-friendly en dispositivos móviles
+      - Menú de navegación persistente
+      - Modal dialogs para confirmaciones
+      - Notificaciones toast para feedback
+      - Formularios con validación en tiempo real
+      
+      NRF-039: Interfaz de Sistema Operativo
+      - Acceso a cámara web/móvil
+      - Acceso a geolocalización (futuro)
+      - Almacenamiento local (localStorage)
+      - Permisos de cámara manejados elegantemente
+      
+      NRF-040: Interfaz con Otros Sistemas
+      - REST API para futuras integraciones
+      - Google Sheets API para datos
+      - Google OAuth 2.0 para autenticación (evaluación)
+      - Webhooks para eventos (futuro)
+      
+      NRF-041: Formato de Datos
+      - JSON para comunicación API
+      - CSV para exportaciones
+      - Google Sheets nativo como almacén principal
+      - Timestamps en ISO 8601 (UTC)
+      - Códigos de cliente en formato standarizado
+      
+      NRF-042: Protocolos de Comunicación
+      - HTTPS/TLS 1.2+ obligatorio
+      - HTTP/2 recomendado
+      - REST con métodos estándar (GET, POST, PUT, DELETE)
+      - WebSockets (futuro para actualizaciones en tiempo real)
+      - CORS configurado para dominio principal
+      - Timeout de conexión 30 segundos
+
+================================================================================
+4. APÉNDICES
+================================================================================
+
+A. CASOS DE USO PRINCIPALES
+================================================================================
+
+CASO DE USO 1: Escaneo de Código QR por Operario
+   Actor Primario: Mecánico / Planta
+   Precondición: Usuario autenticado
+   Flujo Principal:
+     1. Usuario entra a vista de Escaneo
+     2. Hace click en "Iniciar Escaneo"
+     3. Navegador solicita permisos de cámara
+     4. Usuario acepta permisos
+     5. Usuario apunta cámara al código QR
+     6. Sistema detecta y decodifica QR
+     7. Sistema registra en Google Sheets
+     8. Sistema muestra confirmación al usuario
+   Flujo Alternativo A - Cámara no disponible:
+     1. En paso 4, sistema muestra error
+     2. Usuario ve "Cámara no disponible"
+   Postcondición: Escaneo registrado en Google Sheets
+
+CASO DE USO 2: Login de Usuario
+   Actor Primario: Cualquier usuario
+   Precondición: Usuario no autenticado
+   Flujo Principal:
+     1. Usuario abre aplicación
+     2. Ve modal de login
+     3. Selecciona tipo de usuario
+     4. Ingresa usuario y contraseña
+     5. Hace click en "Ingresar"
+     6. Sistema valida contra Google Sheets
+     7. Sistema crea sesión
+     8. Interfaz personaliza por rol
+   Postcondición: Usuario autenticado
+
+CASO DE USO 3: Crear Usuario (Superadmin)
+   Actor Primario: Superadmin
+   Precondición: Superadmin autenticado
+   Flujo Principal:
+     1. Superadmin va a sección "Usuarios"
+     2. Hace click en "Crear Usuario"
+     3. Ingresa usuario, contraseña, tipo, cliente
+     4. Valida que usuario no existe
+     5. Hace click en "Crear"
+     6. Sistema guarda en Google Sheets
+   Postcondición: Usuario creado y listo para usar
+
+CASO DE USO 4: Ver Estadísticas
+   Actor Primario: Admin / Superadmin
+   Precondición: Usuario autenticado con permiso
+   Flujo Principal:
+     1. Usuario hace click en sección "Estadísticas"
+     2. Sistema carga datos
+     3. Muestra: Total, Hoy, Por Cliente
+   Postcondición: Estadísticas visibles
+
+
+B. ESTRUCTURA DE GOOGLE SHEETS
+================================================================================
+
+HOJA GLOBAL: "USUARIOS"
+   - USUARIO: Nombre único del usuario (superadmins)
+   - TIPO: super, administrador, mecanico, planta
+   - CONTRASEÑA: Texto plano (mejorar con hash)
+   - CLIENTE: Nombre del cliente asociado
+   - FECHA_CREACION: Timestamp de creación
+   - ACTIVO: sí/no
+
+HOJA POR CLIENTE: "[CLIENTE]_REGISTROS"
+   - TIMESTAMP: ISO 8601 UTC
+   - CODIGO_QR: Dato leído del código
+   - USUARIO: Quién escaneó
+   - CLIENTE: Cliente asociado
+   - DISPOSITIVO: Info del dispositivo
+   - ESTADO: procesado/pendiente
+   - NOTAS: Comentarios adicionales
+
+
+C. ARQUITECTURA DEL SISTEMA
+================================================================================
+
+3 CAPAS PRINCIPALES:
+
+1. FRONTEND (Navegador)
+   - Tecnología: HTML5, CSS, JavaScript Vanilla
+   - Sin frameworks pesados (máxima compatibilidad)
+   - Módulos: Auth, Scanner, Records, Stats, Admin
+   - Almacenamiento: localStorage, sessionStorage
+
+2. BACKEND (Node.js)
+   - Framework: Express.js
+   - Puerto: 3000 (dev), env PORT (prod)
+   - Rutas: Auth, Scans, Records, Users, Stats
+   - Autenticación: Validación por Google Sheets
+
+3. BASE DE DATOS
+   - Google Sheets API v4
+   - Autenticación: Service Account JWT
+   - Estructura: Múltiples hojas por cliente
+   - Escalable a 100,000+ registros
+
+FLUJO DE DATOS:
+   Usuario -> Frontend -> REST API -> Backend -> Google Sheets
+
+
+D. TECNOLOGÍAS Y DEPENDENCIAS
+================================================================================
+
+DEPENDENCIAS BACKEND:
+   - express@^4.18.2
+   - cors@^2.8.5
+   - dotenv@^16.3.1
+   - googleapis@^128.0.0
+   - google-spreadsheet@^4.1.0
+   - google-auth-library@^9.6.3
+   - body-parser@^1.20.2
+
+DEPENDENCIAS FRONTEND:
+   - html5-qrcode@^2.3.8
+
+DEVTOOLS:
+   - nodemon@^3.0.1
+
+REQUISITOS:
+   - Node.js >= 16.0.0
+   - npm >= 8.0.0
+   - Cuenta Google con credenciales configuradas
+
+
+E. CONTROL DE VERSIONES
+================================================================================
+
+   Versión | Fecha | Autor | Cambios
+   --------|-------|-------|---------------------------
+   1.0     | 2026-02-09 | Equipo Goby | Versión inicial del SRS
+   1.1     | TBD | TBD | Ajustes post-planificación
+   2.0     | TBD | TBD | Nuevas funcionalidades
+
+
+F. MEJORAS FUTURAS
+================================================================================
+
+CORTO PLAZO (1-3 meses):
+   - Tests unitarios
+   - Mejoras UI/UX
+   - Documentación de API
+   - Optimización rendimiento
+
+MEDIANO PLAZO (3-6 meses):
+   - Migración a BD relacional
+   - Reportes avanzados
+   - Integración ERP
+   - Aplicación móvil nativa
+
+LARGO PLAZO (6-12 meses):
+   - API pública
+   - Machine Learning
+   - Microservicios
+   - Multi-tenant completo
+
+
+G. RIESGOS Y MITIGACIÓN
+================================================================================
+
+   Riesgo                 | Probabilidad | Impacto | Mitigación
+   ----------------------|-------------|--------|-------------------
+   Fallo Google Sheets    | Media       | Alto   | Backup, reintento, cola
+   Sin internet           | Media       | Medio  | Sincronización offline
+   Falta permisos        | Baja        | Medio  | Manejo elegante errores
+   Escalabilidad         | Media       | Alto   | Arquitectura modular
+   Seguridad             | Baja        | Alto   | HTTPS, RBAC, auditoría
+   Performance           | Media       | Medio  | Optimización, caché
+
+================================================================================
+5. ÍNDICE Y REFERENCIAS
+================================================================================
+
+SECCIONES PRINCIPALES:
+   1. INTRODUCCIÓN
+      1.1 Propósito
+      1.2 Alcance  
+      1.3 Definiciones y Acrónimos
+      1.4 Referencias
+      1.5 Visión General
+   
+   2. DESCRIPCIÓN GENERAL
+      2.1 Perspectiva del Producto
+      2.2 Funciones del Producto
+      2.3 Características del Usuario
+      2.4 Restricciones
+      2.5 Suposiciones y Dependencias
+   
+   3. REQUISITOS ESPECÍFICOS
+      3.1 Requisitos Funcionales (RF-001 a RF-024)
+      3.2 Requisitos No-Funcionales (NRF-001 a NRF-042)
+   
+   4. APÉNDICES:
+      A. Casos de Uso Principales
+      B. Estructura de Google Sheets
+      C. Arquitectura del Sistema
+      D. Tecnologías y Dependencias
+      E. Control de Versiones
+      F. Mejoras Futuras
+      G. Riesgos y Mitigación
+
+REQUISITOS FUNCIONALES (24 Total):
+   - Autenticación: RF-001 a RF-004
+   - Escaneo: RF-005 a RF-009
+   - Registros: RF-010 a RF-014
+   - Estadísticas: RF-015 a RF-017
+   - Exportación: RF-018 a RF-019
+   - Usuarios: RF-020 a RF-023
+   - Sistema: RF-024
+
+REQUISITOS NO-FUNCIONALES (42 Total):
+   - Rendimiento (6): NRF-001 a NRF-006
+   - Seguridad (6): NRF-007 a NRF-012
+   - Disponibilidad (4): NRF-013 a NRF-016
+   - Confiabilidad (3): NRF-017 a NRF-019
+   - Mantenibilidad (4): NRF-020 a NRF-023
+   - Portabilidad (5): NRF-024 a NRF-028
+   - Usabilidad (5): NRF-029 a NRF-033
+   - Escalabilidad (4): NRF-034 a NRF-037
+   - Interfaz (5): NRF-038 a NRF-042
+
+
+================================================================================
+GUÍA DE USO POR ROL
+================================================================================
+
+PARA DEVELOPERS:
+   1. Leer Sección 2 (Descripción General)
+   2. Revisar Sección 3.1 (Requisitos Funcionales)
+   3. Consultar Apéndice A (Casos de Uso)
+   4. Usar criterios de aceptación como checklist
+   Tiempo estimado: 2-3 horas
+
+PARA QA/TESTERS:
+   1. Estudiar Requisitos Funcionales (Section 3.1)
+   2. Crear test cases desde Apéndice A
+   3. Validar requisitos no-funcionales (Section 3.2)
+   4. Usar matriz de trazabilidad
+   Tiempo estimado: 2-4 horas
+
+PARA ARQUITECTOS:
+   1. Revisar perspectiva global (Section 2.1)
+   2. Analizar restricciones (Section 2.4)
+   3. Consultar Apéndice C (Arquitectura)
+   4. Considerar requisitos No-Funcionales (NRF-034+)
+   Tiempo estimado: 1-2 horas
+
+PARA STAKEHOLDERS:
+   1. Leer Sección 1.2 (Alcance)
+   2. Revisar Sección 2.2 (Funciones)
+   3. Ver Apéndice A (Casos de Uso)
+   4. Revisar riesgos (Apéndice G)
+   Tiempo estimado: 30-45 minutos
+
+PARA MANTENIMIENTO FUTURO:
+   1. Consultar control de versiones
+   2. Revisar Apéndice F (Mejoras Futuras)
+   3. Referencia: Apéndice G (Riesgos)
+   4. Usar matriz de trazabilidad para cambios
+
+
+================================================================================
+MATRIZ DE TRAZABILIDAD RESUMIDA
+================================================================================
+
+Requisito | Caso de Uso | Módulo    | Prueba | Responsable
+----------|-------------|-----------|--------|-------------
+RF-001    | CU-2        | Auth      | Test User Login | Dev
+RF-005    | CU-1        | Scanner   | Test QR Scan | Dev
+RF-008    | CU-1        | Scanner   | Test Register | Dev
+RF-010    | CU-4        | Records   | Test List | Dev
+RF-021    | CU-3        | Users     | Test Create User | Dev
+NRF-001   | N/A         | Perf      | Load Test | QA
+NRF-007   | N/A         | Security  | Security Audit | QA
+NRF-013   | N/A         | Avail     | Uptime Check | Ops
+
+
+================================================================================
+CRITERIOS DE ACEPTACIÓN GLOBAL
+================================================================================
+
+Todos los requisitos deben cumplir:
+   ✓ Implementado según especificación
+   ✓ Código revisado por peer
+   ✓ Pruebas automatizadas pasadas
+   ✓ Sin warnings ni deprecated code
+   ✓ Documentado en código
+   ✓ Validado contra casos de uso
+   ✓ Sin problemas de rendimiento
+   ✓ Compatible con navegadores objetivo
+
+
+================================================================================
+HITO DE APROBACIÓN
+================================================================================
+
+Documento:
+   Versión: 1.0
+   Fecha: 2026-02-09
+   Estado: APROBADO PARA IMPLEMENTACIÓN
+   
+Firmantes Requeridos:
+   [ ] Propietario de Producto
+   [ ] Tech Lead
+   [ ] Arquitecto de Sistema
+   [ ] Lead QA
+
+Próximas Acciones:
+   1. Obtener firmas de aprobación
+   2. Distribuir a equipo de desarrollo
+   3. Crear tickets en Jira/Github basados en RF
+   4. Planificar sprints según prioridades
+   5. Revisar después del primer sprint
+
+
+================================================================================
+CONTACTO Y MANTENIMIENTO
+================================================================================
+
+Propietario del Documento: [Equipo de Desarrollo Goby]
+Email: [equipo@goby.com]
+Última actualización: 2026-02-09
+Próxima revisión: Post-Sprint 1 (aprox. 2026-02-23)
+Frecuencia de revisión: Bi-semanal durante desarrollo
+Control de cambios: Git repository [enlace]
+
+Para sugerencias o cambios:
+   1. Crear issue en sistema de tracking
+   2. Documentar justificación del cambio
+   3. Obtener aprobación de stakeholders
+   4. Actualizar versión del documento
+   5. Comunicar cambios al equipo
+
+================================================================================
+FIN DEL DOCUMENTO IEEE 830 - ESPECIFICACIÓN DE REQUISITOS DE SOFTWARE
+================================================================================
+
+Documento completado: 2026-02-09
+Líneas totales: Aprox. 1200+
+Requisitos funcionales: 24
+Requisitos no-funcionales: 42
+Casos de uso: 4
+Apéndices: 7
+Estado: LISTO PARA IMPLEMENTACIÓN
