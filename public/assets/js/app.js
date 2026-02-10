@@ -400,21 +400,21 @@ function applyRolePermissions() {
         if (userForm) {
             userForm.style.display = 'block';
         }
-        
-        // Mostrar/ocultar filtros de cliente según el rol
-        const filterClienteRecords = document.getElementById('filterClienteRecords');
-        const filterClienteUsers = document.getElementById('filterClienteUsers');
-        const filterClienteStats = document.getElementById('filterClienteStats');
-        
-        if (filterClienteRecords) {
-            filterClienteRecords.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
-        }
-        if (filterClienteUsers) {
-            filterClienteUsers.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
-        }
-        if (filterClienteStats) {
-            filterClienteStats.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
-        }
+    }
+    
+    // Mostrar/ocultar filtros de cliente según el rol (para todos los roles)
+    const filterClienteRecords = document.getElementById('filterClienteRecords');
+    const filterClienteUsers = document.getElementById('filterClienteUsers');
+    const filterClienteStats = document.getElementById('filterClienteStats');
+    
+    if (filterClienteRecords) {
+        filterClienteRecords.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+    }
+    if (filterClienteUsers) {
+        filterClienteUsers.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+    }
+    if (filterClienteStats) {
+        filterClienteStats.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
     }
 }
 

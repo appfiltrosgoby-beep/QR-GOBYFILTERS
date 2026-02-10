@@ -1011,6 +1011,7 @@ CASO DE USO 1: Escaneo de Código QR por Operario
      7. Sistema registra en Goo (Mecánico/Planta)
    Actor Primario: Mecánico o Planta
    Precondición: Usuario no autenticado
+CASO DE USO 2   
    Flujo Principal:
      1. Usuario abre aplicación
      2. Ve modal de login
