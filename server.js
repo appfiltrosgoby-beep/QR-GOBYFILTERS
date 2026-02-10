@@ -87,9 +87,14 @@ app.post('/api/validate-user', async (req, res) => {
 
     // Validar tipo de usuario según el flujo de login
     if (normalizedType === 'user') {
-      // Flujo "usuarios": acepta mecánico y planta
-      if (!['mecanico', 'planta'].includes(storedType)) {
+      // Flujo "usuarios": acepta mecánico
+      if (storedType !== 'mecanico') {
         return res.json({ success: false, message: 'Tipo no autorizado para acceso de usuarios' });
+      }
+    } else if (normalizedType === 'dispatch') {
+      // Flujo "despacho": acepta despacho
+      if (storedType !== 'despacho') {
+        return res.json({ success: false, message: 'Tipo no autorizado para acceso de despacho' });
       }
     } else if (normalizedType === 'administrador') {
       // Flujo "administrador": acepta administrador y superadmin
@@ -109,8 +114,10 @@ app.post('/api/validate-user', async (req, res) => {
       role = 'superadmin';
     } else if (storedType === 'administrador') {
       role = 'admin';
+    } else if (storedType === 'despacho') {
+      role = 'dispatch';
     }
-    // planta es un tipo de usuario que inicia sesión como 'user' (mecánico)
+    // mecánico y despacho inician sesión como 'user' o 'dispatch'
     
     return res.json({ 
       success: true, 
@@ -214,7 +221,7 @@ app.post('/api/users', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cliente es requerido para usuarios no superadmin' });
     }
 
-    if (!['administrador', 'mecanico', 'planta', 'super'].includes(normalizedType)) {
+    if (!['administrador', 'mecanico', 'despacho', 'super'].includes(normalizedType)) {
       return res.status(400).json({ success: false, message: 'Tipo inválido' });
     }
 

@@ -40,7 +40,7 @@ const elements = {
     toastContainer: document.getElementById('toastContainer'),
     loginModal: document.getElementById('loginModal'),
     loginUserBtn: document.getElementById('loginUserBtn'),
-    loginPlantBtn: document.getElementById('loginPlantBtn'),
+    loginDispatchBtn: document.getElementById('loginDispatchBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
     userLoginForm: document.getElementById('userLoginForm'),
     userUsername: document.getElementById('userUsername'),
@@ -111,14 +111,26 @@ function initAuth() {
 }
 
 /**
- * Mostrar formulario de email para usuario
+ * Mostrar formulario de email para usuario planta (ahora despacho)
  */
 function showUserEmailForm() {
     elements.loginUserBtn.parentElement.style.display = 'none';
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
-    currentLoginType = 'user'; // Acepta mecánico y planta
+    currentLoginType = 'user'; // Acepta mecánico y despacho
+    elements.userUsername.focus();
+}
+
+/**
+ * Mostrar formulario de email para despacho
+ */
+function showDispatchEmailForm() {
+    elements.loginUserBtn.parentElement.style.display = 'none';
+    elements.adminLoginForm.classList.add('hidden');
+    elements.userLoginForm.classList.remove('hidden');
+    elements.userError.classList.add('hidden');
+    currentLoginType = 'dispatch'; // Tipo especial para despacho
     elements.userUsername.focus();
 }
 
@@ -170,7 +182,13 @@ async function validateUserLogin() {
         return;
     }
 
-    const result = await validateCredentials(usuario, currentLoginType, password);
+    // Mapear tipo de login a tipo de usuario
+    let userType = 'user';
+    if (currentLoginType === 'dispatch') {
+        userType = 'dispatch';
+    }
+
+    const result = await validateCredentials(usuario, userType, password);
     if (!result.success) {
         elements.userError.textContent = result.message || 'Credenciales inválidas';
         elements.userError.classList.remove('hidden');
@@ -329,10 +347,18 @@ function logout() {
  */
 function applyRolePermissions() {
     // Actualizar badge de rol
-    const roleText = currentUserRole === 'superadmin'
-        ? 'Superadmin'
-        : (currentUserRole === 'admin' ? 'Admin' : 'Mecánico');
-    const displayText = currentUserRole === 'user'
+    let roleText = 'Usuario';
+    if (currentUserRole === 'superadmin') {
+        roleText = 'Superadmin';
+    } else if (currentUserRole === 'admin') {
+        roleText = 'Admin';
+    } else if (currentUserRole === 'dispatch') {
+        roleText = 'Despacho';
+    } else if (currentUserRole === 'user') {
+        roleText = 'Mecánico';
+    }
+    
+    const displayText = (currentUserRole === 'user' || currentUserRole === 'dispatch')
         ? (currentUsername || roleText)
         : roleText;
     elements.currentRole.textContent = displayText;
@@ -344,7 +370,7 @@ function applyRolePermissions() {
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     
     if (currentUserRole === 'user') {
-        // Usuario planta: ocultar estadísticas y usuarios, mostrar selector de cliente
+        // Usuario mecánico: ocultar estadísticas y usuarios, mostrar escáner sin selector
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
@@ -354,7 +380,29 @@ function applyRolePermissions() {
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
         }
-        // Mostrar selector de cliente para usuarios planta
+        // Ocultar selector de cliente para mecánicos
+        if (elements.clientSelectorContainer) {
+            elements.clientSelectorContainer.classList.add('hidden');
+        }
+        // Si está en vista de estadísticas/usuarios, redirigir a escáner
+        if (document.getElementById('statsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+        if (document.getElementById('usersView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+    } else if (currentUserRole === 'dispatch') {
+        // Usuario despacho: ocultar estadísticas y usuarios, mostrar selector de cliente
+        if (statsNavBtn) {
+            statsNavBtn.style.display = 'none';
+        }
+        if (usersNavBtn) {
+            usersNavBtn.style.display = 'none';
+        }
+        if (scannerNavBtn) {
+            scannerNavBtn.style.display = 'flex';
+        }
+        // Mostrar selector de cliente para usuarios despacho
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.remove('hidden');
             loadClientsSelect();
@@ -541,6 +589,7 @@ function setupEventListeners() {
     
     // Event listeners de autenticación
     elements.loginUserBtn.addEventListener('click', showUserEmailForm);
+    elements.loginDispatchBtn.addEventListener('click', showDispatchEmailForm);
     elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
     elements.submitUserBtn.addEventListener('click', validateUserLogin);
     elements.cancelUserBtn.addEventListener('click', cancelUserLogin);
@@ -874,9 +923,9 @@ async function saveQRCode(qrContent) {
     try {
         updateStatus('💾 Guardando...', 'saving');
         
-        // Para usuarios planta: validar que haya seleccionado cliente
+        // Para usuarios despacho: validar que haya seleccionado cliente
         let userClientToUse = currentUserClient;
-        if (currentUserRole === 'user') {
+        if (currentUserRole === 'dispatch') {
             userClientToUse = elements.selectedClient.value;
             if (!userClientToUse) {
                 showToast('⚠️ Debes seleccionar un cliente antes de escanear', 'warning');
