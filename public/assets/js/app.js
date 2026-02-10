@@ -244,6 +244,22 @@ async function validateAdminLogin() {
 }
 
 /**
+ * Login como admin
+ */
+function loginAsAdmin() {
+    currentUserRole = 'admin';
+    localStorage.setItem('userRole', 'admin');
+    applyRolePermissions();
+    elements.loginModal.style.display = 'none';
+    elements.adminLoginForm.classList.add('hidden');
+    elements.adminUsername.value = '';
+    elements.adminPassword.value = '';
+    elements.adminError.textContent = '';
+    elements.adminError.classList.add('hidden');
+    showToast('Bienvenido Administrador', 'success');
+}
+
+/**
  * Valida email contra el backend y rol
  */
 async function validateCredentials(usuario, tipo, password) {
