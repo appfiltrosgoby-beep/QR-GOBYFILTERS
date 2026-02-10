@@ -11,10 +11,11 @@ const API_URL = window.location.origin;
 let html5QrCode = null;
 let isScanning = false;
 let selectedCameraId = null;
-let currentUserRole = null; // 'user', 'admin', 'superadmin'
+let currentUserRole = null; // 'user', 'admin', 'superadmin', 'dispatch'
 let currentUsername = null; // Usuario logueado
 let currentUserPassword = null; // Contraseña del usuario logueado (admin/superadmin)
 let currentUserClient = null; // Cliente del usuario logueado
+let currentUserType = null; // Tipo de usuario: 'mecanico', 'despacho', 'administrador', 'super'
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 let currentFilteredData = []; // Guardar datos filtrados actual
 let editingUser = null; // Usuario que se está editando (para el formulario de usuarios)
@@ -40,7 +41,6 @@ const elements = {
     toastContainer: document.getElementById('toastContainer'),
     loginModal: document.getElementById('loginModal'),
     loginUserBtn: document.getElementById('loginUserBtn'),
-    loginDispatchBtn: document.getElementById('loginDispatchBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
     userLoginForm: document.getElementById('userLoginForm'),
     userUsername: document.getElementById('userUsername'),
@@ -111,7 +111,7 @@ function initAuth() {
 }
 
 /**
- * Mostrar formulario de email para usuario planta (ahora despacho)
+ * Mostrar formulario de email para usuario (mecánico o despacho)
  */
 function showUserEmailForm() {
     elements.loginUserBtn.parentElement.style.display = 'none';
@@ -119,18 +119,6 @@ function showUserEmailForm() {
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
     currentLoginType = 'user'; // Acepta mecánico y despacho
-    elements.userUsername.focus();
-}
-
-/**
- * Mostrar formulario de email para despacho
- */
-function showDispatchEmailForm() {
-    elements.loginUserBtn.parentElement.style.display = 'none';
-    elements.adminLoginForm.classList.add('hidden');
-    elements.userLoginForm.classList.remove('hidden');
-    elements.userError.classList.add('hidden');
-    currentLoginType = 'dispatch'; // Tipo especial para despacho
     elements.userUsername.focus();
 }
 
@@ -182,13 +170,7 @@ async function validateUserLogin() {
         return;
     }
 
-    // Mapear tipo de login a tipo de usuario
-    let userType = 'user';
-    if (currentLoginType === 'dispatch') {
-        userType = 'dispatch';
-    }
-
-    const result = await validateCredentials(usuario, userType, password);
+    const result = await validateCredentials(usuario, currentLoginType, password);
     if (!result.success) {
         elements.userError.textContent = result.message || 'Credenciales inválidas';
         elements.userError.classList.remove('hidden');
@@ -199,11 +181,24 @@ async function validateUserLogin() {
     currentUserPassword = password;
     currentUserClient = result.cliente || '';
     currentUserRole = result.role || 'user'; // Guardar el rol retornado
+    currentUserType = result.tipo || 'mecanico'; // Guardar el tipo del usuario
     localStorage.setItem('userName', usuario);
     localStorage.setItem('userClient', result.cliente || '');
     localStorage.setItem('userRole', currentUserRole);
+    localStorage.setItem('userType', currentUserType);
     sessionStorage.setItem('userPassword', password);
-    loginAsUser();
+    
+    // Aplicar permisos según el tipo de usuario
+    applyRolePermissions();
+    
+    // Cerrar modal de login
+    elements.loginModal.style.display = 'none';
+    elements.userLoginForm.classList.add('hidden');
+    elements.userUsername.value = '';
+    elements.userPassword.value = '';
+    elements.userError.textContent = '';
+    elements.userError.classList.add('hidden');
+    showToast(`Bienvenido ${currentUsername || 'Usuario'}`, 'success');
 }
 
 /**
@@ -264,6 +259,7 @@ async function validateCredentials(usuario, tipo, password) {
             return { 
                 success: true, 
                 role: data.role || 'user',
+                tipo: data.tipo || 'mecanico',
                 cliente: data.cliente || ''
             };
         }
@@ -278,34 +274,7 @@ async function validateCredentials(usuario, tipo, password) {
 /**
  * Login como usuario (sin contraseña)
  */
-function loginAsUser() {
-    currentUserRole = 'user';
-    localStorage.setItem('userRole', 'user');
-    applyRolePermissions();
-    elements.loginModal.style.display = 'none';
-    elements.userLoginForm.classList.add('hidden');
-    elements.userUsername.value = '';
-    elements.userPassword.value = '';
-    elements.userError.textContent = '';
-    elements.userError.classList.add('hidden');
-    showToast(`Bienvenido ${currentUsername || 'Mecánico'}`, 'success');
-}
 
-/**
- * Login como admin (email autorizado)
- */
-function loginAsAdmin() {
-    currentUserRole = 'admin';
-    localStorage.setItem('userRole', 'admin');
-    applyRolePermissions();
-    elements.loginModal.style.display = 'none';
-    elements.adminLoginForm.classList.add('hidden');
-    elements.adminUsername.value = '';
-    elements.adminPassword.value = '';
-    elements.adminError.textContent = '';
-    elements.adminError.classList.add('hidden');
-    showToast('Bienvenido Administrador', 'success');
-}
 
 /**
  * Cerrar sesión
@@ -352,9 +321,9 @@ function applyRolePermissions() {
         roleText = 'Superadmin';
     } else if (currentUserRole === 'admin') {
         roleText = 'Admin';
-    } else if (currentUserRole === 'dispatch') {
+    } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
         roleText = 'Despacho';
-    } else if (currentUserRole === 'user') {
+    } else if (currentUserRole === 'user' && currentUserType === 'mecanico') {
         roleText = 'Mecánico';
     }
     
@@ -369,7 +338,7 @@ function applyRolePermissions() {
     const usersNavBtn = document.querySelector('[data-view="usersView"]');
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     
-    if (currentUserRole === 'user') {
+    if (currentUserRole === 'user' && currentUserType === 'mecanico') {
         // Usuario mecánico: ocultar estadísticas y usuarios, mostrar escáner sin selector
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
@@ -391,7 +360,7 @@ function applyRolePermissions() {
         if (document.getElementById('usersView').classList.contains('active')) {
             switchView('scannerView');
         }
-    } else if (currentUserRole === 'dispatch') {
+    } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
         // Usuario despacho: ocultar estadísticas y usuarios, mostrar selector de cliente
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
@@ -942,7 +911,8 @@ async function saveQRCode(qrContent) {
             body: JSON.stringify({
                 qrContent,
                 userEmail: currentUsername,
-                userClient: userClientToUse
+                userClient: userClientToUse,
+                userTipo: currentUserType
             })
         });
 

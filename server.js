@@ -87,14 +87,9 @@ app.post('/api/validate-user', async (req, res) => {
 
     // Validar tipo de usuario según el flujo de login
     if (normalizedType === 'user') {
-      // Flujo "usuarios": acepta mecánico
-      if (storedType !== 'mecanico') {
+      // Flujo "usuarios": acepta mecánico y despacho
+      if (!['mecanico', 'despacho'].includes(storedType)) {
         return res.json({ success: false, message: 'Tipo no autorizado para acceso de usuarios' });
-      }
-    } else if (normalizedType === 'dispatch') {
-      // Flujo "despacho": acepta despacho
-      if (storedType !== 'despacho') {
-        return res.json({ success: false, message: 'Tipo no autorizado para acceso de despacho' });
       }
     } else if (normalizedType === 'administrador') {
       // Flujo "administrador": acepta administrador y superadmin
@@ -117,7 +112,7 @@ app.post('/api/validate-user', async (req, res) => {
     } else if (storedType === 'despacho') {
       role = 'dispatch';
     }
-    // mecánico y despacho inician sesión como 'user' o 'dispatch'
+    // mecánico e despacho inician sesión como 'user' o 'dispatch'
     
     return res.json({ 
       success: true, 
@@ -1024,7 +1019,7 @@ app.post('/api/clients', async (req, res) => {
  */
 app.post('/api/save-qr', async (req, res) => {
   try {
-    const { qrContent, userEmail, userClient } = req.body;
+    const { qrContent, userEmail, userClient, userTipo } = req.body;
 
     // Validación de datos
     if (!qrContent) {
@@ -1317,7 +1312,7 @@ app.post('/api/save-qr', async (req, res) => {
       const nextClientId = clientRows.length + 1;
       const nextGlobalId = globalRows.length + 1;
 
-      // Registrar cliente automáticamente si no existe (cuando un usuario planta escanea por primera vez)
+      // Registrar cliente automáticamente si no existe (solo para usuarios despacho en primer escaneo)
       const clientsSheet = await getOrCreateClientsSheet(doc);
       const clientsRows = await clientsSheet.getRows();
       const normalizedClientName = userClient.trim().toUpperCase();
@@ -1325,7 +1320,8 @@ app.post('/api/save-qr', async (req, res) => {
         (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedClientName
       );
       
-      if (!clientExists) {
+      // Solo registrar cliente si el usuario es de tipo "despacho"
+      if (!clientExists && userTipo === 'despacho') {
         // Agregar cliente automáticamente
         const now = new Date().toLocaleDateString('es-ES');
         await clientsSheet.addRow({
