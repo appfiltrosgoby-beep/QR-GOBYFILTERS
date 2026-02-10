@@ -943,9 +943,17 @@ app.post('/api/save-qr', async (req, res) => {
       const currentState = existingGlobalRecord.get('ESTADO');
       const recordClient = existingGlobalRecord.get('CLIENTE'); // Cliente original del registro
       
-      // Obtener la hoja del cliente original para sincronizar
-      const clientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
-      const existingClientRecord = await findExistingRecord(clientSheet, referencia, serial);
+      // Obtener la hoja del cliente actual (quien escanea)
+      const currentClientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
+      const existingCurrentClientRecord = await findExistingRecord(currentClientSheet, referencia, serial);
+      
+      // Obtener la hoja del cliente original (si es diferente)
+      let originalClientSheet = null;
+      let existingOriginalClientRecord = null;
+      if (recordClient !== userClient) {
+        originalClientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
+        existingOriginalClientRecord = await findExistingRecord(originalClientSheet, referencia, serial);
+      }
       
       if (currentState === 'EN ALMACEN') {
         // SEGUNDO ESCANEO: Actualizar a DESPACHADO
@@ -954,12 +962,41 @@ app.post('/api/save-qr', async (req, res) => {
         existingGlobalRecord.set('HORA_DESPACHO', hora);
         await existingGlobalRecord.save();
 
-        // Actualizar también en hoja del cliente original
-        if (existingClientRecord) {
-          existingClientRecord.set('ESTADO', 'DESPACHADO');
-          existingClientRecord.set('FECHA_DESPACHO', fecha);
-          existingClientRecord.set('HORA_DESPACHO', hora);
-          await existingClientRecord.save();
+        // Actualizar o crear en la hoja del cliente actual
+        if (existingCurrentClientRecord) {
+          existingCurrentClientRecord.set('ESTADO', 'DESPACHADO');
+          existingCurrentClientRecord.set('FECHA_DESPACHO', fecha);
+          existingCurrentClientRecord.set('HORA_DESPACHO', hora);
+          await existingCurrentClientRecord.save();
+        } else {
+          // Crear nuevo registro en la hoja del cliente actual con todos los datos
+          const currentClientRows = await currentClientSheet.getRows();
+          await currentClientSheet.addRow({
+            'ID': currentClientRows.length + 1,
+            'REFERENCIA': referencia,
+            'SERIAL': serial,
+            'ESTADO': 'DESPACHADO',
+            'CLIENTE': recordClient,
+            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
+            'USUARIO_INSTALACION': '',
+            'USUARIO_DESINSTALACION': '',
+            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
+            'FECHA_DESPACHO': fecha,
+            'FECHA_INSTALACION': '',
+            'FECHA_DESINSTALACION': '',
+            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
+            'HORA_DESPACHO': hora,
+            'HORA_INSTALACION': '',
+            'HORA_DESINSTALACION': ''
+          });
+        }
+
+        // Actualizar también en hoja del cliente original (si es diferente)
+        if (existingOriginalClientRecord) {
+          existingOriginalClientRecord.set('ESTADO', 'DESPACHADO');
+          existingOriginalClientRecord.set('FECHA_DESPACHO', fecha);
+          existingOriginalClientRecord.set('HORA_DESPACHO', hora);
+          await existingOriginalClientRecord.save();
         }
 
         return res.json({ 
@@ -984,13 +1021,43 @@ app.post('/api/save-qr', async (req, res) => {
         existingGlobalRecord.set('HORA_INSTALACION', hora);
         await existingGlobalRecord.save();
 
-        // Actualizar también en hoja del cliente original
-        if (existingClientRecord) {
-          existingClientRecord.set('ESTADO', 'INSTALADO');
-          existingClientRecord.set('USUARIO_INSTALACION', userEmail || '');
-          existingClientRecord.set('FECHA_INSTALACION', fecha);
-          existingClientRecord.set('HORA_INSTALACION', hora);
-          await existingClientRecord.save();
+        // Actualizar o crear en la hoja del cliente actual
+        if (existingCurrentClientRecord) {
+          existingCurrentClientRecord.set('ESTADO', 'INSTALADO');
+          existingCurrentClientRecord.set('USUARIO_INSTALACION', userEmail || '');
+          existingCurrentClientRecord.set('FECHA_INSTALACION', fecha);
+          existingCurrentClientRecord.set('HORA_INSTALACION', hora);
+          await existingCurrentClientRecord.save();
+        } else {
+          // Crear nuevo registro en la hoja del cliente actual con todos los datos
+          const currentClientRows = await currentClientSheet.getRows();
+          await currentClientSheet.addRow({
+            'ID': currentClientRows.length + 1,
+            'REFERENCIA': referencia,
+            'SERIAL': serial,
+            'ESTADO': 'INSTALADO',
+            'CLIENTE': recordClient,
+            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
+            'USUARIO_INSTALACION': userEmail || '',
+            'USUARIO_DESINSTALACION': '',
+            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
+            'FECHA_DESPACHO': existingGlobalRecord.get('FECHA_DESPACHO'),
+            'FECHA_INSTALACION': fecha,
+            'FECHA_DESINSTALACION': '',
+            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
+            'HORA_DESPACHO': existingGlobalRecord.get('HORA_DESPACHO'),
+            'HORA_INSTALACION': hora,
+            'HORA_DESINSTALACION': ''
+          });
+        }
+
+        // Actualizar también en hoja del cliente original (si es diferente)
+        if (existingOriginalClientRecord) {
+          existingOriginalClientRecord.set('ESTADO', 'INSTALADO');
+          existingOriginalClientRecord.set('USUARIO_INSTALACION', userEmail || '');
+          existingOriginalClientRecord.set('FECHA_INSTALACION', fecha);
+          existingOriginalClientRecord.set('HORA_INSTALACION', hora);
+          await existingOriginalClientRecord.save();
         }
 
         return res.json({ 
@@ -1017,13 +1084,43 @@ app.post('/api/save-qr', async (req, res) => {
         existingGlobalRecord.set('HORA_DESINSTALACION', hora);
         await existingGlobalRecord.save();
 
-        // Actualizar también en hoja del cliente original
-        if (existingClientRecord) {
-          existingClientRecord.set('ESTADO', 'DESINSTALADO');
-          existingClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
-          existingClientRecord.set('FECHA_DESINSTALACION', fecha);
-          existingClientRecord.set('HORA_DESINSTALACION', hora);
-          await existingClientRecord.save();
+        // Actualizar o crear en la hoja del cliente actual
+        if (existingCurrentClientRecord) {
+          existingCurrentClientRecord.set('ESTADO', 'DESINSTALADO');
+          existingCurrentClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+          existingCurrentClientRecord.set('FECHA_DESINSTALACION', fecha);
+          existingCurrentClientRecord.set('HORA_DESINSTALACION', hora);
+          await existingCurrentClientRecord.save();
+        } else {
+          // Crear nuevo registro en la hoja del cliente actual con todos los datos
+          const currentClientRows = await currentClientSheet.getRows();
+          await currentClientSheet.addRow({
+            'ID': currentClientRows.length + 1,
+            'REFERENCIA': referencia,
+            'SERIAL': serial,
+            'ESTADO': 'DESINSTALADO',
+            'CLIENTE': recordClient,
+            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
+            'USUARIO_INSTALACION': existingGlobalRecord.get('USUARIO_INSTALACION'),
+            'USUARIO_DESINSTALACION': userEmail || '',
+            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
+            'FECHA_DESPACHO': existingGlobalRecord.get('FECHA_DESPACHO'),
+            'FECHA_INSTALACION': existingGlobalRecord.get('FECHA_INSTALACION'),
+            'FECHA_DESINSTALACION': fecha,
+            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
+            'HORA_DESPACHO': existingGlobalRecord.get('HORA_DESPACHO'),
+            'HORA_INSTALACION': existingGlobalRecord.get('HORA_INSTALACION'),
+            'HORA_DESINSTALACION': hora
+          });
+        }
+
+        // Actualizar también en hoja del cliente original (si es diferente)
+        if (existingOriginalClientRecord) {
+          existingOriginalClientRecord.set('ESTADO', 'DESINSTALADO');
+          existingOriginalClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+          existingOriginalClientRecord.set('FECHA_DESINSTALACION', fecha);
+          existingOriginalClientRecord.set('HORA_DESINSTALACION', hora);
+          await existingOriginalClientRecord.save();
         }
 
         return res.json({ 
@@ -1044,7 +1141,30 @@ app.post('/api/save-qr', async (req, res) => {
           }
         });
       } else {
-        // Ya fue DESINSTALADO, no permitir más escaneos
+        // Ya fue DESINSTALADO, mostrar información pero asegurar que existe en hoja del cliente actual
+        if (!existingCurrentClientRecord) {
+          // Crear el registro en la hoja del cliente actual para que pueda verlo
+          const currentClientRows = await currentClientSheet.getRows();
+          await currentClientSheet.addRow({
+            'ID': currentClientRows.length + 1,
+            'REFERENCIA': referencia,
+            'SERIAL': serial,
+            'ESTADO': 'DESINSTALADO',
+            'CLIENTE': recordClient,
+            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
+            'USUARIO_INSTALACION': existingGlobalRecord.get('USUARIO_INSTALACION'),
+            'USUARIO_DESINSTALACION': existingGlobalRecord.get('USUARIO_DESINSTALACION'),
+            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
+            'FECHA_DESPACHO': existingGlobalRecord.get('FECHA_DESPACHO'),
+            'FECHA_INSTALACION': existingGlobalRecord.get('FECHA_INSTALACION'),
+            'FECHA_DESINSTALACION': existingGlobalRecord.get('FECHA_DESINSTALACION'),
+            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
+            'HORA_DESPACHO': existingGlobalRecord.get('HORA_DESPACHO'),
+            'HORA_INSTALACION': existingGlobalRecord.get('HORA_INSTALACION'),
+            'HORA_DESINSTALACION': existingGlobalRecord.get('HORA_DESINSTALACION')
+          });
+        }
+
         return res.json({ 
           success: true, 
           action: 'already_completed',
