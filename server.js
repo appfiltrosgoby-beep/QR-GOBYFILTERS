@@ -927,35 +927,39 @@ app.post('/api/save-qr', async (req, res) => {
 
     const { referencia, serial } = parsedData;
 
-    // Conectar a Google Sheets y obtener hojas
+    // Conectar a Google Sheets y obtener la hoja REGISTROS global (fuente única de verdad)
     const doc = await getGoogleSheet();
-    const sheet = await getOrCreateClientRecordsSheet(doc, userClient);
     const globalSheet = await getOrCreateRecordsSheet(doc);
 
-    // Buscar si ya existe un registro con esta REFERENCIA y SERIAL
-    const existingRecord = await findExistingRecord(sheet, referencia, serial);
+    // Buscar si ya existe un registro con esta REFERENCIA y SERIAL en la hoja REGISTROS global
     const existingGlobalRecord = await findExistingRecord(globalSheet, referencia, serial);
     const now = new Date();
     const fecha = now.toLocaleDateString('es-ES');
     const hora = now.toLocaleTimeString('es-ES');
 
-    if (existingRecord) {
+    if (existingGlobalRecord) {
       // Registro existente: determinar siguiente estado
-      const currentState = existingRecord.get('ESTADO');
+      // La trazabilidad es por serial, independiente del usuario que escanee
+      const currentState = existingGlobalRecord.get('ESTADO');
+      const recordClient = existingGlobalRecord.get('CLIENTE'); // Cliente original del registro
+      
+      // Obtener la hoja del cliente original para sincronizar
+      const clientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
+      const existingClientRecord = await findExistingRecord(clientSheet, referencia, serial);
       
       if (currentState === 'EN ALMACEN') {
         // SEGUNDO ESCANEO: Actualizar a DESPACHADO
-        existingRecord.set('ESTADO', 'DESPACHADO');
-        existingRecord.set('FECHA_DESPACHO', fecha);
-        existingRecord.set('HORA_DESPACHO', hora);
-        await existingRecord.save();
+        existingGlobalRecord.set('ESTADO', 'DESPACHADO');
+        existingGlobalRecord.set('FECHA_DESPACHO', fecha);
+        existingGlobalRecord.set('HORA_DESPACHO', hora);
+        await existingGlobalRecord.save();
 
-        // Actualizar también en hoja global
-        if (existingGlobalRecord) {
-          existingGlobalRecord.set('ESTADO', 'DESPACHADO');
-          existingGlobalRecord.set('FECHA_DESPACHO', fecha);
-          existingGlobalRecord.set('HORA_DESPACHO', hora);
-          await existingGlobalRecord.save();
+        // Actualizar también en hoja del cliente original
+        if (existingClientRecord) {
+          existingClientRecord.set('ESTADO', 'DESPACHADO');
+          existingClientRecord.set('FECHA_DESPACHO', fecha);
+          existingClientRecord.set('HORA_DESPACHO', hora);
+          await existingClientRecord.save();
         }
 
         return res.json({ 
@@ -963,29 +967,30 @@ app.post('/api/save-qr', async (req, res) => {
           action: 'dispatched',
           message: '🚚 Producto marcado como DESPACHADO',
           data: {
-            id: existingRecord.get('ID'),
+            id: existingGlobalRecord.get('ID'),
             referencia,
             serial,
             estado: 'DESPACHADO',
-            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
+            cliente: recordClient,
+            fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: fecha
           }
         });
       } else if (currentState === 'DESPACHADO') {
         // TERCER ESCANEO: Actualizar a INSTALADO
-        existingRecord.set('ESTADO', 'INSTALADO');
-        existingRecord.set('USUARIO_INSTALACION', userEmail || '');
-        existingRecord.set('FECHA_INSTALACION', fecha);
-        existingRecord.set('HORA_INSTALACION', hora);
-        await existingRecord.save();
+        existingGlobalRecord.set('ESTADO', 'INSTALADO');
+        existingGlobalRecord.set('USUARIO_INSTALACION', userEmail || '');
+        existingGlobalRecord.set('FECHA_INSTALACION', fecha);
+        existingGlobalRecord.set('HORA_INSTALACION', hora);
+        await existingGlobalRecord.save();
 
-        // Actualizar también en hoja global
-        if (existingGlobalRecord) {
-          existingGlobalRecord.set('ESTADO', 'INSTALADO');
-          existingGlobalRecord.set('USUARIO_INSTALACION', userEmail || '');
-          existingGlobalRecord.set('FECHA_INSTALACION', fecha);
-          existingGlobalRecord.set('HORA_INSTALACION', hora);
-          await existingGlobalRecord.save();
+        // Actualizar también en hoja del cliente original
+        if (existingClientRecord) {
+          existingClientRecord.set('ESTADO', 'INSTALADO');
+          existingClientRecord.set('USUARIO_INSTALACION', userEmail || '');
+          existingClientRecord.set('FECHA_INSTALACION', fecha);
+          existingClientRecord.set('HORA_INSTALACION', hora);
+          await existingClientRecord.save();
         }
 
         return res.json({ 
@@ -993,31 +998,32 @@ app.post('/api/save-qr', async (req, res) => {
           action: 'installed',
           message: '🔧 Producto marcado como INSTALADO',
           data: {
-            id: existingRecord.get('ID'),
+            id: existingGlobalRecord.get('ID'),
             referencia,
             serial,
             estado: 'INSTALADO',
-            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
-            fechaDespacho: existingRecord.get('FECHA_DESPACHO'),
+            cliente: recordClient,
+            fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
+            fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
             fechaInstalacion: fecha,
             usuarioInstalacion: userEmail
           }
         });
       } else if (currentState === 'INSTALADO') {
         // CUARTO ESCANEO: Actualizar a DESINSTALADO
-        existingRecord.set('ESTADO', 'DESINSTALADO');
-        existingRecord.set('USUARIO_DESINSTALACION', userEmail || '');
-        existingRecord.set('FECHA_DESINSTALACION', fecha);
-        existingRecord.set('HORA_DESINSTALACION', hora);
-        await existingRecord.save();
+        existingGlobalRecord.set('ESTADO', 'DESINSTALADO');
+        existingGlobalRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+        existingGlobalRecord.set('FECHA_DESINSTALACION', fecha);
+        existingGlobalRecord.set('HORA_DESINSTALACION', hora);
+        await existingGlobalRecord.save();
 
-        // Actualizar también en hoja global
-        if (existingGlobalRecord) {
-          existingGlobalRecord.set('ESTADO', 'DESINSTALADO');
-          existingGlobalRecord.set('USUARIO_DESINSTALACION', userEmail || '');
-          existingGlobalRecord.set('FECHA_DESINSTALACION', fecha);
-          existingGlobalRecord.set('HORA_DESINSTALACION', hora);
-          await existingGlobalRecord.save();
+        // Actualizar también en hoja del cliente original
+        if (existingClientRecord) {
+          existingClientRecord.set('ESTADO', 'DESINSTALADO');
+          existingClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+          existingClientRecord.set('FECHA_DESINSTALACION', fecha);
+          existingClientRecord.set('HORA_DESINSTALACION', hora);
+          await existingClientRecord.save();
         }
 
         return res.json({ 
@@ -1025,13 +1031,14 @@ app.post('/api/save-qr', async (req, res) => {
           action: 'uninstalled',
           message: '📤 Producto marcado como DESINSTALADO',
           data: {
-            id: existingRecord.get('ID'),
+            id: existingGlobalRecord.get('ID'),
             referencia,
             serial,
             estado: 'DESINSTALADO',
-            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
-            fechaDespacho: existingRecord.get('FECHA_DESPACHO'),
-            fechaInstalacion: existingRecord.get('FECHA_INSTALACION'),
+            cliente: recordClient,
+            fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
+            fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
+            fechaInstalacion: existingGlobalRecord.get('FECHA_INSTALACION'),
             fechaDesinstalacion: fecha,
             usuarioDesinstalacion: userEmail
           }
@@ -1046,18 +1053,21 @@ app.post('/api/save-qr', async (req, res) => {
             referencia,
             serial,
             estado: currentState,
-            fechaAlmacen: existingRecord.get('FECHA_ALMACEN'),
-            fechaDespacho: existingRecord.get('FECHA_DESPACHO'),
-            fechaInstalacion: existingRecord.get('FECHA_INSTALACION'),
-            fechaDesinstalacion: existingRecord.get('FECHA_DESINSTALACION')
+            cliente: recordClient,
+            fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
+            fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
+            fechaInstalacion: existingGlobalRecord.get('FECHA_INSTALACION'),
+            fechaDesinstalacion: existingGlobalRecord.get('FECHA_DESINSTALACION')
           }
         });
       }
     } else {
       // PRIMER ESCANEO: Crear nuevo registro EN ALMACEN
-      const rows = await sheet.getRows();
+      // El registro se crea en REGISTROS global y en la hoja del cliente
+      const clientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
+      const clientRows = await clientSheet.getRows();
       const globalRows = await globalSheet.getRows();
-      const nextId = rows.length + 1;
+      const nextClientId = clientRows.length + 1;
       const nextGlobalId = globalRows.length + 1;
 
       const newRecordData = {
@@ -1078,15 +1088,15 @@ app.post('/api/save-qr', async (req, res) => {
         'HORA_DESINSTALACION': ''
       };
 
-      // Guardar en hoja del cliente
-      await sheet.addRow({
-        'ID': nextId,
+      // Guardar en hoja global REGISTROS (fuente única de verdad)
+      await globalSheet.addRow({
+        'ID': nextGlobalId,
         ...newRecordData
       });
 
-      // Guardar también en hoja global REGISTROS
-      await globalSheet.addRow({
-        'ID': nextGlobalId,
+      // Guardar también en hoja del cliente
+      await clientSheet.addRow({
+        'ID': nextClientId,
         ...newRecordData
       });
 
@@ -1095,10 +1105,11 @@ app.post('/api/save-qr', async (req, res) => {
         action: 'stored',
         message: '✅ Producto registrado EN ALMACEN',
         data: {
-          id: nextId,
+          id: nextGlobalId,
           referencia,
           serial,
           estado: 'EN ALMACEN',
+          cliente: userClient,
           fechaAlmacen: fecha
         }
       });
