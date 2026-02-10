@@ -574,7 +574,6 @@ function setupEventListeners() {
     
     // Event listeners de autenticación
     elements.loginUserBtn.addEventListener('click', showUserEmailForm);
-    elements.loginDispatchBtn.addEventListener('click', showDispatchEmailForm);
     elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
     elements.submitUserBtn.addEventListener('click', validateUserLogin);
     elements.cancelUserBtn.addEventListener('click', cancelUserLogin);
