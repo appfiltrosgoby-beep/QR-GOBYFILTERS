@@ -49,6 +49,14 @@
                         <h2>📸 ESCANEA EL CODIGO QR</h2>
                     </div>
                     <div class="card-body">
+                        <!-- Selector de cliente (solo para usuarios planta) -->
+                        <div id="clientSelectorContainer" class="client-selector-container hidden">
+                            <label for="selectedClient">Selecciona Cliente:</label>
+                            <select id="selectedClient" class="input-filter">
+                                <option value="">-- Seleccionar Cliente --</option>
+                            </select>
+                        </div>
+
                         <!-- Área del escáner -->
                         <div id="reader" class="qr-reader"></div>
                         

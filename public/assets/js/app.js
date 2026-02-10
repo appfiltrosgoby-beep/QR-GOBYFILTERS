@@ -62,11 +62,13 @@ const elements = {
     newUserClient: document.getElementById('newUserClient'),
     newUserType: document.getElementById('newUserType'),
     createUserBtn: document.getElementById('createUserBtn'),
-        updateUserBtn: document.getElementById('updateUserBtn'),
-        cancelEditBtn: document.getElementById('cancelEditBtn'),
+    updateUserBtn: document.getElementById('updateUserBtn'),
+    cancelEditBtn: document.getElementById('cancelEditBtn'),
     userFormError: document.getElementById('userFormError'),
     refreshUsersBtn: document.getElementById('refreshUsersBtn'),
-    usersBody: document.getElementById('usersBody')
+    usersBody: document.getElementById('usersBody'),
+    clientSelectorContainer: document.getElementById('clientSelectorContainer'),
+    selectedClient: document.getElementById('selectedClient')
 };
 
 // ============================================
@@ -342,7 +344,7 @@ function applyRolePermissions() {
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     
     if (currentUserRole === 'user') {
-        // Usuario: ocultar estadísticas y usuarios
+        // Usuario planta: ocultar estadísticas y usuarios, mostrar selector de cliente
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
@@ -352,6 +354,11 @@ function applyRolePermissions() {
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
         }
+        // Mostrar selector de cliente para usuarios planta
+        if (elements.clientSelectorContainer) {
+            elements.clientSelectorContainer.classList.remove('hidden');
+            loadClientsSelect();
+        }
         // Si está en vista de estadísticas/usuarios, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
@@ -360,7 +367,7 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'admin') {
-        // Admin: ocultar estadísticas, mostrar escáner, registros y usuarios
+        // Admin: ocultar estadísticas y selector, mostrar escáner, registros y usuarios
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
@@ -369,6 +376,10 @@ function applyRolePermissions() {
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
+        }
+        // Ocultar selector de cliente para admins
+        if (elements.clientSelectorContainer) {
+            elements.clientSelectorContainer.classList.add('hidden');
         }
         // Si está en vista de estadísticas, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
@@ -390,6 +401,10 @@ function applyRolePermissions() {
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'none';
+        }
+        // Ocultar selector de cliente para superadmin
+        if (elements.clientSelectorContainer) {
+            elements.clientSelectorContainer.classList.add('hidden');
         }
         if (document.getElementById('scannerView').classList.contains('active')) {
             switchView('recordsView');
@@ -815,6 +830,32 @@ function updateScannerUI(scanning) {
 }
 
 /**
+ * Carga la lista de clientes en el selector
+ */
+async function loadClientsSelect() {
+    try {
+        const response = await fetch(`${API_URL}/api/clients`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+            // Limpiar opciones excepto la primera
+            elements.selectedClient.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+            
+            // Agregar opciones de clientes
+            result.data.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.nombre;
+                option.textContent = client.nombre;
+                elements.selectedClient.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error al cargar clientes:', error);
+        showToast('⚠️ Error al cargar lista de clientes', 'warning');
+    }
+}
+
+/**
  * Actualiza el mensaje de estado del escáner
  */
 function updateStatus(message, type = 'info') {
@@ -833,6 +874,17 @@ async function saveQRCode(qrContent) {
     try {
         updateStatus('💾 Guardando...', 'saving');
         
+        // Para usuarios planta: validar que haya seleccionado cliente
+        let userClientToUse = currentUserClient;
+        if (currentUserRole === 'user') {
+            userClientToUse = elements.selectedClient.value;
+            if (!userClientToUse) {
+                showToast('⚠️ Debes seleccionar un cliente antes de escanear', 'warning');
+                updateStatus('⚠️ Selecciona un cliente', 'warning');
+                return;
+            }
+        }
+        
         const response = await fetch(`${API_URL}/api/save-qr`, {
             method: 'POST',
             headers: {
@@ -841,7 +893,7 @@ async function saveQRCode(qrContent) {
             body: JSON.stringify({
                 qrContent,
                 userEmail: currentUsername,
-                userClient: currentUserClient
+                userClient: userClientToUse
             })
         });
 

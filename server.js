@@ -603,6 +603,29 @@ async function getOrCreateRecordsSheet(doc) {
 }
 
 /**
+ * Obtiene o crea la hoja de clientes
+ * @param {GoogleSpreadsheet} doc
+ */
+async function getOrCreateClientsSheet(doc) {
+  const CLIENTS_SHEET_TITLE = 'CLIENTES';
+  let sheet = doc.sheetsByTitle[CLIENTS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: CLIENTS_SHEET_TITLE,
+      headerValues: [
+        'NOMBRE',
+        'FECHA_REGISTRO'
+      ]
+    });
+    console.log('✅ Creada hoja CLIENTES');
+  }
+
+  await sheet.loadHeaderRow();
+  return sheet;
+}
+
+/**
  * Obtiene o crea la hoja de usuarios
  * @param {GoogleSpreadsheet} doc
  */
@@ -888,6 +911,103 @@ app.get('/api/health', (req, res) => {
     message: 'Servidor funcionando correctamente',
     timestamp: new Date().toISOString()
   });
+});
+
+/**
+ * Obtiene lista de clientes
+ * GET /api/clients
+ */
+app.get('/api/clients', async (req, res) => {
+  try {
+    const doc = await getGoogleSheet();
+    const sheet = await getOrCreateClientsSheet(doc);
+    const rows = await sheet.getRows();
+
+    const clients = rows.map(row => ({
+      nombre: row.get('NOMBRE') || ''
+    })).filter(c => c.nombre.trim() !== '');
+
+    res.json({ 
+      success: true, 
+      data: clients
+    });
+  } catch (error) {
+    console.error('Error al obtener clientes:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error al obtener clientes',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Registra un nuevo cliente
+ * POST /api/clients
+ * Body: { nombre, authUser, authPassword }
+ */
+app.post('/api/clients', async (req, res) => {
+  try {
+    const { nombre, authUser, authPassword } = req.body;
+
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'El nombre del cliente es requerido' 
+      });
+    }
+
+    // Validar que sea superadmin
+    const doc = await getGoogleSheet();
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    
+    if (!authData || authData.tipo !== 'super') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Solo superadmin puede agregar clientes' 
+      });
+    }
+
+    // Obtener hoja de clientes
+    const sheet = await getOrCreateClientsSheet(doc);
+    const rows = await sheet.getRows();
+
+    // Verificar que no exista ya
+    const normalizedNombre = nombre.trim().toUpperCase();
+    const exists = rows.some(row => 
+      (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedNombre
+    );
+
+    if (exists) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Este cliente ya existe' 
+      });
+    }
+
+    // Agregar nuevo cliente
+    const now = new Date().toLocaleDateString('es-ES');
+    await sheet.addRow({
+      'NOMBRE': nombre.trim(),
+      'FECHA_REGISTRO': now
+    });
+
+    res.json({ 
+      success: true, 
+      message: '✅ Cliente registrado correctamente',
+      data: {
+        nombre: nombre.trim(),
+        fechaRegistro: now
+      }
+    });
+  } catch (error) {
+    console.error('Error al registrar cliente:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error al registrar cliente',
+      details: error.message 
+    });
+  }
 });
 
 /**
@@ -1189,6 +1309,23 @@ app.post('/api/save-qr', async (req, res) => {
       const globalRows = await globalSheet.getRows();
       const nextClientId = clientRows.length + 1;
       const nextGlobalId = globalRows.length + 1;
+
+      // Registrar cliente automáticamente si no existe (cuando un usuario planta escanea por primera vez)
+      const clientsSheet = await getOrCreateClientsSheet(doc);
+      const clientsRows = await clientsSheet.getRows();
+      const normalizedClientName = userClient.trim().toUpperCase();
+      const clientExists = clientsRows.some(row => 
+        (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedClientName
+      );
+      
+      if (!clientExists) {
+        // Agregar cliente automáticamente
+        const now = new Date().toLocaleDateString('es-ES');
+        await clientsSheet.addRow({
+          'NOMBRE': userClient.trim(),
+          'FECHA_REGISTRO': now
+        });
+      }
 
       const newRecordData = {
         'REFERENCIA': referencia,
