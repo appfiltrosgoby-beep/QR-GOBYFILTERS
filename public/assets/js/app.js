@@ -19,8 +19,10 @@ let currentUserType = null; // Tipo de usuario: 'mecanico', 'despacho', 'adminis
 let allStatsData = []; // Guardar todos los datos de estadísticas para filtrado
 let currentFilteredData = []; // Guardar datos filtrados actual
 let editingUser = null; // Usuario que se está editando (para el formulario de usuarios)
+let editingClient = null; // Cliente que se está editando (para el formulario de clientes)
 let allRecordsData = []; // Guardar todos los registros para filtrado
 let allUsersData = []; // Guardar todos los usuarios para filtrado
+let allClientsData = []; // Guardar todos los clientes para filtrado
 
 // Elementos del DOM
 const elements = {
@@ -68,7 +70,14 @@ const elements = {
     refreshUsersBtn: document.getElementById('refreshUsersBtn'),
     usersBody: document.getElementById('usersBody'),
     clientSelectorContainer: document.getElementById('clientSelectorContainer'),
-    selectedClient: document.getElementById('selectedClient')
+    selectedClient: document.getElementById('selectedClient'),
+    newClientName: document.getElementById('newClientName'),
+    createClientBtn: document.getElementById('createClientBtn'),
+    updateClientBtn: document.getElementById('updateClientBtn'),
+    cancelEditClientBtn: document.getElementById('cancelEditClientBtn'),
+    clientFormError: document.getElementById('clientFormError'),
+    refreshClientsBtn: document.getElementById('refreshClientsBtn'),
+    clientsBody: document.getElementById('clientsBody')
 };
 
 // ============================================
@@ -352,15 +361,19 @@ function applyRolePermissions() {
     // Ocultar/mostrar vistas
     const statsNavBtn = document.querySelector('[data-view="statsView"]');
     const usersNavBtn = document.querySelector('[data-view="usersView"]');
+    const clientsNavBtn = document.querySelector('[data-view="clientsView"]');
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     
     if (currentUserRole === 'user' && currentUserType === 'mecanico') {
-        // Usuario mecánico: ocultar estadísticas y usuarios, mostrar escáner sin selector
+        // Usuario mecánico: ocultar estadísticas, usuarios y clientes, mostrar escáner sin selector
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'none';
+        }
+        if (clientsNavBtn) {
+            clientsNavBtn.style.display = 'none';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
@@ -369,20 +382,26 @@ function applyRolePermissions() {
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
-        // Si está en vista de estadísticas/usuarios, redirigir a escáner
+        // Si está en vista de estadísticas/usuarios/clientes, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
         if (document.getElementById('usersView').classList.contains('active')) {
             switchView('scannerView');
         }
+        if (document.getElementById('clientsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
     } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
-        // Usuario despacho: ocultar estadísticas y usuarios, mostrar selector de cliente
+        // Usuario despacho: ocultar estadísticas, usuarios y clientes, mostrar selector de cliente
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'none';
+        }
+        if (clientsNavBtn) {
+            clientsNavBtn.style.display = 'none';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
@@ -392,20 +411,26 @@ function applyRolePermissions() {
             elements.clientSelectorContainer.classList.remove('hidden');
             loadClientsSelect();
         }
-        // Si está en vista de estadísticas/usuarios, redirigir a escáner
+        // Si está en vista de estadísticas/usuarios/clientes, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
         if (document.getElementById('usersView').classList.contains('active')) {
             switchView('scannerView');
         }
+        if (document.getElementById('clientsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
     } else if (currentUserRole === 'admin') {
-        // Admin: ocultar estadísticas y selector, mostrar escáner, registros y usuarios
+        // Admin: ocultar estadísticas, clientes y selector, mostrar escáner, registros y usuarios
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'flex';
+        }
+        if (clientsNavBtn) {
+            clientsNavBtn.style.display = 'none';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
@@ -414,8 +439,11 @@ function applyRolePermissions() {
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
-        // Si está en vista de estadísticas, redirigir a escáner
+        // Si está en vista de estadísticas o clientes, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+        if (document.getElementById('clientsView').classList.contains('active')) {
             switchView('scannerView');
         }
         
@@ -425,12 +453,15 @@ function applyRolePermissions() {
             userForm.style.display = 'none';
         }
     } else {
-        // Superadmin: mostrar estadísticas, registros y usuarios (ocultar escáner)
+        // Superadmin: mostrar estadísticas, registros, usuarios y clientes (ocultar escáner)
         if (statsNavBtn) {
             statsNavBtn.style.display = 'flex';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'flex';
+        }
+        if (clientsNavBtn) {
+            clientsNavBtn.style.display = 'flex';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'none';
@@ -448,6 +479,9 @@ function applyRolePermissions() {
         if (userForm) {
             userForm.style.display = 'block';
         }
+        
+        // Cargar clientes para superadmin
+        loadClients();
     }
     
     // Mostrar/ocultar filtros de cliente según el rol (para todos los roles)
@@ -502,6 +536,8 @@ function switchView(viewId) {
         loadStats();
     } else if (viewId === 'usersView') {
         loadUsers();
+    } else if (viewId === 'clientsView') {
+        loadClients();
     }
 }
 
@@ -647,8 +683,56 @@ function setupEventListeners() {
         });
     }
 
+    // Event listener para tipo de usuario: deshabilitar cliente si es super
+    if (elements.newUserType) {
+        elements.newUserType.addEventListener('change', () => {
+            if (elements.newUserType.value === 'super') {
+                elements.newUserClient.value = '';
+                elements.newUserClient.disabled = true;
+                elements.newUserClient.style.opacity = '0.5';
+            } else {
+                elements.newUserClient.disabled = false;
+                elements.newUserClient.style.opacity = '1';
+            }
+        });
+    }
+
     if (elements.refreshUsersBtn) {
         elements.refreshUsersBtn.addEventListener('click', loadUsers);
+    }
+    
+    // Event listeners de gestión de clientes
+    if (elements.createClientBtn) {
+        elements.createClientBtn.addEventListener('click', createClient);
+
+        if (elements.updateClientBtn) {
+            elements.updateClientBtn.addEventListener('click', updateClient);
+        }
+
+        if (elements.cancelEditClientBtn) {
+            elements.cancelEditClientBtn.addEventListener('click', cancelEditClient);
+        }
+    }
+
+    if (elements.newClientName) {
+        elements.newClientName.addEventListener('input', () => {
+            elements.clientFormError.classList.add('hidden');
+            elements.clientFormError.textContent = '';
+        });
+
+        elements.newClientName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (editingClient) {
+                    updateClient();
+                } else {
+                    createClient();
+                }
+            }
+        });
+    }
+
+    if (elements.refreshClientsBtn) {
+        elements.refreshClientsBtn.addEventListener('click', loadClients);
     }
     
     // Event listeners de estadísticas
@@ -907,14 +991,15 @@ async function saveQRCode(qrContent) {
     try {
         updateStatus('💾 Guardando...', 'saving');
         
-        // Para usuarios despacho: validar que haya seleccionado cliente
+        // Para usuarios despacho: el cliente solo es requerido después del primer escaneo
+        // En el primer escaneo, pueden escanear sin seleccionar cliente
         let userClientToUse = currentUserClient;
         if (currentUserRole === 'dispatch') {
-            userClientToUse = elements.selectedClient.value;
+            userClientToUse = elements.selectedClient.value || ''; // Permitir vacío en primer escaneo
+            
+            // Si no hay cliente seleccionado, mostrar advertencia
             if (!userClientToUse) {
-                showToast('⚠️ Debes seleccionar un cliente antes de escanear', 'warning');
-                updateStatus('⚠️ Selecciona un cliente', 'warning');
-                return;
+                showToast('⚠️ Recuerda: Necesitas seleccionar un cliente para DESPACHAR productos', 'warning');
             }
         }
         
@@ -989,6 +1074,13 @@ async function saveQRCode(qrContent) {
                 showToast('✅ Producto registrado EN ALMACEN', 'success');
                 updateStatus(`✅ ${result.data.referencia} | ${result.data.serial} - EN ALMACEN`, 'success');
                 displayLastResult(result.data, 'EN ALMACEN');
+                
+                // Recordatorio para usuario despacho
+                if (currentUserRole === 'dispatch') {
+                    setTimeout(() => {
+                        showToast('ℹ️ Para despachar, selecciona un cliente y escanea nuevamente', 'info');
+                    }, 2000);
+                }
             } else if (action === 'dispatched') {
                 // Segundo escaneo - DESPACHADO
                 showToast('� Producto marcado como DESPACHADO', 'success');
@@ -1096,7 +1188,7 @@ async function loadStats() {
 async function createUser() {
     const usuario = elements.newUserUsername.value.trim();
     const password = elements.newUserPassword.value.trim();
-    const cliente = elements.newUserClient.value.trim().toUpperCase();
+    const cliente = elements.newUserClient.value.trim(); // Ya viene del select
     const tipo = elements.newUserType.value;
 
     if (!usuario || !password) {
@@ -1161,7 +1253,7 @@ async function updateUser() {
     }
 
     const password = elements.newUserPassword.value.trim();
-    const cliente = elements.newUserClient.value.trim().toUpperCase();
+    const cliente = elements.newUserClient.value.trim(); // Ya viene del select
     const tipo = elements.newUserType.value;
 
     if (!password) {
@@ -1224,6 +1316,15 @@ function editUser(usuario, tipo, cliente) {
     elements.newUserClient.value = cliente || '';
     elements.newUserType.value = tipo || 'mecanico';
     
+    // Habilitar/deshabilitar select de cliente según el tipo
+    if (tipo === 'super') {
+        elements.newUserClient.disabled = true;
+        elements.newUserClient.style.opacity = '0.5';
+    } else {
+        elements.newUserClient.disabled = false;
+        elements.newUserClient.style.opacity = '1';
+    }
+    
     elements.createUserBtn.classList.add('hidden');
     elements.updateUserBtn.classList.remove('hidden');
     elements.cancelEditBtn.classList.remove('hidden');
@@ -1244,6 +1345,8 @@ function cancelEditUser() {
     elements.newUserUsername.disabled = false;
     elements.newUserPassword.value = '';
     elements.newUserClient.value = '';
+    elements.newUserClient.disabled = false;
+    elements.newUserClient.style.opacity = '1';
     elements.newUserType.value = 'administrador';
     
     elements.createUserBtn.classList.remove('hidden');
@@ -1299,6 +1402,9 @@ async function loadUsers() {
     if ((currentUserRole !== 'superadmin' && currentUserRole !== 'admin') || !currentUserPassword) {
         return;
     }
+
+    // Cargar clientes en el select del formulario de usuarios
+    await loadClientsForUserForm();
 
     try {
         const response = await fetch(`${API_URL}/api/users`, {
@@ -1368,6 +1474,285 @@ function displayUsers(users) {
             </tr>
         `;
     }).join('');
+}
+
+// ============================================
+// GESTIÓN DE CLIENTES
+// ============================================
+
+/**
+ * Crea un nuevo cliente
+ */
+async function createClient() {
+    const nombre = elements.newClientName.value.trim();
+
+    if (!nombre) {
+        elements.clientFormError.textContent = 'El nombre del cliente es requerido';
+        elements.clientFormError.classList.remove('hidden');
+        return;
+    }
+
+    if (!currentUserPassword || currentUserRole !== 'superadmin') {
+        elements.clientFormError.textContent = 'No autorizado. Inicia sesión como superadmin.';
+        elements.clientFormError.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/clients`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nombre,
+                authUser: currentUsername,
+                authPassword: currentUserPassword
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('✅ Cliente creado exitosamente', 'success');
+            elements.newClientName.value = '';
+            elements.clientFormError.classList.add('hidden');
+            await loadClients();
+            await loadClientsSelect(); // Actualizar selector de clientes
+            await loadClientsForUserForm(); // Actualizar select en formulario de usuarios
+        } else {
+            elements.clientFormError.textContent = result.error || 'No se pudo crear el cliente';
+            elements.clientFormError.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error al crear cliente:', error);
+        elements.clientFormError.textContent = 'Error al crear cliente';
+        elements.clientFormError.classList.remove('hidden');
+    }
+}
+
+/**
+ * Actualiza un cliente existente
+ */
+async function updateClient() {
+    if (!editingClient) {
+        showToast('No hay cliente en edición', 'error');
+        return;
+    }
+
+    const nuevoNombre = elements.newClientName.value.trim();
+
+    if (!nuevoNombre) {
+        elements.clientFormError.textContent = 'El nombre del cliente es requerido';
+        elements.clientFormError.classList.remove('hidden');
+        return;
+    }
+
+    if (!currentUserPassword || currentUserRole !== 'superadmin') {
+        elements.clientFormError.textContent = 'No autorizado. Inicia sesión como superadmin.';
+        elements.clientFormError.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/clients`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nombreActual: editingClient,
+                nuevoNombre,
+                authUser: currentUsername,
+                authPassword: currentUserPassword
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('✅ Cliente actualizado exitosamente', 'success');
+            cancelEditClient();
+            await loadClients();
+            await loadClientsSelect(); // Actualizar selector de clientes
+            await loadClientsForUserForm(); // Actualizar select en formulario de usuarios
+        } else {
+            elements.clientFormError.textContent = result.error || 'No se pudo actualizar el cliente';
+            elements.clientFormError.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error al actualizar cliente:', error);
+        elements.clientFormError.textContent = 'Error al actualizar cliente';
+        elements.clientFormError.classList.remove('hidden');
+    }
+}
+
+/**
+ * Prepara el formulario para editar un cliente
+ */
+function editClient(nombre) {
+    editingClient = nombre;
+    
+    elements.newClientName.value = nombre;
+    
+    elements.createClientBtn.classList.add('hidden');
+    elements.updateClientBtn.classList.remove('hidden');
+    elements.cancelEditClientBtn.classList.remove('hidden');
+    
+    elements.clientFormError.classList.add('hidden');
+    
+    // Scroll al formulario
+    document.getElementById('clientsView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/**
+ * Cancela la edición de cliente
+ */
+function cancelEditClient() {
+    editingClient = null;
+    
+    elements.newClientName.value = '';
+    
+    elements.createClientBtn.classList.remove('hidden');
+    elements.updateClientBtn.classList.add('hidden');
+    elements.cancelEditClientBtn.classList.add('hidden');
+    
+    elements.clientFormError.classList.add('hidden');
+}
+
+/**
+ * Elimina un cliente
+ */
+async function deleteClient(nombre) {
+    if (!confirm(`¿Estás seguro de eliminar el cliente "${nombre}"?\n\nAdvertencia: Esto también eliminará las hojas asociadas al cliente si no tiene registros.`)) {
+        return;
+    }
+
+    if (!currentUserPassword || currentUserRole !== 'superadmin') {
+        showToast('No autorizado', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/clients`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nombre,
+                authUser: currentUsername,
+                authPassword: currentUserPassword
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('✅ Cliente eliminado exitosamente', 'success');
+            if (editingClient === nombre) {
+                cancelEditClient();
+            }
+            await loadClients();
+            await loadClientsSelect(); // Actualizar selector de clientes
+            await loadClientsForUserForm(); // Actualizar select en formulario de usuarios
+        } else {
+            showToast(result.error || 'No se pudo eliminar el cliente', 'error');
+        }
+    } catch (error) {
+        console.error('Error al eliminar cliente:', error);
+        showToast('Error al eliminar cliente', 'error');
+    }
+}
+
+/**
+ * Carga clientes registrados (solo superadmin)
+ */
+async function loadClients() {
+    if (currentUserRole !== 'superadmin') {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/clients`);
+        const result = await response.json();
+
+        if (result.success) {
+            allClientsData = result.data;
+            displayClients(allClientsData);
+        } else {
+            allClientsData = [];
+            showToast(result.error || 'No se pudieron cargar clientes', 'error');
+        }
+    } catch (error) {
+        console.error('Error al cargar clientes:', error);
+        showToast('Error al cargar clientes', 'error');
+    }
+}
+
+/**
+ * Muestra los clientes en la tabla
+ */
+function displayClients(clients) {
+    if (!elements.clientsBody) return;
+
+    if (!clients || clients.length === 0) {
+        elements.clientsBody.innerHTML = `
+            <tr>
+                <td colspan="2" class="no-data">No hay clientes para mostrar</td>
+            </tr>
+        `;
+        return;
+    }
+
+    elements.clientsBody.innerHTML = clients.map(client => {
+        const actionButtons = currentUserRole === 'superadmin' ? `
+            <div style="display: flex; gap: 8px; justify-content: center;">
+                <button class="btn-icon-small btn-edit" onclick="editClient('${client.nombre}')" title="Editar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </button>
+                <button class="btn-icon-small btn-delete" onclick="deleteClient('${client.nombre}')" title="Eliminar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                </button>
+            </div>
+        ` : '-';
+
+        return `
+            <tr>
+                <td class="content-cell"><strong>${client.nombre || 'N/A'}</strong></td>
+                <td>${actionButtons}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Carga los clientes en el select del formulario de usuarios
+ */
+async function loadClientsForUserForm() {
+    if (!elements.newUserClient) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/clients`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+            // Limpiar opciones excepto la primera
+            elements.newUserClient.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+            
+            // Agregar opciones de clientes
+            result.data.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.nombre;
+                option.textContent = client.nombre;
+                elements.newUserClient.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error al cargar clientes para formulario:', error);
+    }
 }
 
 // ============================================

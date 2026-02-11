@@ -994,12 +994,61 @@ app.post('/api/clients', async (req, res) => {
       'FECHA_REGISTRO': now
     });
 
+    // Crear automáticamente las hojas de usuarios y registros para este cliente
+    await doc.loadInfo();
+    const clienteNormalizado = nombre.trim().toUpperCase();
+    
+    // Crear hoja de usuarios del cliente
+    const usersSheetName = `${clienteNormalizado}_USUARIOS`;
+    let usersSheet = doc.sheetsByTitle[usersSheetName];
+    if (!usersSheet) {
+      usersSheet = await doc.addSheet({
+        title: usersSheetName,
+        headerValues: [
+          'USUARIO',
+          'TIPO',
+          'CONTRASEÑA',
+          'CLIENTE'
+        ]
+      });
+      console.log(`✅ Creada hoja de usuarios: ${usersSheetName}`);
+    }
+    
+    // Crear hoja de registros del cliente
+    const recordsSheetName = `${clienteNormalizado}_REGISTROS`;
+    let recordsSheet = doc.sheetsByTitle[recordsSheetName];
+    if (!recordsSheet) {
+      recordsSheet = await doc.addSheet({
+        title: recordsSheetName,
+        headerValues: [
+          'ID',
+          'REFERENCIA',
+          'SERIAL',
+          'ESTADO',
+          'CLIENTE',
+          'USUARIO_PLANTA',
+          'USUARIO_INSTALACION',
+          'USUARIO_DESINSTALACION',
+          'FECHA_ALMACEN',
+          'FECHA_DESPACHO',
+          'FECHA_INSTALACION',
+          'FECHA_DESINSTALACION',
+          'HORA_ALMACEN',
+          'HORA_DESPACHO',
+          'HORA_INSTALACION',
+          'HORA_DESINSTALACION'
+        ]
+      });
+      console.log(`✅ Creada hoja de registros: ${recordsSheetName}`);
+    }
+
     res.json({ 
       success: true, 
-      message: '✅ Cliente registrado correctamente',
+      message: '✅ Cliente y hojas creadas correctamente',
       data: {
         nombre: nombre.trim(),
-        fechaRegistro: now
+        fechaRegistro: now,
+        hojasCreadas: [usersSheetName, recordsSheetName]
       }
     });
   } catch (error) {
@@ -1007,6 +1056,234 @@ app.post('/api/clients', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: 'Error al registrar cliente',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Actualiza un cliente existente
+ * PUT /api/clients
+ * Body: { nombreActual, nuevoNombre, authUser, authPassword }
+ */
+app.put('/api/clients', async (req, res) => {
+  try {
+    const { nombreActual, nuevoNombre, authUser, authPassword } = req.body;
+
+    if (!nombreActual || !nombreActual.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'El nombre actual del cliente es requerido' 
+      });
+    }
+
+    if (!nuevoNombre || !nuevoNombre.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'El nuevo nombre del cliente es requerido' 
+      });
+    }
+
+    // Validar que sea superadmin
+    const doc = await getGoogleSheet();
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    
+    if (!authData || authData.tipo !== 'super') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Solo superadmin puede editar clientes' 
+      });
+    }
+
+    // Obtener hoja de clientes
+    const sheet = await getOrCreateClientsSheet(doc);
+    const rows = await sheet.getRows();
+
+    // Buscar el cliente a editar
+    const normalizedActual = nombreActual.trim().toUpperCase();
+    const clienteRow = rows.find(row => 
+      (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedActual
+    );
+
+    if (!clienteRow) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Cliente no encontrado' 
+      });
+    }
+
+    // Verificar que el nuevo nombre no exista ya (si es diferente)
+    const normalizedNuevo = nuevoNombre.trim().toUpperCase();
+    if (normalizedActual !== normalizedNuevo) {
+      const exists = rows.some(row => 
+        (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedNuevo
+      );
+
+      if (exists) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Ya existe un cliente con ese nombre' 
+        });
+      }
+    }
+
+    // Actualizar el cliente
+    clienteRow.set('NOMBRE', nuevoNombre.trim());
+    await clienteRow.save();
+
+    // También actualizar el nombre del cliente en:
+    // 1. Hoja de registros globales
+    // 2. Hoja de usuarios del cliente
+    // 3. Renombrar la hoja del cliente (si existe)
+    
+    await doc.loadInfo();
+    
+    // Actualizar registros globales
+    const registrosSheet = await getOrCreateRecordsSheet(doc);
+    const registrosRows = await registrosSheet.getRows();
+    for (const row of registrosRows) {
+      if ((row.get('CLIENTE') || '').trim().toUpperCase() === normalizedActual) {
+        row.set('CLIENTE', nuevoNombre.trim());
+        await row.save();
+      }
+    }
+
+    // Actualizar usuarios del cliente
+    const oldClientUsersSheetName = `${normalizedActual}_USUARIOS`;
+    const oldClientRecordsSheetName = `${normalizedActual}_REGISTROS`;
+    const newClientUsersSheetName = `${normalizedNuevo}_USUARIOS`;
+    const newClientRecordsSheetName = `${normalizedNuevo}_REGISTROS`;
+
+    // Renombrar hoja de usuarios si existe
+    const oldUsersSheet = doc.sheetsByTitle[oldClientUsersSheetName];
+    if (oldUsersSheet) {
+      await oldUsersSheet.updateProperties({ title: newClientUsersSheetName });
+      // Actualizar campo CLIENTE en cada usuario
+      const usersRows = await oldUsersSheet.getRows();
+      for (const row of usersRows) {
+        row.set('CLIENTE', nuevoNombre.trim());
+        await row.save();
+      }
+    }
+
+    // Renombrar hoja de registros del cliente si existe
+    const oldRecordsSheet = doc.sheetsByTitle[oldClientRecordsSheetName];
+    if (oldRecordsSheet) {
+      await oldRecordsSheet.updateProperties({ title: newClientRecordsSheetName });
+      // Actualizar campo CLIENTE en cada registro
+      const recordsRows = await oldRecordsSheet.getRows();
+      for (const row of recordsRows) {
+        row.set('CLIENTE', nuevoNombre.trim());
+        await row.save();
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: '✅ Cliente actualizado correctamente',
+      data: {
+        nombreAnterior: nombreActual.trim(),
+        nombreNuevo: nuevoNombre.trim()
+      }
+    });
+  } catch (error) {
+    console.error('Error al actualizar cliente:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error al actualizar cliente',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Elimina un cliente
+ * DELETE /api/clients
+ * Body: { nombre, authUser, authPassword }
+ */
+app.delete('/api/clients', async (req, res) => {
+  try {
+    const { nombre, authUser, authPassword } = req.body;
+
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'El nombre del cliente es requerido' 
+      });
+    }
+
+    // Validar que sea superadmin
+    const doc = await getGoogleSheet();
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    
+    if (!authData || authData.tipo !== 'super') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Solo superadmin puede eliminar clientes' 
+      });
+    }
+
+    // Obtener hoja de clientes
+    const sheet = await getOrCreateClientsSheet(doc);
+    const rows = await sheet.getRows();
+
+    // Buscar el cliente a eliminar
+    const normalizedNombre = nombre.trim().toUpperCase();
+    const clienteRow = rows.find(row => 
+      (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedNombre
+    );
+
+    if (!clienteRow) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Cliente no encontrado' 
+      });
+    }
+
+    // Verificar si el cliente tiene registros asociados
+    const registrosSheet = await getOrCreateRecordsSheet(doc);
+    const registrosRows = await registrosSheet.getRows();
+    const tieneRegistros = registrosRows.some(row => 
+      (row.get('CLIENTE') || '').trim().toUpperCase() === normalizedNombre
+    );
+
+    if (tieneRegistros) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No se puede eliminar el cliente porque tiene registros asociados. Primero elimina o reasigna los registros.' 
+      });
+    }
+
+    // Eliminar el cliente de la hoja CLIENTES
+    await clienteRow.delete();
+
+    // Opcional: eliminar las hojas del cliente si existen
+    await doc.loadInfo();
+    const clientUsersSheetName = `${normalizedNombre}_USUARIOS`;
+    const clientRecordsSheetName = `${normalizedNombre}_REGISTROS`;
+
+    const usersSheet = doc.sheetsByTitle[clientUsersSheetName];
+    if (usersSheet) {
+      await usersSheet.delete();
+    }
+
+    const recordsSheet = doc.sheetsByTitle[clientRecordsSheetName];
+    if (recordsSheet) {
+      await recordsSheet.delete();
+    }
+
+    res.json({ 
+      success: true, 
+      message: '✅ Cliente eliminado correctamente',
+      data: {
+        nombre: nombre.trim()
+      }
+    });
+  } catch (error) {
+    console.error('Error al eliminar cliente:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error al eliminar cliente',
       details: error.message 
     });
   }
@@ -1029,12 +1306,8 @@ app.post('/api/save-qr', async (req, res) => {
       });
     }
 
-    if (!userClient) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Cliente es requerido' 
-      });
-    }
+    // El cliente solo es requerido para segundo escaneo en adelante (cuando es usuario despacho)
+    // En el primer escaneo, el cliente puede estar vacío
 
     // Parsear el contenido del QR
     const parsedData = parseQRContent(qrContent);
@@ -1065,61 +1338,76 @@ app.post('/api/save-qr', async (req, res) => {
       const currentState = existingGlobalRecord.get('ESTADO');
       const recordClient = existingGlobalRecord.get('CLIENTE'); // Cliente original del registro
       
-      // Obtener la hoja del cliente actual (quien escanea)
-      const currentClientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
-      const existingCurrentClientRecord = await findExistingRecord(currentClientSheet, referencia, serial);
+      // Obtener la hoja del cliente actual (quien escanea) solo si tiene cliente asignado
+      let currentClientSheet = null;
+      let existingCurrentClientRecord = null;
+      if (userClient && userClient.trim() !== '') {
+        currentClientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
+        existingCurrentClientRecord = await findExistingRecord(currentClientSheet, referencia, serial);
+      }
       
       // Obtener la hoja del cliente original (si es diferente)
       let originalClientSheet = null;
       let existingOriginalClientRecord = null;
-      if (recordClient !== userClient) {
+      if (recordClient && recordClient !== userClient) {
         originalClientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
         existingOriginalClientRecord = await findExistingRecord(originalClientSheet, referencia, serial);
       }
       
       if (currentState === 'EN ALMACEN') {
         // SEGUNDO ESCANEO: Actualizar a DESPACHADO
+        // Validar que usuario despacho tenga cliente seleccionado
+        if (userTipo === 'despacho' && (!userClient || userClient.trim() === '')) {
+          return res.status(400).json({ 
+            success: false, 
+            error: 'Debes seleccionar un cliente para despachar este producto' 
+          });
+        }
+        
+        // Aquí el usuario despacho agrega el cliente
         existingGlobalRecord.set('ESTADO', 'DESPACHADO');
+        existingGlobalRecord.set('CLIENTE', userClient); // Agregar cliente en segundo escaneo
         existingGlobalRecord.set('FECHA_DESPACHO', fecha);
         existingGlobalRecord.set('HORA_DESPACHO', hora);
         await existingGlobalRecord.save();
 
-        // Actualizar o crear en la hoja del cliente actual
-        if (existingCurrentClientRecord) {
-          existingCurrentClientRecord.set('ESTADO', 'DESPACHADO');
-          existingCurrentClientRecord.set('FECHA_DESPACHO', fecha);
-          existingCurrentClientRecord.set('HORA_DESPACHO', hora);
-          await existingCurrentClientRecord.save();
-        } else {
-          // Crear nuevo registro en la hoja del cliente actual con todos los datos
-          const currentClientRows = await currentClientSheet.getRows();
-          await currentClientSheet.addRow({
-            'ID': currentClientRows.length + 1,
-            'REFERENCIA': referencia,
-            'SERIAL': serial,
-            'ESTADO': 'DESPACHADO',
-            'CLIENTE': recordClient,
-            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
-            'USUARIO_INSTALACION': '',
-            'USUARIO_DESINSTALACION': '',
-            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
-            'FECHA_DESPACHO': fecha,
-            'FECHA_INSTALACION': '',
-            'FECHA_DESINSTALACION': '',
-            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
-            'HORA_DESPACHO': hora,
-            'HORA_INSTALACION': '',
-            'HORA_DESINSTALACION': ''
-          });
+        // Registrar cliente en CLIENTES si no existe (solo para usuarios despacho)
+        if (userTipo === 'despacho') {
+          const clientsSheet = await getOrCreateClientsSheet(doc);
+          const clientsRows = await clientsSheet.getRows();
+          const normalizedClientName = userClient.trim().toUpperCase();
+          const clientExists = clientsRows.some(row => 
+            (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedClientName
+          );
+          
+          if (!clientExists) {
+            await clientsSheet.addRow({
+              'NOMBRE': userClient.trim(),
+              'FECHA_REGISTRO': fecha
+            });
+          }
         }
 
-        // Actualizar también en hoja del cliente original (si es diferente)
-        if (existingOriginalClientRecord) {
-          existingOriginalClientRecord.set('ESTADO', 'DESPACHADO');
-          existingOriginalClientRecord.set('FECHA_DESPACHO', fecha);
-          existingOriginalClientRecord.set('HORA_DESPACHO', hora);
-          await existingOriginalClientRecord.save();
-        }
+        // Crear registro en la hoja del cliente
+        const currentClientRows = await currentClientSheet.getRows();
+        await currentClientSheet.addRow({
+          'ID': currentClientRows.length + 1,
+          'REFERENCIA': referencia,
+          'SERIAL': serial,
+          'ESTADO': 'DESPACHADO',
+          'CLIENTE': userClient,
+          'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
+          'USUARIO_INSTALACION': '',
+          'USUARIO_DESINSTALACION': '',
+          'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
+          'FECHA_DESPACHO': fecha,
+          'FECHA_INSTALACION': '',
+          'FECHA_DESINSTALACION': '',
+          'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
+          'HORA_DESPACHO': hora,
+          'HORA_INSTALACION': '',
+          'HORA_DESINSTALACION': ''
+        });
 
         return res.json({ 
           success: true, 
@@ -1130,7 +1418,7 @@ app.post('/api/save-qr', async (req, res) => {
             referencia,
             serial,
             estado: 'DESPACHADO',
-            cliente: recordClient,
+            cliente: userClient, // Cliente agregado en segundo escaneo
             fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: fecha
           }
@@ -1150,7 +1438,7 @@ app.post('/api/save-qr', async (req, res) => {
           existingCurrentClientRecord.set('FECHA_INSTALACION', fecha);
           existingCurrentClientRecord.set('HORA_INSTALACION', hora);
           await existingCurrentClientRecord.save();
-        } else {
+        } else if (currentClientSheet) {
           // Crear nuevo registro en la hoja del cliente actual con todos los datos
           const currentClientRows = await currentClientSheet.getRows();
           await currentClientSheet.addRow({
@@ -1213,7 +1501,7 @@ app.post('/api/save-qr', async (req, res) => {
           existingCurrentClientRecord.set('FECHA_DESINSTALACION', fecha);
           existingCurrentClientRecord.set('HORA_DESINSTALACION', hora);
           await existingCurrentClientRecord.save();
-        } else {
+        } else if (currentClientSheet) {
           // Crear nuevo registro en la hoja del cliente actual con todos los datos
           const currentClientRows = await currentClientSheet.getRows();
           await currentClientSheet.addRow({
@@ -1264,7 +1552,7 @@ app.post('/api/save-qr', async (req, res) => {
         });
       } else {
         // Ya fue DESINSTALADO, mostrar información pero asegurar que existe en hoja del cliente actual
-        if (!existingCurrentClientRecord) {
+        if (!existingCurrentClientRecord && currentClientSheet) {
           // Crear el registro en la hoja del cliente actual para que pueda verlo
           const currentClientRows = await currentClientSheet.getRows();
           await currentClientSheet.addRow({
@@ -1305,36 +1593,15 @@ app.post('/api/save-qr', async (req, res) => {
       }
     } else {
       // PRIMER ESCANEO: Crear nuevo registro EN ALMACEN
-      // El registro se crea en REGISTROS global y en la hoja del cliente
-      const clientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
-      const clientRows = await clientSheet.getRows();
+      // En el primer escaneo NO se guarda el cliente
       const globalRows = await globalSheet.getRows();
-      const nextClientId = clientRows.length + 1;
       const nextGlobalId = globalRows.length + 1;
-
-      // Registrar cliente automáticamente si no existe (solo para usuarios despacho en primer escaneo)
-      const clientsSheet = await getOrCreateClientsSheet(doc);
-      const clientsRows = await clientsSheet.getRows();
-      const normalizedClientName = userClient.trim().toUpperCase();
-      const clientExists = clientsRows.some(row => 
-        (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedClientName
-      );
-      
-      // Solo registrar cliente si el usuario es de tipo "despacho"
-      if (!clientExists && userTipo === 'despacho') {
-        // Agregar cliente automáticamente
-        const now = new Date().toLocaleDateString('es-ES');
-        await clientsSheet.addRow({
-          'NOMBRE': userClient.trim(),
-          'FECHA_REGISTRO': now
-        });
-      }
 
       const newRecordData = {
         'REFERENCIA': referencia,
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
-        'CLIENTE': userClient,
+        'CLIENTE': '', // No se guarda cliente en el primer escaneo
         'USUARIO_PLANTA': userEmail || '',
         'USUARIO_INSTALACION': '',
         'USUARIO_DESINSTALACION': '',
@@ -1348,15 +1615,9 @@ app.post('/api/save-qr', async (req, res) => {
         'HORA_DESINSTALACION': ''
       };
 
-      // Guardar en hoja global REGISTROS (fuente única de verdad)
+      // Guardar solo en hoja global REGISTROS (fuente única de verdad)
       await globalSheet.addRow({
         'ID': nextGlobalId,
-        ...newRecordData
-      });
-
-      // Guardar también en hoja del cliente
-      await clientSheet.addRow({
-        'ID': nextClientId,
         ...newRecordData
       });
 
@@ -1369,7 +1630,7 @@ app.post('/api/save-qr', async (req, res) => {
           referencia,
           serial,
           estado: 'EN ALMACEN',
-          cliente: userClient,
+          cliente: '', // No se guarda cliente en primer escaneo
           fechaAlmacen: fecha
         }
       });
