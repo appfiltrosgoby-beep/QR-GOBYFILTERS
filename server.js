@@ -1734,29 +1734,11 @@ app.get('/api/recent-scans', async (req, res) => {
       const rows = await sheet.getRows();
       recentRows = rows.slice(-limit).reverse();
     } else if (isSuperadminRequest) {
-      // Superadmin: obtener registros de TODOS los clientes
-      await doc.loadInfo();
-      const allRows = [];
-      
-      // Obtener registros de la hoja global REGISTROS
+      // Superadmin: obtener registros de la hoja global REGISTROS (no cargar todos los clientes)
+      // Esto evita exceder límites de API al no iterar por todas las hojas
       const globalSheet = await getOrCreateRecordsSheet(doc);
       const globalRows = await globalSheet.getRows();
-      allRows.push(...globalRows);
-      
-      // Obtener registros de las hojas de clientes
-      for (const sheet of doc.sheetsByIndex) {
-        if (sheet.title.endsWith('_REGISTROS') && sheet.title !== 'REGISTROS') {
-          const rows = await sheet.getRows();
-          allRows.push(...rows);
-        }
-      }
-      
-      // Ordenar por ID descendente y tomar los últimos limit
-      recentRows = allRows.sort((a, b) => {
-        const idA = parseInt(a.get('ID')) || 0;
-        const idB = parseInt(b.get('ID')) || 0;
-        return idB - idA;
-      }).slice(0, limit);
+      recentRows = globalRows.slice(-limit).reverse();
     } else {
       // Usuario regular: obtener registros de su hoja de cliente
       const sheet = await getOrCreateRecordsSheet(doc);
@@ -1773,6 +1755,9 @@ app.get('/api/recent-scans', async (req, res) => {
       usuarioPlanta: row.get('USUARIO_PLANTA'),
       usuarioInstalacion: row.get('USUARIO_INSTALACION'),
       usuarioDesinstalacion: row.get('USUARIO_DESINSTALACION'),
+      placa: row.get('PLACA'),
+      kilometrajeInstalacion: row.get('KILOMETRAJE_INSTALACION'),
+      kilometrajeDesinstalacion: row.get('KILOMETRAJE_DESINSTALACION'),
       fechaAlmacen: row.get('FECHA_ALMACEN'),
       fechaDespacho: row.get('FECHA_DESPACHO'),
       fechaInstalacion: row.get('FECHA_INSTALACION'),

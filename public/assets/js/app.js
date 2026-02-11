@@ -587,6 +587,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cargar datos iniciales si está autenticado
     if (currentUserRole) {
         await loadRecentScans();
+        // Pequeño delay para evitar rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
         if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
             await loadStats();
         }
@@ -596,6 +598,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(async () => {
         if (!isScanning && currentUserRole) {
             await loadRecentScans();
+            // Pequeño delay para evitar rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
             if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
                 await loadStats();
             }
@@ -613,10 +617,12 @@ function setupEventListeners() {
     elements.startBtn.addEventListener('click', startScanning);
     elements.stopBtn.addEventListener('click', stopScanning);
     elements.clearResult.addEventListener('click', clearLastResult);
-    elements.refreshBtn.addEventListener('click', () => {
-        loadRecentScans();
+    elements.refreshBtn.addEventListener('click', async () => {
+        await loadRecentScans();
+        // Pequeño delay para evitar rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
         if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
-            loadStats();
+            await loadStats();
         }
     });
     elements.exportBtn.addEventListener('click', exportToCSV);
@@ -1398,21 +1404,13 @@ async function loadStats() {
         
         if (result.success) {
             displayStats(result.data);
-        }
-        
-        // Obtener todos los registros para mostrar en tabla
-        // Superadmin ve todo, admin/user ven solo su cliente
-        const scansParam = currentUserRole === 'superadmin' 
-            ? '&superadmin=true' 
-            : (currentUserClient ? `&cliente=${encodeURIComponent(currentUserClient)}` : '');
-        const scansResponse = await fetch(`${API_URL}/api/recent-scans?limit=10000${scansParam}`);
-        const scansResult = await scansResponse.json();
-        
-        if (scansResult.success) {
-            allStatsData = scansResult.data || [];
-            displayStatsTable(allStatsData);
-            populateReferenciasSelect(); // Llenar el select con referencias únicas
-            populateClientesSelectStats(); // Llenar el select con clientes únicos
+            // Usar los datos de allRecordsData si ya fueron cargados
+            if (allRecordsData && allRecordsData.length > 0) {
+                allStatsData = allRecordsData;
+                displayStatsTable(allStatsData);
+                populateReferenciasSelect();
+                populateClientesSelectStats();
+            }
         }
     } catch (error) {
         console.error('Error al cargar estadísticas:', error);
