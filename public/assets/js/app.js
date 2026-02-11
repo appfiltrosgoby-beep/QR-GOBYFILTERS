@@ -23,6 +23,8 @@ let editingClient = null; // Cliente que se está editando (para el formulario d
 let allRecordsData = []; // Guardar todos los registros para filtrado
 let allUsersData = []; // Guardar todos los usuarios para filtrado
 let allClientsData = []; // Guardar todos los clientes para filtrado
+let pendingInstallationQR = null; // QR pendiente de instalación (tercer escaneo)
+let pendingUninstallationQR = null; // QR pendiente de desinstalación (cuarto escaneo)
 
 // Elementos del DOM
 const elements = {
@@ -77,7 +79,18 @@ const elements = {
     cancelEditClientBtn: document.getElementById('cancelEditClientBtn'),
     clientFormError: document.getElementById('clientFormError'),
     refreshClientsBtn: document.getElementById('refreshClientsBtn'),
-    clientsBody: document.getElementById('clientsBody')
+    clientsBody: document.getElementById('clientsBody'),
+    instalacionModal: document.getElementById('instalacionModal'),
+    placaInput: document.getElementById('placaInput'),
+    kilometrajeInput: document.getElementById('kilometrajeInput'),
+    submitInstalacionBtn: document.getElementById('submitInstalacionBtn'),
+    cancelInstalacionBtn: document.getElementById('cancelInstalacionBtn'),
+    instalacionError: document.getElementById('instalacionError'),
+    desinstalacionModal: document.getElementById('desinstalacionModal'),
+    kilometrajeDesinstalacionInput: document.getElementById('kilometrajeDesinstalacionInput'),
+    submitDesinstalacionBtn: document.getElementById('submitDesinstalacionBtn'),
+    cancelDesinstalacionBtn: document.getElementById('cancelDesinstalacionBtn'),
+    desinstalacionError: document.getElementById('desinstalacionError')
 };
 
 // ============================================
@@ -735,6 +748,53 @@ function setupEventListeners() {
         elements.refreshClientsBtn.addEventListener('click', loadClients);
     }
     
+    // Event listeners del modal de instalación
+    if (elements.submitInstalacionBtn) {
+        elements.submitInstalacionBtn.addEventListener('click', submitInstalacion);
+    }
+    
+    if (elements.cancelInstalacionBtn) {
+        elements.cancelInstalacionBtn.addEventListener('click', cancelInstalacion);
+    }
+    
+    // Enter en campos del modal de instalación
+    if (elements.placaInput) {
+        elements.placaInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                elements.kilometrajeInput.focus();
+            }
+        });
+    }
+    
+    if (elements.kilometrajeInput) {
+        elements.kilometrajeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitInstalacion();
+            }
+        });
+    }
+
+    // Event listeners del modal de desinstalación
+    if (elements.submitDesinstalacionBtn) {
+        elements.submitDesinstalacionBtn.addEventListener('click', submitDesinstalacion);
+    }
+    
+    if (elements.cancelDesinstalacionBtn) {
+        elements.cancelDesinstalacionBtn.addEventListener('click', cancelDesinstalacion);
+    }
+    
+    // Enter en campos del modal de desinstalación
+    if (elements.kilometrajeDesinstalacionInput) {
+        elements.kilometrajeDesinstalacionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitDesinstalacion();
+            }
+        });
+    }
+    
     // Event listeners de estadísticas
     const filterReferencia = document.getElementById('filterReferencia');
     const exportStatsBtn = document.getElementById('exportStatsBtn');
@@ -946,6 +1006,173 @@ function updateScannerUI(scanning) {
     }
 }
 
+// ============================================
+// GESTIÓN DE MODAL DE INSTALACIÓN
+// ============================================
+
+/**
+ * Muestra el modal de instalación
+ */
+function showInstalacionModal() {
+    elements.instalacionModal.style.display = 'flex';
+    elements.placaInput.value = '';
+    elements.kilometrajeInput.value = '';
+    elements.placaInput.focus();
+    
+    if (elements.instalacionError) {
+        elements.instalacionError.textContent = '';
+        elements.instalacionError.classList.add('hidden');
+    }
+}
+
+/**
+ * Oculta el modal de instalación
+ */
+function hideInstalacionModal() {
+    elements.instalacionModal.style.display = 'none';
+    elements.placaInput.value = '';
+    elements.kilometrajeInput.value = '';
+    
+    if (elements.instalacionError) {
+        elements.instalacionError.textContent = '';
+        elements.instalacionError.classList.add('hidden');
+    }
+}
+
+/**
+ * Envía los datos de instalación al backend
+ */
+async function submitInstalacion() {
+    const placa = elements.placaInput.value.trim();
+    const kilometraje = elements.kilometrajeInput.value.trim();
+    
+    // Validar que ambos campos estén llenos
+    if (!placa || !kilometraje) {
+        if (elements.instalacionError) {
+            elements.instalacionError.textContent = 'Por favor completa todos los campos';
+            elements.instalacionError.classList.remove('hidden');
+        }
+        return;
+    }
+    
+    // Validar que el kilometraje sea un número
+    if (isNaN(kilometraje) || parseFloat(kilometraje) < 0) {
+        if (elements.instalacionError) {
+            elements.instalacionError.textContent = 'El kilometraje debe ser un número válido';
+            elements.instalacionError.classList.remove('hidden');
+        }
+        return;
+    }
+    
+    try {
+        // Ocultar modal
+        hideInstalacionModal();
+        
+        // Enviar datos al backend con la placa y kilometraje
+        await saveQRCode(pendingInstallationQR, placa, kilometraje);
+        
+        // Limpiar QR pendiente
+        pendingInstallationQR = '';
+        
+    } catch (error) {
+        console.error('Error al enviar datos de instalación:', error);
+        showToast('Error al guardar datos de instalación', 'error');
+        
+        // Volver a mostrar el modal para que el usuario reintente
+        showInstalacionModal();
+    }
+}
+
+/**
+ * Cancela la instalación y cierra el modal
+ */
+function cancelInstalacion() {
+    hideInstalacionModal();
+    pendingInstallationQR = '';
+    updateStatus('⚠️ Instalación cancelada', 'warning');
+    showToast('Instalación cancelada', 'warning');
+}
+
+/**
+ * Muestra el modal de desinstalación
+ */
+function showDesinstalacionModal() {
+    elements.desinstalacionModal.style.display = 'flex';
+    elements.kilometrajeDesinstalacionInput.value = '';
+    elements.kilometrajeDesinstalacionInput.focus();
+    
+    if (elements.desinstalacionError) {
+        elements.desinstalacionError.textContent = '';
+        elements.desinstalacionError.classList.add('hidden');
+    }
+}
+
+/**
+ * Oculta el modal de desinstalación
+ */
+function hideDesinstalacionModal() {
+    elements.desinstalacionModal.style.display = 'none';
+    elements.kilometrajeDesinstalacionInput.value = '';
+    
+    if (elements.desinstalacionError) {
+        elements.desinstalacionError.textContent = '';
+        elements.desinstalacionError.classList.add('hidden');
+    }
+}
+
+/**
+ * Envía los datos de desinstalación al backend
+ */
+async function submitDesinstalacion() {
+    const kilometraje = elements.kilometrajeDesinstalacionInput.value.trim();
+    
+    // Validar que el campo esté lleno
+    if (!kilometraje) {
+        if (elements.desinstalacionError) {
+            elements.desinstalacionError.textContent = 'Por favor completa el kilometraje';
+            elements.desinstalacionError.classList.remove('hidden');
+        }
+        return;
+    }
+    
+    // Validar que el kilometraje sea un número
+    if (isNaN(kilometraje) || parseFloat(kilometraje) < 0) {
+        if (elements.desinstalacionError) {
+            elements.desinstalacionError.textContent = 'El kilometraje debe ser un número válido';
+            elements.desinstalacionError.classList.remove('hidden');
+        }
+        return;
+    }
+    
+    try {
+        // Ocultar modal
+        hideDesinstalacionModal();
+        
+        // Enviar datos al backend con el kilometraje de desinstalación
+        await saveQRCode(pendingUninstallationQR, '', '', kilometraje);
+        
+        // Limpiar QR pendiente
+        pendingUninstallationQR = '';
+        
+    } catch (error) {
+        console.error('Error al enviar datos de desinstalación:', error);
+        showToast('Error al guardar datos de desinstalación', 'error');
+        
+        // Volver a mostrar el modal para que el usuario reintente
+        showDesinstalacionModal();
+    }
+}
+
+/**
+ * Cancela la desinstalación y cierra el modal
+ */
+function cancelDesinstalacion() {
+    hideDesinstalacionModal();
+    pendingUninstallationQR = '';
+    updateStatus('⚠️ Desinstalación cancelada', 'warning');
+    showToast('Desinstalación cancelada', 'warning');
+}
+
 /**
  * Carga la lista de clientes en el selector
  */
@@ -987,7 +1214,7 @@ function updateStatus(message, type = 'info') {
 /**
  * Guarda un código QR escaneado en el backend
  */
-async function saveQRCode(qrContent) {
+async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', kilometrajeDesinstalacion = '') {
     try {
         updateStatus('💾 Guardando...', 'saving');
         
@@ -1012,7 +1239,10 @@ async function saveQRCode(qrContent) {
                 qrContent,
                 userEmail: currentUsername,
                 userClient: userClientToUse,
-                userTipo: currentUserType
+                userTipo: currentUserType,
+                placa,
+                kilometrajeInstalacion,
+                kilometrajeDesinstalacion
             })
         });
 
@@ -1069,7 +1299,19 @@ async function saveQRCode(qrContent) {
         if (result.success) {
             const action = result.action;
             
-            if (action === 'stored') {
+            if (action === 'needs_installation_data') {
+                // Se requieren datos de instalación - mostrar modal
+                pendingInstallationQR = qrContent;
+                showInstalacionModal();
+                updateStatus(`🔧 Ingresa datos de instalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
+                return; // No continuar procesando
+            } else if (action === 'needs_uninstallation_data') {
+                // Se requieren datos de desinstalación - mostrar modal
+                pendingUninstallationQR = qrContent;
+                showDesinstalacionModal();
+                updateStatus(`📤 Ingresa datos de desinstalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
+                return; // No continuar procesando
+            } else if (action === 'stored') {
                 // Primer escaneo - EN ALMACEN
                 showToast('✅ Producto registrado EN ALMACEN', 'success');
                 updateStatus(`✅ ${result.data.referencia} | ${result.data.serial} - EN ALMACEN`, 'success');
@@ -1083,7 +1325,7 @@ async function saveQRCode(qrContent) {
                 }
             } else if (action === 'dispatched') {
                 // Segundo escaneo - DESPACHADO
-                showToast('� Producto marcado como DESPACHADO', 'success');
+                showToast('🚚 Producto marcado como DESPACHADO', 'success');
                 updateStatus(`🚚 ${result.data.referencia} | ${result.data.serial} - DESPACHADO`, 'success');
                 displayLastResult(result.data, 'DESPACHADO');
             } else if (action === 'installed') {

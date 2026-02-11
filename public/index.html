@@ -462,6 +462,47 @@
                 <div id="passwordError" class="error-message hidden"></div>
             </div>
         </div>
+
+        <!-- Modal de Instalación (Tercer Escaneo) -->
+        <div id="instalacionModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🔧 Datos de Instalación</h2>
+                    <p>Completa los datos para marcar el producto como INSTALADO</p>
+                </div>
+                <div class="modal-body">
+                    <form id="instalacionForm" class="password-form">
+                        <input type="text" id="placaInput" placeholder="Placa del vehículo" class="input-password" required autocomplete="off">
+                        <input type="number" id="kilometrajeInput" placeholder="Kilometraje de instalación" class="input-password" required autocomplete="off" min="0">
+                        <div class="password-actions">
+                            <button id="cancelInstalacionBtn" type="button" class="btn btn-secondary">Cancelar</button>
+                            <button id="submitInstalacionBtn" type="button" class="btn btn-primary">Confirmar Instalación</button>
+                        </div>
+                        <div id="instalacionError" class="error-message hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Desinstalación -->
+        <div id="desinstalacionModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📤 Datos de Desinstalación</h2>
+                    <p>Completa los datos para marcar el producto como DESINSTALADO</p>
+                </div>
+                <div class="modal-body">
+                    <form id="desinstalacionForm" class="password-form">
+                        <input type="number" id="kilometrajeDesinstalacionInput" placeholder="Kilometraje de desinstalación" class="input-password" required autocomplete="off" min="0">
+                        <div class="password-actions">
+                            <button id="cancelDesinstalacionBtn" type="button" class="btn btn-secondary">Cancelar</button>
+                            <button id="submitDesinstalacionBtn" type="button" class="btn btn-primary">Confirmar Desinstalación</button>
+                        </div>
+                        <div id="desinstalacionError" class="error-message hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Script principal -->
