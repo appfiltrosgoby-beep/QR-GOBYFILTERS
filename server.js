@@ -151,8 +151,7 @@ app.get('/api/users', async (req, res) => {
     const allUsers = [];
     
     if (authTipo === 'super') {
-      // Superadmin puede ver todos los usuarios de todas las hojas
-      // Agregar usuarios de la hoja global (superadmins)
+      // Superadmin solo ve usuarios de la hoja global USUARIOS
       const globalRows = await globalSheet.getRows();
       for (const row of globalRows) {
         allUsers.push({
@@ -160,20 +159,6 @@ app.get('/api/users', async (req, res) => {
           tipo: normalizeType(row.get('TIPO')),
           cliente: row.get('CLIENTE') || ''
         });
-      }
-      
-      // Agregar usuarios de todas las hojas de clientes
-      for (const sheet of doc.sheetsByIndex) {
-        if (sheet.title.endsWith('_USUARIOS') && sheet.title !== 'USUARIOS') {
-          const rows = await sheet.getRows();
-          for (const row of rows) {
-            allUsers.push({
-              usuario: normalizeUser(row.get('USUARIO')),
-              tipo: normalizeType(row.get('TIPO')),
-              cliente: row.get('CLIENTE') || ''
-            });
-          }
-        }
       }
     } else {
       // Administrador solo puede ver usuarios de su cliente
