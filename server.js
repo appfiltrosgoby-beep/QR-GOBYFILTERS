@@ -338,16 +338,8 @@ app.post('/api/users', async (req, res) => {
         return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
       }
 
-      // Validaciones para administrador
       if (authTipo === 'administrador') {
-        // Admin no puede eliminar superadmins
-        if (userTipo === 'super') {
-          return res.status(403).json({ success: false, message: 'No autorizado para eliminar superadmins' });
-        }
-        // Admin solo puede eliminar usuarios de su cliente
-        if (userCliente !== authCliente) {
-          return res.status(403).json({ success: false, message: 'Solo puede eliminar usuarios de su cliente' });
-        }
+        return res.status(403).json({ success: false, message: 'Administrador no puede eliminar usuarios' });
       }
 
       // Eliminar el usuario
@@ -511,6 +503,7 @@ async function initializeRecordsSheet(sheet) {
     'SERIAL',
     'ESTADO',
     'CLIENTE',
+    'USUARIO_DESPACHO',
     'USUARIO_PLANTA',
     'USUARIO_INSTALACION',
     'USUARIO_DESINSTALACION',
@@ -536,6 +529,11 @@ async function initializeRecordsSheet(sheet) {
       console.log('⚠️ Agregando columna CLIENTE a hoja:', sheet.title);
       await sheet.setHeaderRow([...sheet.headerValues.slice(0, 4), 'CLIENTE', ...sheet.headerValues.slice(4)]);
       await sheet.loadHeaderRow(); // Recargar headers
+    }
+    if (!sheet.headerValues.includes('USUARIO_DESPACHO')) {
+      console.log('⚠️ Agregando columna USUARIO_DESPACHO a hoja:', sheet.title);
+      await sheet.setHeaderRow([...sheet.headerValues, 'USUARIO_DESPACHO']);
+      await sheet.loadHeaderRow();
     }
   }
 }
@@ -573,6 +571,7 @@ async function getOrCreateRecordsSheet(doc) {
         'SERIAL',
         'ESTADO',
         'CLIENTE',
+        'USUARIO_DESPACHO',
         'USUARIO_PLANTA',
         'USUARIO_INSTALACION',
         'USUARIO_DESINSTALACION',
@@ -658,6 +657,20 @@ function isSuperadminUser(usuario) {
 
 function isSuperadminRow(row) {
   return normalizeType(row.get('TIPO')) === 'super';
+}
+
+function isUserInRecord(row, userEmail) {
+  const normalizedUser = normalizeUser(userEmail);
+  if (!normalizedUser) {
+    return false;
+  }
+
+  return [
+    row.get('USUARIO_DESPACHO'),
+    row.get('USUARIO_PLANTA'),
+    row.get('USUARIO_INSTALACION'),
+    row.get('USUARIO_DESINSTALACION')
+  ].some(value => normalizeUser(value) === normalizedUser);
 }
 
 /**
@@ -785,6 +798,7 @@ async function getOrCreateClientRecordsSheet(doc, cliente) {
         'SERIAL',
         'ESTADO',
         'CLIENTE',
+        'USUARIO_DESPACHO',
         'USUARIO_PLANTA',
         'USUARIO_INSTALACION',
         'USUARIO_DESINSTALACION',
@@ -1317,7 +1331,6 @@ app.post('/api/save-qr', async (req, res) => {
     const doc = await getGoogleSheet();
     const globalSheet = await getOrCreateRecordsSheet(doc);
 
-    // Buscar si ya existe un registro con esta REFERENCIA y SERIAL en la hoja REGISTROS global
     const existingGlobalRecord = await findExistingRecord(globalSheet, referencia, serial);
     const now = new Date();
     const fecha = now.toLocaleDateString('es-ES');
@@ -1358,6 +1371,7 @@ app.post('/api/save-qr', async (req, res) => {
         // Aquí el usuario despacho agrega el cliente
         existingGlobalRecord.set('ESTADO', 'DESPACHADO');
         existingGlobalRecord.set('CLIENTE', userClient); // Agregar cliente en segundo escaneo
+        existingGlobalRecord.set('USUARIO_DESPACHO', userEmail || '');
         existingGlobalRecord.set('FECHA_DESPACHO', fecha);
         existingGlobalRecord.set('HORA_DESPACHO', hora);
         await existingGlobalRecord.save();
@@ -1387,6 +1401,7 @@ app.post('/api/save-qr', async (req, res) => {
           'SERIAL': serial,
           'ESTADO': 'DESPACHADO',
           'CLIENTE': userClient,
+          'USUARIO_DESPACHO': userEmail || '',
           'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
           'USUARIO_INSTALACION': '',
           'USUARIO_DESINSTALACION': '',
@@ -1466,6 +1481,7 @@ app.post('/api/save-qr', async (req, res) => {
             'SERIAL': serial,
             'ESTADO': 'INSTALADO',
             'CLIENTE': recordClient,
+            'USUARIO_DESPACHO': existingGlobalRecord.get('USUARIO_DESPACHO'),
             'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
             'USUARIO_INSTALACION': userEmail || '',
             'USUARIO_DESINSTALACION': '',
@@ -1555,6 +1571,7 @@ app.post('/api/save-qr', async (req, res) => {
             'SERIAL': serial,
             'ESTADO': 'DESINSTALADO',
             'CLIENTE': recordClient,
+            'USUARIO_DESPACHO': existingGlobalRecord.get('USUARIO_DESPACHO'),
             'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
             'USUARIO_INSTALACION': existingGlobalRecord.get('USUARIO_INSTALACION'),
             'USUARIO_DESINSTALACION': userEmail || '',
@@ -1610,6 +1627,7 @@ app.post('/api/save-qr', async (req, res) => {
             'SERIAL': serial,
             'ESTADO': 'DESINSTALADO',
             'CLIENTE': recordClient,
+            'USUARIO_DESPACHO': existingGlobalRecord.get('USUARIO_DESPACHO'),
             'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
             'USUARIO_INSTALACION': existingGlobalRecord.get('USUARIO_INSTALACION'),
             'USUARIO_DESINSTALACION': existingGlobalRecord.get('USUARIO_DESINSTALACION'),
@@ -1654,6 +1672,7 @@ app.post('/api/save-qr', async (req, res) => {
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
         'CLIENTE': '', // No se guarda cliente en el primer escaneo
+        'USUARIO_DESPACHO': '',
         'USUARIO_PLANTA': userEmail || '',
         'USUARIO_INSTALACION': '',
         'USUARIO_DESINSTALACION': '',
@@ -1709,27 +1728,31 @@ app.get('/api/recent-scans', async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const cliente = req.query.cliente || '';
     const isSuperadminRequest = req.query.superadmin === 'true';
+    const userEmail = req.query.userEmail || '';
     
     const doc = await getGoogleSheet();
-    let recentRows = [];
+    let rows = [];
 
     if (cliente) {
       // Filtrar por cliente específico
       const sheet = await getOrCreateClientRecordsSheet(doc, cliente);
-      const rows = await sheet.getRows();
-      recentRows = rows.slice(-limit).reverse();
+      rows = await sheet.getRows();
     } else if (isSuperadminRequest) {
       // Superadmin: obtener registros de la hoja global REGISTROS (no cargar todos los clientes)
       // Esto evita exceder límites de API al no iterar por todas las hojas
       const globalSheet = await getOrCreateRecordsSheet(doc);
-      const globalRows = await globalSheet.getRows();
-      recentRows = globalRows.slice(-limit).reverse();
+      rows = await globalSheet.getRows();
     } else {
-      // Usuario regular: obtener registros de su hoja de cliente
+      // Usuario regular: obtener registros globales
       const sheet = await getOrCreateRecordsSheet(doc);
-      const rows = await sheet.getRows();
-      recentRows = rows.slice(-limit).reverse();
+      rows = await sheet.getRows();
     }
+
+    if (userEmail && !isSuperadminRequest && !cliente) {
+      rows = rows.filter(row => isUserInRecord(row, userEmail));
+    }
+
+    const recentRows = rows.slice(-limit).reverse();
 
     const data = recentRows.map(row => ({
       id: row.get('ID'),
@@ -1737,6 +1760,7 @@ app.get('/api/recent-scans', async (req, res) => {
       serial: row.get('SERIAL'),
       estado: row.get('ESTADO'),
       cliente: row.get('CLIENTE'),
+      usuarioDespacho: row.get('USUARIO_DESPACHO'),
       usuarioPlanta: row.get('USUARIO_PLANTA'),
       usuarioInstalacion: row.get('USUARIO_INSTALACION'),
       usuarioDesinstalacion: row.get('USUARIO_DESINSTALACION'),
@@ -1772,6 +1796,7 @@ app.get('/api/recent-scans', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const cliente = req.query.cliente || '';
+    const userEmail = req.query.userEmail || '';
     
     const doc = await getGoogleSheet();
     let sheet;
@@ -1782,7 +1807,10 @@ app.get('/api/stats', async (req, res) => {
       sheet = await getOrCreateRecordsSheet(doc);
     }
 
-    const rows = await sheet.getRows();
+    let rows = await sheet.getRows();
+    if (userEmail && !cliente) {
+      rows = rows.filter(row => isUserInRecord(row, userEmail));
+    }
     const today = new Date().toLocaleDateString('es-ES');
 
     const stats = {
