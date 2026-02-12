@@ -376,6 +376,7 @@ function applyRolePermissions() {
     const usersNavBtn = document.querySelector('[data-view="usersView"]');
     const clientsNavBtn = document.querySelector('[data-view="clientsView"]');
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
+    const recordsNavBtn = document.querySelector('[data-view="recordsView"]');
     
     if (currentUserRole === 'user' && currentUserType === 'mecanico') {
         // Usuario mecánico: ocultar estadísticas, usuarios y clientes, mostrar escáner sin selector
@@ -448,6 +449,9 @@ function applyRolePermissions() {
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
         }
+        if (recordsNavBtn) {
+            recordsNavBtn.style.display = 'flex';
+        }
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
@@ -479,12 +483,16 @@ function applyRolePermissions() {
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'none';
         }
+        if (recordsNavBtn) {
+            recordsNavBtn.style.display = 'none';
+        }
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
-        if (document.getElementById('scannerView').classList.contains('active')) {
-            switchView('recordsView');
+        if (document.getElementById('scannerView').classList.contains('active') ||
+            document.getElementById('recordsView').classList.contains('active')) {
+            switchView('statsView');
         }
         
         // Mostrar formulario de crear usuarios (solo superadmin)
@@ -1388,9 +1396,10 @@ async function loadRecentScans() {
             filterRecordsByCliente(''); // Mostrar todos inicialmente
         } else {
             allRecordsData = [];
+            const colspan = getRecordsColspan();
             elements.recordsBody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="no-data">No hay registros para mostrar</td>
+                    <td colspan="${colspan}" class="no-data">No hay registros para mostrar</td>
                 </tr>
             `;
         }
@@ -2084,6 +2093,14 @@ function clearLastResult() {
     elements.lastResult.classList.add('hidden');
 }
 
+function getRecordsColspan() {
+    if (currentUserRole === 'admin') {
+        return 7;
+    }
+
+    return currentUserRole === 'superadmin' ? 7 : 6;
+}
+
 /**
  * Muestra los registros en la tabla
  */
@@ -2096,11 +2113,31 @@ function displayRecords(records) {
 
     const usuarioInstHeaders = document.querySelectorAll('thead .usuario-inst-col');
     const usuarioDesinstHeaders = document.querySelectorAll('thead .usuario-desinst-col');
+    const usuarioHeaders = document.querySelectorAll('thead .usuario-col');
+    const fechaAlmacenHeaders = document.querySelectorAll('thead .fecha-almacen-col');
+    const fechaDespachoHeaders = document.querySelectorAll('thead .fecha-despacho-col');
+    const fechaInstHeaders = document.querySelectorAll('thead .fecha-inst-col');
+    const fechaDesinstHeaders = document.querySelectorAll('thead .fecha-desinst-col');
     const showInstallColumns = currentUserRole === 'admin';
     usuarioInstHeaders.forEach(th => {
         th.style.display = showInstallColumns ? 'table-cell' : 'none';
     });
     usuarioDesinstHeaders.forEach(th => {
+        th.style.display = showInstallColumns ? 'table-cell' : 'none';
+    });
+    usuarioHeaders.forEach(th => {
+        th.style.display = showInstallColumns ? 'none' : 'table-cell';
+    });
+    fechaAlmacenHeaders.forEach(th => {
+        th.style.display = showInstallColumns ? 'none' : 'table-cell';
+    });
+    fechaDespachoHeaders.forEach(th => {
+        th.style.display = showInstallColumns ? 'none' : 'table-cell';
+    });
+    fechaInstHeaders.forEach(th => {
+        th.style.display = showInstallColumns ? 'table-cell' : 'none';
+    });
+    fechaDesinstHeaders.forEach(th => {
         th.style.display = showInstallColumns ? 'table-cell' : 'none';
     });
     
@@ -2128,6 +2165,8 @@ function displayRecords(records) {
 
         const usuarioInstalacion = record.usuarioInstalacion || '-';
         const usuarioDesinstalacion = record.usuarioDesinstalacion || '-';
+        const fechaInstalacion = record.fechaInstalacion || '-';
+        const fechaDesinstalacion = record.fechaDesinstalacion || '-';
 
         return `
             <tr>
@@ -2138,8 +2177,10 @@ function displayRecords(records) {
                 <td style="display: ${showInstallColumns ? 'none' : 'table-cell'};">${usuarioDisplay}</td>
                 <td class="usuario-inst-col" style="display: ${showInstallColumns ? 'table-cell' : 'none'};">${usuarioInstalacion}</td>
                 <td class="usuario-desinst-col" style="display: ${showInstallColumns ? 'table-cell' : 'none'};">${usuarioDesinstalacion}</td>
-                <td>${record.fechaAlmacen} <small>${record.horaAlmacen || ''}</small></td>
-                <td>${record.fechaDespacho || '-'} <small>${record.horaDespacho || ''}</small></td>
+                <td class="fecha-almacen-col" style="display: ${showInstallColumns ? 'none' : 'table-cell'};">${record.fechaAlmacen} <small>${record.horaAlmacen || ''}</small></td>
+                <td class="fecha-despacho-col" style="display: ${showInstallColumns ? 'none' : 'table-cell'};">${record.fechaDespacho || '-'} <small>${record.horaDespacho || ''}</small></td>
+                <td class="fecha-inst-col" style="display: ${showInstallColumns ? 'table-cell' : 'none'};">${fechaInstalacion}</td>
+                <td class="fecha-desinst-col" style="display: ${showInstallColumns ? 'table-cell' : 'none'};">${fechaDesinstalacion}</td>
             </tr>
         `;
     }).join('');
@@ -2266,7 +2307,7 @@ function displayStatsTable(data) {
     }
     
     if (!data || data.length === 0) {
-        const colSpan = currentUserRole === 'superadmin' ? '6' : '5';
+        const colSpan = currentUserRole === 'superadmin' ? '8' : '7';
         statsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="no-data">No hay datos para mostrar</td></tr>`;
         return;
     }
@@ -2296,6 +2337,8 @@ function displayStatsTable(data) {
                 <td class="cliente-col" style="display: ${currentUserRole === 'superadmin' ? 'table-cell' : 'none'};">${row.cliente || 'N/A'}</td>
                 <td>${row.fechaAlmacen || 'N/A'}</td>
                 <td>${row.fechaDespacho || 'N/A'}</td>
+                <td>${row.fechaInstalacion || 'N/A'}</td>
+                <td>${row.fechaDesinstalacion || 'N/A'}</td>
             </tr>
         `;
     }).join('');
