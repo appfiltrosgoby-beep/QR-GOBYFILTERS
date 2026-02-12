@@ -1689,47 +1689,48 @@ async function loadUsers() {
 function displayUsers(users) {
     if (!elements.usersBody) return;
 
+    const showActions = currentUserRole === 'superadmin';
+    const accionesHeaders = document.querySelectorAll('thead .acciones-col');
+    accionesHeaders.forEach(th => {
+        th.style.display = showActions ? 'table-cell' : 'none';
+    });
+
     if (!users || users.length === 0) {
+        const colspan = showActions ? 4 : 3;
         elements.usersBody.innerHTML = `
             <tr>
-                <td colspan="4" class="no-data">No hay usuarios para mostrar</td>
+                <td colspan="${colspan}" class="no-data">No hay usuarios para mostrar</td>
             </tr>
         `;
         return;
     }
 
     elements.usersBody.innerHTML = users.map(user => {
-        const canEdit = currentUserRole === 'superadmin' || currentUserRole === 'admin';
-        const canDelete = currentUserRole === 'superadmin';
-        const actionButtons = (canEdit || canDelete) ? `
+        const actionButtons = showActions ? `
             <div style="display: flex; gap: 8px; justify-content: center;">
-                ${canEdit ? `
-                    <button class="btn-icon-small btn-edit" onclick="editUser('${user.usuario}', '${user.tipo}', '${user.cliente || ''}')" title="Editar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                    </button>
-                ` : ''}
-                ${canDelete ? `
-                    <button class="btn-icon-small btn-delete" onclick="deleteUser('${user.usuario}')" title="Eliminar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                            <line x1="10" y1="11" x2="10" y2="17"/>
-                            <line x1="14" y1="11" x2="14" y2="17"/>
-                        </svg>
-                    </button>
-                ` : ''}
+                <button class="btn-icon-small btn-edit" onclick="editUser('${user.usuario}', '${user.tipo}', '${user.cliente || ''}')" title="Editar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </button>
+                <button class="btn-icon-small btn-delete" onclick="deleteUser('${user.usuario}')" title="Eliminar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                </button>
             </div>
-        ` : '-';
+        ` : '';
 
         return `
             <tr>
                 <td class="content-cell"><strong>${user.usuario || 'N/A'}</strong></td>
                 <td>${(user.tipo || '').toUpperCase()}</td>
                 <td>${user.cliente || '-'}</td>
-                <td>${actionButtons}</td>
+                <td class="acciones-col" style="display: ${showActions ? 'table-cell' : 'none'};">${actionButtons}</td>
             </tr>
         `;
     }).join('');
