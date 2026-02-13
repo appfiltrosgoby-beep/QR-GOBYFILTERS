@@ -865,6 +865,7 @@ function setupEventListeners() {
     // Event listeners de proyecciones
     const refreshProjectionsBtn = document.getElementById('refreshProjectionsBtn');
     const filterClienteProjections = document.getElementById('filterClienteProjections');
+    const filterReferenciaProjections = document.getElementById('filterReferenciaProjections');
 
     if (refreshProjectionsBtn) {
         refreshProjectionsBtn.addEventListener('click', loadProjections);
@@ -872,6 +873,10 @@ function setupEventListeners() {
 
     if (filterClienteProjections) {
         filterClienteProjections.addEventListener('change', loadProjections);
+    }
+
+    if (filterReferenciaProjections) {
+        filterReferenciaProjections.addEventListener('change', loadProjections);
     }
 
     // Event listener para toggle de contraseña (delegado)
@@ -2085,6 +2090,29 @@ async function loadClientsForProjectionsFilter() {
     }
 }
 
+/**
+ * Carga las referencias en el filtro de proyecciones
+ */
+function updateReferencesFilter(data, selectedRef) {
+    const filterReferenciaProjections = document.getElementById('filterReferenciaProjections');
+    if (!filterReferenciaProjections) return;
+
+    const referencias = Array.from(new Set((data || []).map(item => item.referencia).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b));
+
+    filterReferenciaProjections.innerHTML = '<option value="">Todas las referencias</option>';
+    referencias.forEach(ref => {
+        const option = document.createElement('option');
+        option.value = ref;
+        option.textContent = ref;
+        filterReferenciaProjections.appendChild(option);
+    });
+
+    if (selectedRef && referencias.includes(selectedRef)) {
+        filterReferenciaProjections.value = selectedRef;
+    }
+}
+
 // ============================================
 // INTERFAZ DE USUARIO
 // ============================================
@@ -2727,7 +2755,10 @@ let filterDurationChart = null;
  */
 async function loadProjections() {
     try {
-        const filterCliente = document.getElementById('filterClienteProjections').value;
+        const filterClienteEl = document.getElementById('filterClienteProjections');
+        const filterReferenciaEl = document.getElementById('filterReferenciaProjections');
+        const filterCliente = filterClienteEl ? filterClienteEl.value : '';
+        const filterReferencia = filterReferenciaEl ? filterReferenciaEl.value : '';
         const clienteParam = filterCliente ? `?cliente=${encodeURIComponent(filterCliente)}` : '';
 
         const response = await fetch(`${API_URL}/api/projections${clienteParam}`, {
@@ -2746,19 +2777,33 @@ async function loadProjections() {
 
         const { filterDurations, monthlyProjections, stats } = result.data;
 
+        updateReferencesFilter(filterDurations, filterReferencia);
+
+        let filteredDurations = filterDurations;
+        if (filterReferencia) {
+            filteredDurations = filterDurations.filter(item => item.referencia === filterReferencia);
+        }
+
         // Actualizar tablas
-        updateFilterDurationTable(filterDurations);
+        updateFilterDurationTable(filteredDurations);
         updateOrdersProjectionTable(monthlyProjections);
 
-        // Actualizar estadísticas
-        document.getElementById('avgKmDuration').textContent = stats.avgKmDuration.toLocaleString() + ' km';
-        document.getElementById('avgDaysDuration').textContent = stats.avgDaysDuration + ' días';
-        document.getElementById('totalFiltersAnalyzed').textContent = stats.totalFiltersAnalyzed;
+        // Actualizar estadísticas (segun filtro de referencia)
+        const avgKmDuration = filteredDurations.length > 0
+            ? Math.round(filteredDurations.reduce((sum, f) => sum + f.duracionKm, 0) / filteredDurations.length)
+            : 0;
+        const avgDaysDuration = filteredDurations.length > 0
+            ? Math.round(filteredDurations.reduce((sum, f) => sum + f.diasInstalado, 0) / filteredDurations.length)
+            : 0;
+
+        document.getElementById('avgKmDuration').textContent = avgKmDuration.toLocaleString() + ' km';
+        document.getElementById('avgDaysDuration').textContent = avgDaysDuration + ' días';
+        document.getElementById('totalFiltersAnalyzed').textContent = filteredDurations.length;
         document.getElementById('nextMonthOrders').textContent = stats.nextMonthOrders;
 
         // Actualizar gráficas
         updateOrdersProjectionChart(monthlyProjections);
-        updateFilterDurationChart(filterDurations);
+        updateFilterDurationChart(filteredDurations);
 
         showToast('Proyecciones actualizadas', 'success');
 
