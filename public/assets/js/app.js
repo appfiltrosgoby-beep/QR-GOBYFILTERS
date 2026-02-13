@@ -102,6 +102,7 @@ const elements = {
  */
 function initAuth() {
     const savedRole = localStorage.getItem('userRole');
+    const savedUserType = localStorage.getItem('userType'); // Restaurar tipo de usuario
     const savedUserName = localStorage.getItem('userName') || localStorage.getItem('userEmail');
     const savedPassword = sessionStorage.getItem('userPassword');
     const savedClient = localStorage.getItem('userClient');
@@ -109,6 +110,7 @@ function initAuth() {
     if (savedRole) {
         if (savedRole === 'superadmin' && !savedPassword) {
             localStorage.removeItem('userRole');
+            localStorage.removeItem('userType');
             localStorage.removeItem('userName');
             localStorage.removeItem('userClient');
             elements.loginModal.style.display = 'flex';
@@ -116,6 +118,7 @@ function initAuth() {
         }
 
         currentUserRole = savedRole;
+        currentUserType = savedUserType || 'mecanico'; // Restaurar tipo de usuario con default
         if (savedUserName) {
             currentUsername = savedUserName;
         }
@@ -251,7 +254,9 @@ async function validateAdminLogin() {
     sessionStorage.setItem('userPassword', password);
     if (result.role === 'superadmin') {
         currentUserRole = 'superadmin';
+        currentUserType = result.tipo || 'super'; // Guardar tipo para superadmin
         localStorage.setItem('userRole', 'superadmin');
+        localStorage.setItem('userType', currentUserType);
         applyRolePermissions();
         elements.loginModal.style.display = 'none';
         elements.adminLoginForm.classList.add('hidden');
@@ -270,7 +275,9 @@ async function validateAdminLogin() {
  */
 function loginAsAdmin() {
     currentUserRole = 'admin';
+    currentUserType = 'administrador'; // Establecer tipo para admin
     localStorage.setItem('userRole', 'admin');
+    localStorage.setItem('userType', 'administrador');
     applyRolePermissions();
     elements.loginModal.style.display = 'none';
     elements.adminLoginForm.classList.add('hidden');
@@ -319,10 +326,12 @@ async function validateCredentials(usuario, tipo, password) {
  */
 function logout() {
     localStorage.removeItem('userRole');
+    localStorage.removeItem('userType');
     localStorage.removeItem('userName');
     localStorage.removeItem('userClient');
     sessionStorage.removeItem('userPassword');
     currentUserRole = null;
+    currentUserType = null;
     currentUsername = null;
     currentUserPassword = null;
     currentUserClient = null;
@@ -545,6 +554,18 @@ function applyRolePermissions() {
  * Cambia entre las diferentes vistas de la aplicación
  */
 function switchView(viewId) {
+    // Validar permisos de acceso a la vista
+    // Solo superadmin puede acceder a: usersView, clientsView, projectionsView
+    const superadminOnlyViews = ['usersView', 'clientsView', 'projectionsView'];
+    const isSuperadmin = currentUserType === 'super';
+    
+    if (superadminOnlyViews.includes(viewId) && !isSuperadmin) {
+        console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
+        showToast('No tienes permiso para acceder a esta sección', 'error');
+        // Redirigir a la vista permitida por defecto
+        viewId = (currentUserType === 'mecanico' || currentUserType === 'despacho') ? 'scannerView' : 'statsView';
+    }
+    
     // Ocultar todas las vistas
     document.querySelectorAll('.view').forEach(view => {
         view.classList.remove('active');
@@ -597,6 +618,15 @@ document.querySelectorAll('.nav-item').forEach(btn => {
  */
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Iniciando QR Scanner Pro...');
+    
+    // Registrar Service Worker para PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js').then(registration => {
+            console.log('✅ Service Worker registrado correctamente', registration);
+        }).catch(error => {
+            console.warn('⚠️ Error al registrar Service Worker:', error);
+        });
+    }
     
     // Inicializar sistema de autenticación
     initAuth();
