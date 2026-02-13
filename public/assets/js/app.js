@@ -2911,28 +2911,29 @@ function updateFilterDurationChart(data) {
         return;
     }
 
-    // Agrupar por cliente y calcular promedio
-    const clientsData = {};
+    // Agrupar por cliente y referencia, calcular promedio
+    const filterData = {};
     data.forEach(item => {
-        if (!clientsData[item.cliente]) {
-            clientsData[item.cliente] = {
+        const key = `${item.cliente} - ${item.referencia}`;
+        if (!filterData[key]) {
+            filterData[key] = {
                 totalKm: 0,
                 count: 0
             };
         }
-        clientsData[item.cliente].totalKm += item.duracionKm;
-        clientsData[item.cliente].count++;
+        filterData[key].totalKm += item.duracionKm;
+        filterData[key].count++;
     });
 
-    const labels = Object.keys(clientsData);
-    const values = labels.map(cliente => 
-        Math.round(clientsData[cliente].totalKm / clientsData[cliente].count)
+    const labels = Object.keys(filterData);
+    const values = labels.map(key => 
+        Math.round(filterData[key].totalKm / filterData[key].count)
     );
 
     const colors = generateColors(labels.length);
 
     filterDurationChart = new Chart(ctx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: labels,
             datasets: [{
@@ -2944,24 +2945,41 @@ function updateFilterDurationChart(data) {
             }]
         },
         options: {
+            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: true,
-                    position: window.innerWidth < 768 ? 'bottom' : 'right',
-                    labels: {
-                        boxWidth: window.innerWidth < 480 ? 12 : 20,
-                        font: {
-                            size: window.innerWidth < 480 ? 9 : 11
-                        },
-                        padding: window.innerWidth < 480 ? 8 : 10
-                    }
+                    display: false
                 },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `${context.label}: ${context.parsed.toLocaleString()} km promedio`;
+                            return `Duración: ${context.parsed.x.toLocaleString()} km promedio`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        font: {
+                            size: window.innerWidth < 480 ? 9 : 11
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Kilómetros',
+                        font: {
+                            size: window.innerWidth < 480 ? 10 : 12
+                        }
+                    }
+                },
+                y: {
+                    ticks: {
+                        font: {
+                            size: window.innerWidth < 480 ? 8 : 10
                         }
                     }
                 }

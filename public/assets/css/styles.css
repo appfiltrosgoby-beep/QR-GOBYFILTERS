@@ -1463,6 +1463,11 @@ input:checked + .slider:before {
     height: 280px;
 }
 
+.chart-wrapper-large {
+    height: 400px;
+    max-height: 600px;
+}
+
 .chart-wrapper canvas {
     max-height: 100%;
     width: 100% !important;
@@ -1486,6 +1491,10 @@ input:checked + .slider:before {
     .chart-wrapper {
         height: 250px;
     }
+    
+    .chart-wrapper-large {
+        height: 350px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1500,5 +1509,9 @@ input:checked + .slider:before {
     
     .chart-wrapper {
         height: 220px;
+    }
+    
+    .chart-wrapper-large {
+        height: 300px;
     }
 }
