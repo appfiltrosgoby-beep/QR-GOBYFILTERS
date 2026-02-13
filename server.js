@@ -1930,18 +1930,21 @@ app.get('/api/projections', async (req, res) => {
           }
         }
 
-        filterDurations.push({
-          cliente,
-          referencia,
-          serial,
-          placa,
-          kmInstalacion: kmInst,
-          kmDesinstalacion: kmDesinst,
-          duracionKm,
-          diasInstalado,
-          fechaInstalacion: fechaInst,
-          fechaDesinstalacion: fechaDesinst
-        });
+        // Solo agregar registros con datos completos (días instalado debe ser > 0)
+        if (diasInstalado > 0) {
+          filterDurations.push({
+            cliente,
+            referencia,
+            serial,
+            placa,
+            kmInstalacion: kmInst,
+            kmDesinstalacion: kmDesinst,
+            duracionKm,
+            diasInstalado,
+            fechaInstalacion: fechaInst,
+            fechaDesinstalacion: fechaDesinst
+          });
+        }
       }
 
       // Proyecciones de reemplazos basados en fechas de instalación

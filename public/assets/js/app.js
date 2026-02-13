@@ -2850,11 +2850,17 @@ function updateOrdersProjectionChart(data) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
                     display: true,
-                    position: 'top'
+                    position: window.innerWidth < 768 ? 'top' : 'top',
+                    labels: {
+                        boxWidth: window.innerWidth < 480 ? 12 : 20,
+                        font: {
+                            size: window.innerWidth < 480 ? 10 : 12
+                        }
+                    }
                 },
                 tooltip: {
                     callbacks: {
@@ -2865,10 +2871,22 @@ function updateOrdersProjectionChart(data) {
                 }
             },
             scales: {
+                x: {
+                    ticks: {
+                        font: {
+                            size: window.innerWidth < 480 ? 9 : 11
+                        },
+                        maxRotation: window.innerWidth < 480 ? 45 : 0,
+                        minRotation: window.innerWidth < 480 ? 45 : 0
+                    }
+                },
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        stepSize: 1
+                        stepSize: 1,
+                        font: {
+                            size: window.innerWidth < 480 ? 9 : 11
+                        }
                     }
                 }
             }
@@ -2927,11 +2945,18 @@ function updateFilterDurationChart(data) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
                     display: true,
-                    position: 'right'
+                    position: window.innerWidth < 768 ? 'bottom' : 'right',
+                    labels: {
+                        boxWidth: window.innerWidth < 480 ? 12 : 20,
+                        font: {
+                            size: window.innerWidth < 480 ? 9 : 11
+                        },
+                        padding: window.innerWidth < 480 ? 8 : 10
+                    }
                 },
                 tooltip: {
                     callbacks: {
