@@ -1422,3 +1422,46 @@ input:checked + .slider:before {
         text-align: center;
     }
 }
+/* ============================================
+   PROYECCIONES - GRÁFICAS
+   ============================================ */
+
+.charts-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.chart-card {
+    background: var(--bg-primary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-color);
+    transition: all var(--transition-normal);
+}
+
+.chart-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+.chart-card h3 {
+    margin-bottom: var(--spacing-lg);
+    color: var(--text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+    border-bottom: 2px solid var(--accent-gold);
+    padding-bottom: var(--spacing-sm);
+}
+
+.chart-card canvas {
+    max-height: 300px;
+}
+
+@media (max-width: 768px) {
+    .charts-container {
+        grid-template-columns: 1fr;
+    }
+}

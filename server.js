@@ -1853,6 +1853,192 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+/**
+ * Obtiene proyecciones de pedidos y duración de filtros
+ * GET /api/projections
+ */
+app.get('/api/projections', async (req, res) => {
+  try {
+    const cliente = req.query.cliente || '';
+    const authUser = req.headers['x-auth-user'] || '';
+    const authPassword = req.headers['x-auth-password'] || '';
+
+    const doc = await getGoogleSheet();
+
+    // Validar que el usuario autenticado sea superadmin o administrador
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    if (!authData) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const { tipo: authTipo, cliente: authCliente } = authData;
+    
+    // Recopilar todos los registros relevantes
+    let allRows = [];
+    
+    if (authTipo === 'super') {
+      // Superadmin puede ver todos los clientes o filtrar por uno específico
+      if (cliente) {
+        const sheet = await getOrCreateClientRecordsSheet(doc, cliente);
+        allRows = await sheet.getRows();
+      } else {
+        // Obtener todos los registros de todos los clientes
+        await doc.loadInfo();
+        for (const sheet of doc.sheetsByIndex) {
+          if (sheet.title.endsWith('_REGISTROS')) {
+            const rows = await sheet.getRows();
+            allRows = allRows.concat(rows);
+          }
+        }
+        // También incluir la hoja global REGISTROS
+        const globalSheet = await getOrCreateRecordsSheet(doc);
+        const globalRows = await globalSheet.getRows();
+        allRows = allRows.concat(globalRows);
+      }
+    } else {
+      // Administrador solo puede ver su cliente
+      const sheet = await getOrCreateClientRecordsSheet(doc, authCliente);
+      allRows = await sheet.getRows();
+    }
+
+    // Calcular duración de filtros (solo los que están desinstalados)
+    const filterDurations = [];
+    const monthlyProjections = {};
+    
+    allRows.forEach(row => {
+      const estado = row.get('ESTADO');
+      const cliente = row.get('CLIENTE') || 'Sin Cliente';
+      const referencia = row.get('REFERENCIA');
+      const serial = row.get('SERIAL');
+      const placa = row.get('PLACA');
+      const kmInst = parseInt(row.get('KILOMETRAJE_INSTALACION')) || 0;
+      const kmDesinst = parseInt(row.get('KILOMETRAJE_DESINSTALACION')) || 0;
+      const fechaInst = row.get('FECHA_INSTALACION');
+      const fechaDesinst = row.get('FECHA_DESINSTALACION');
+
+      // Calcular duración de filtros desinstalados
+      if (estado === 'DESINSTALADO' && kmInst > 0 && kmDesinst > 0) {
+        const duracionKm = kmDesinst - kmInst;
+        
+        // Calcular días instalado
+        let diasInstalado = 0;
+        if (fechaInst && fechaDesinst) {
+          const dateInst = parseSpanishDate(fechaInst);
+          const dateDesinst = parseSpanishDate(fechaDesinst);
+          if (dateInst && dateDesinst) {
+            diasInstalado = Math.round((dateDesinst - dateInst) / (1000 * 60 * 60 * 24));
+          }
+        }
+
+        filterDurations.push({
+          cliente,
+          referencia,
+          serial,
+          placa,
+          kmInstalacion: kmInst,
+          kmDesinstalacion: kmDesinst,
+          duracionKm,
+          diasInstalado,
+          fechaInstalacion: fechaInst,
+          fechaDesinstalacion: fechaDesinst
+        });
+      }
+
+      // Proyecciones de reemplazos basados en fechas de instalación
+      if (estado === 'INSTALADO' && fechaInst) {
+        const dateInst = parseSpanishDate(fechaInst);
+        if (dateInst) {
+          // Calcular promedio de duración (usar 90 días como default si no hay histórico)
+          const avgDuration = filterDurations.length > 0 
+            ? filterDurations.reduce((sum, f) => sum + f.diasInstalado, 0) / filterDurations.length 
+            : 90;
+
+          // Calcular fecha estimada de reemplazo
+          const estimatedReplacementDate = new Date(dateInst);
+          estimatedReplacementDate.setDate(estimatedReplacementDate.getDate() + Math.round(avgDuration));
+          
+          const monthYear = `${estimatedReplacementDate.getFullYear()}-${String(estimatedReplacementDate.getMonth() + 1).padStart(2, '0')}`;
+          
+          if (!monthlyProjections[monthYear]) {
+            monthlyProjections[monthYear] = {
+              month: monthYear,
+              count: 0,
+              clientes: {},
+              avgDaysInstalled: avgDuration
+            };
+          }
+          
+          monthlyProjections[monthYear].count++;
+          monthlyProjections[monthYear].clientes[cliente] = (monthlyProjections[monthYear].clientes[cliente] || 0) + 1;
+        }
+      }
+    });
+
+    // Convertir proyecciones mensuales a array y ordenar
+    const projectionsArray = Object.values(monthlyProjections)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map(p => ({
+        month: formatMonthYear(p.month),
+        count: p.count,
+        clientes: Object.entries(p.clientes).map(([name, count]) => ({ name, count })),
+        avgDaysInstalled: Math.round(p.avgDaysInstalled)
+      }));
+
+    // Calcular estadísticas
+    const avgKmDuration = filterDurations.length > 0
+      ? Math.round(filterDurations.reduce((sum, f) => sum + f.duracionKm, 0) / filterDurations.length)
+      : 0;
+
+    const avgDaysDuration = filterDurations.length > 0
+      ? Math.round(filterDurations.reduce((sum, f) => sum + f.diasInstalado, 0) / filterDurations.length)
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        filterDurations: filterDurations.sort((a, b) => b.duracionKm - a.duracionKm),
+        monthlyProjections: projectionsArray,
+        stats: {
+          avgKmDuration,
+          avgDaysDuration,
+          totalFiltersAnalyzed: filterDurations.length,
+          nextMonthOrders: projectionsArray.length > 0 ? projectionsArray[0].count : 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error al obtener proyecciones:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener proyecciones',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Función auxiliar para parsear fechas en formato español dd/mm/yyyy
+ */
+function parseSpanishDate(dateString) {
+  if (!dateString) return null;
+  const parts = dateString.split('/');
+  if (parts.length !== 3) return null;
+  const day = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1; // Los meses en JS van de 0-11
+  const year = parseInt(parts[2]);
+  return new Date(year, month, day);
+}
+
+/**
+ * Función auxiliar para formatear mes-año
+ */
+function formatMonthYear(monthYear) {
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const [year, month] = monthYear.split('-');
+  return `${months[parseInt(month) - 1]} ${year}`;
+}
+
 // Manejo de rutas no encontradas
 app.use((req, res) => {
   res.status(404).json({ 

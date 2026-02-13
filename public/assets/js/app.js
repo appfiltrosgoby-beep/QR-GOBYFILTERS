@@ -375,6 +375,7 @@ function applyRolePermissions() {
     const statsNavBtn = document.querySelector('[data-view="statsView"]');
     const usersNavBtn = document.querySelector('[data-view="usersView"]');
     const clientsNavBtn = document.querySelector('[data-view="clientsView"]');
+    const projectionsNavBtn = document.querySelector('[data-view="projectionsView"]');
     const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
     const recordsNavBtn = document.querySelector('[data-view="recordsView"]');
     
@@ -388,6 +389,9 @@ function applyRolePermissions() {
         }
         if (clientsNavBtn) {
             clientsNavBtn.style.display = 'none';
+        }
+        if (projectionsNavBtn) {
+            projectionsNavBtn.style.display = 'none';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
@@ -416,6 +420,9 @@ function applyRolePermissions() {
         }
         if (clientsNavBtn) {
             clientsNavBtn.style.display = 'none';
+        }
+        if (projectionsNavBtn) {
+            projectionsNavBtn.style.display = 'none';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
@@ -446,6 +453,9 @@ function applyRolePermissions() {
         if (clientsNavBtn) {
             clientsNavBtn.style.display = 'none';
         }
+        if (projectionsNavBtn) {
+            projectionsNavBtn.style.display = 'none';
+        }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
         }
@@ -470,7 +480,7 @@ function applyRolePermissions() {
             userForm.style.display = 'none';
         }
     } else {
-        // Superadmin: mostrar estadísticas, registros, usuarios y clientes (ocultar escáner)
+        // Superadmin: mostrar estadísticas, registros, usuarios, clientes y proyecciones (ocultar escáner)
         if (statsNavBtn) {
             statsNavBtn.style.display = 'flex';
         }
@@ -479,6 +489,9 @@ function applyRolePermissions() {
         }
         if (clientsNavBtn) {
             clientsNavBtn.style.display = 'flex';
+        }
+        if (projectionsNavBtn) {
+            projectionsNavBtn.style.display = 'flex';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'none';
@@ -490,6 +503,9 @@ function applyRolePermissions() {
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
+        // Cargar clientes para filtros
+        loadClientsForProjectionsFilter();
+        
         if (document.getElementById('scannerView').classList.contains('active') ||
             document.getElementById('recordsView').classList.contains('active')) {
             switchView('statsView');
@@ -559,6 +575,8 @@ function switchView(viewId) {
         loadUsers();
     } else if (viewId === 'clientsView') {
         loadClients();
+    } else if (viewId === 'projectionsView') {
+        loadProjections();
     }
 }
 
@@ -842,6 +860,18 @@ function setupEventListeners() {
     
     if (exportStatsBtn) {
         exportStatsBtn.addEventListener('click', exportStatsToCSV);
+    }
+
+    // Event listeners de proyecciones
+    const refreshProjectionsBtn = document.getElementById('refreshProjectionsBtn');
+    const filterClienteProjections = document.getElementById('filterClienteProjections');
+
+    if (refreshProjectionsBtn) {
+        refreshProjectionsBtn.addEventListener('click', loadProjections);
+    }
+
+    if (filterClienteProjections) {
+        filterClienteProjections.addEventListener('change', loadProjections);
     }
 
     // Event listener para toggle de contraseña (delegado)
@@ -1787,6 +1817,7 @@ async function createClient() {
             await loadClients();
             await loadClientsSelect(); // Actualizar selector de clientes
             await loadClientsForUserForm(); // Actualizar select en formulario de usuarios
+            await loadClientsForProjectionsFilter(); // Actualizar filtro de proyecciones
         } else {
             elements.clientFormError.textContent = result.error || 'No se pudo crear el cliente';
             elements.clientFormError.classList.remove('hidden');
@@ -1841,6 +1872,7 @@ async function updateClient() {
             await loadClients();
             await loadClientsSelect(); // Actualizar selector de clientes
             await loadClientsForUserForm(); // Actualizar select en formulario de usuarios
+            await loadClientsForProjectionsFilter(); // Actualizar filtro de proyecciones
         } else {
             elements.clientFormError.textContent = result.error || 'No se pudo actualizar el cliente';
             elements.clientFormError.classList.remove('hidden');
@@ -1919,6 +1951,7 @@ async function deleteClient(nombre) {
             await loadClients();
             await loadClientsSelect(); // Actualizar selector de clientes
             await loadClientsForUserForm(); // Actualizar select en formulario de usuarios
+            await loadClientsForProjectionsFilter(); // Actualizar filtro de proyecciones
         } else {
             showToast(result.error || 'No se pudo eliminar el cliente', 'error');
         }
@@ -2021,6 +2054,34 @@ async function loadClientsForUserForm() {
         }
     } catch (error) {
         console.error('Error al cargar clientes para formulario:', error);
+    }
+}
+
+/**
+ * Carga los clientes en el filtro de proyecciones
+ */
+async function loadClientsForProjectionsFilter() {
+    const filterClienteProjections = document.getElementById('filterClienteProjections');
+    if (!filterClienteProjections) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/clients`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+            // Limpiar opciones excepto la primera
+            filterClienteProjections.innerHTML = '<option value="">Todos los clientes</option>';
+            
+            // Agregar opciones de clientes
+            result.data.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.nombre;
+                option.textContent = client.nombre;
+                filterClienteProjections.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error al cargar clientes para filtro de proyecciones:', error);
     }
 }
 
@@ -2652,6 +2713,261 @@ async function exportToCSV() {
         console.error('Error al exportar:', error);
         showToast('Error al exportar datos', 'error');
     }
+}
+
+// ============================================
+// MÓDULO DE PROYECCIONES
+// ============================================
+
+let ordersProjectionChart = null;
+let filterDurationChart = null;
+
+/**
+ * Carga los datos de proyecciones
+ */
+async function loadProjections() {
+    try {
+        const filterCliente = document.getElementById('filterClienteProjections').value;
+        const clienteParam = filterCliente ? `?cliente=${encodeURIComponent(filterCliente)}` : '';
+
+        const response = await fetch(`${API_URL}/api/projections${clienteParam}`, {
+            headers: {
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            showToast(result.message || 'Error al cargar proyecciones', 'error');
+            return;
+        }
+
+        const { filterDurations, monthlyProjections, stats } = result.data;
+
+        // Actualizar tablas
+        updateFilterDurationTable(filterDurations);
+        updateOrdersProjectionTable(monthlyProjections);
+
+        // Actualizar estadísticas
+        document.getElementById('avgKmDuration').textContent = stats.avgKmDuration.toLocaleString() + ' km';
+        document.getElementById('avgDaysDuration').textContent = stats.avgDaysDuration + ' días';
+        document.getElementById('totalFiltersAnalyzed').textContent = stats.totalFiltersAnalyzed;
+        document.getElementById('nextMonthOrders').textContent = stats.nextMonthOrders;
+
+        // Actualizar gráficas
+        updateOrdersProjectionChart(monthlyProjections);
+        updateFilterDurationChart(filterDurations);
+
+        showToast('Proyecciones actualizadas', 'success');
+
+    } catch (error) {
+        console.error('Error al cargar proyecciones:', error);
+        showToast('Error al cargar proyecciones', 'error');
+    }
+}
+
+/**
+ * Actualiza la tabla de duración de filtros
+ */
+function updateFilterDurationTable(data) {
+    const tbody = document.getElementById('filterDurationBody');
+
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="no-data">No hay datos de duración de filtros</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.map(item => `
+        <tr>
+            <td>${item.cliente}</td>
+            <td>${item.referencia}</td>
+            <td>${item.kmInstalacion.toLocaleString()}</td>
+            <td>${item.kmDesinstalacion.toLocaleString()}</td>
+            <td><strong>${item.duracionKm.toLocaleString()} km</strong></td>
+            <td>${item.diasInstalado} días</td>
+            <td>${item.placa || '-'}</td>
+        </tr>
+    `).join('');
+}
+
+/**
+ * Actualiza la tabla de proyecciones de pedidos
+ */
+function updateOrdersProjectionTable(data) {
+    const tbody = document.getElementById('ordersProjectionBody');
+
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No hay proyecciones disponibles</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.map(item => {
+        const clientesStr = item.clientes.map(c => `${c.name}: ${c.count}`).join(', ');
+        return `
+            <tr>
+                <td><strong>${item.month}</strong></td>
+                <td>${item.count}</td>
+                <td>${clientesStr || 'Todos'}</td>
+                <td>${item.avgDaysInstalled} días</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Actualiza la gráfica de proyección de pedidos
+ */
+function updateOrdersProjectionChart(data) {
+    const ctx = document.getElementById('ordersProjectionChart');
+    
+    if (!ctx) return;
+
+    // Destruir gráfica anterior si existe
+    if (ordersProjectionChart) {
+        ordersProjectionChart.destroy();
+    }
+
+    if (!data || data.length === 0) {
+        return;
+    }
+
+    const labels = data.map(item => item.month);
+    const values = data.map(item => item.count);
+
+    ordersProjectionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Filtros a Reemplazar',
+                data: values,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y} filtros`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Actualiza la gráfica de duración de filtros
+ */
+function updateFilterDurationChart(data) {
+    const ctx = document.getElementById('filterDurationChart');
+    
+    if (!ctx) return;
+
+    // Destruir gráfica anterior si existe
+    if (filterDurationChart) {
+        filterDurationChart.destroy();
+    }
+
+    if (!data || data.length === 0) {
+        return;
+    }
+
+    // Agrupar por cliente y calcular promedio
+    const clientsData = {};
+    data.forEach(item => {
+        if (!clientsData[item.cliente]) {
+            clientsData[item.cliente] = {
+                totalKm: 0,
+                count: 0
+            };
+        }
+        clientsData[item.cliente].totalKm += item.duracionKm;
+        clientsData[item.cliente].count++;
+    });
+
+    const labels = Object.keys(clientsData);
+    const values = labels.map(cliente => 
+        Math.round(clientsData[cliente].totalKm / clientsData[cliente].count)
+    );
+
+    const colors = generateColors(labels.length);
+
+    filterDurationChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Duración Promedio (Km)',
+                data: values,
+                backgroundColor: colors.backgrounds,
+                borderColor: colors.borders,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'right'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.label}: ${context.parsed.toLocaleString()} km promedio`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Genera colores para gráficas
+ */
+function generateColors(count) {
+    const baseColors = [
+        { bg: 'rgba(255, 99, 132, 0.6)', border: 'rgba(255, 99, 132, 1)' },
+        { bg: 'rgba(54, 162, 235, 0.6)', border: 'rgba(54, 162, 235, 1)' },
+        { bg: 'rgba(255, 206, 86, 0.6)', border: 'rgba(255, 206, 86, 1)' },
+        { bg: 'rgba(75, 192, 192, 0.6)', border: 'rgba(75, 192, 192, 1)' },
+        { bg: 'rgba(153, 102, 255, 0.6)', border: 'rgba(153, 102, 255, 1)' },
+        { bg: 'rgba(255, 159, 64, 0.6)', border: 'rgba(255, 159, 64, 1)' }
+    ];
+
+    const backgrounds = [];
+    const borders = [];
+
+    for (let i = 0; i < count; i++) {
+        const color = baseColors[i % baseColors.length];
+        backgrounds.push(color.bg);
+        borders.push(color.border);
+    }
+
+    return { backgrounds, borders };
 }
 
 // ============================================

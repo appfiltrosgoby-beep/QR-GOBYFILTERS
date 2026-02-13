@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="assets/css/styles.css">
     <!-- Librería html5-qrcode para escaneo de QR -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <!-- Librería Chart.js para gráficas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Contenedor principal -->
@@ -355,6 +357,106 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Vista: Proyecciones (solo superadmin) -->
+            <section id="projectionsView" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📊 Proyecciones de Pedidos y Duración de Filtros</h2>
+                        <div class="header-actions">
+                            <select id="filterClienteProjections" class="input-filter">
+                                <option value="">Todos los clientes</option>
+                            </select>
+                            <button id="refreshProjectionsBtn" class="btn btn-icon-text">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                                </svg>
+                                Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Gráficas -->
+                        <div class="charts-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                            <div class="chart-card">
+                                <h3>📈 Proyección de Pedidos por Mes</h3>
+                                <canvas id="ordersProjectionChart"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <h3>⏱️ Duración Promedio de Filtros (Km)</h3>
+                                <canvas id="filterDurationChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Tabla: Proyección de Pedidos -->
+                        <div style="margin-bottom: 30px;">
+                            <h3 style="margin-bottom: 15px;">📅 Proyección de Renuevos por Mes</h3>
+                            <div class="table-container">
+                                <table class="records-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Mes</th>
+                                            <th>Filtros a Renovar</th>
+                                            <th>Cliente</th>
+                                            <th>Promedio Días Instalado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ordersProjectionBody">
+                                        <tr>
+                                            <td colspan="4" class="no-data">Cargando proyecciones...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Tabla: Duración de Filtros -->
+                        <div>
+                            <h3 style="margin-bottom: 15px;">🔧 Duración de Filtros por Kilometraje</h3>
+                            <div class="table-container">
+                                <table class="records-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Cliente</th>
+                                            <th>Referencia</th>
+                                            <th>Km Instalación</th>
+                                            <th>Km Desinstalación</th>
+                                            <th>Duración (Km)</th>
+                                            <th>Días Instalado</th>
+                                            <th>Placa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="filterDurationBody">
+                                        <tr>
+                                            <td colspan="7" class="no-data">Cargando datos...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Estadísticas Resumen -->
+                        <div style="margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div class="stat-card">
+                                <div class="stat-label">Promedio Duración (Km)</div>
+                                <div class="stat-value" id="avgKmDuration">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Promedio Días Instalado</div>
+                                <div class="stat-value" id="avgDaysDuration">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Filtros Analizados</div>
+                                <div class="stat-value" id="totalFiltersAnalyzed">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Próximo Mes Pedidos</div>
+                                <div class="stat-value" id="nextMonthOrders">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
 
         <!-- Menú de navegación móvil -->
@@ -398,6 +500,14 @@
                     <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
                 </svg>
                 <span>Clientes</span>
+            </button>
+            <button class="nav-item" data-view="projectionsView">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"/>
+                    <line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                <span>Proyecciones</span>
             </button>
         </nav>
 
