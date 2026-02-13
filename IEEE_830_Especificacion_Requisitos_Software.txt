@@ -151,6 +151,12 @@ se detalla la información que debe incluir:
       - Eliminar usuarios
       - Asignar roles y clientes
 
+   8. Proyecciones (Superadmin)
+      - Visualizar proyecciones de pedidos por mes
+      - Calcular duración promedio de filtros por kilometraje
+      - Filtrar por cliente y referencia
+      - Mostrar tablas y gráficas de proyección y duración
+
 2.3 Características del Usuario
    TIPOS DE USUARIOS:
    
@@ -539,6 +545,24 @@ se detalla la información que debe incluir:
    Criterios de aceptación:
      - Datos precisos y actualizados
      - Incluir porcentaje del total
+
+    RF-028: Proyecciones de Pedidos y Duración de Filtros
+    Prioridad: MEDIA | Estado: Implementado
+    Descripción: El sistema debe mostrar proyecciones de pedidos y duración de filtros
+    basado en fechas de instalación/desinstalación y kilometraje.
+    Entrada: Registros de la hoja global REGISTROS, filtros de cliente y referencia
+    Procesamiento:
+       1. Consultar la hoja global REGISTROS
+       2. Filtrar por cliente y referencia (opcional)
+       3. Calcular duración de filtros en kilómetros y días instalado
+       4. Proyectar reemplazos mensuales según promedios históricos
+       5. Generar tablas y gráficas de proyecciones
+    Salida: Tablas y gráficas con proyección mensual y duración promedio
+    Criterios de aceptación:
+       - Solo superadmin puede acceder al módulo
+       - Datos provienen exclusivamente de REGISTROS
+       - Filtros por cliente y referencia actualizan tablas y gráficas
+       - Estadísticas resumen se recalculan según filtros
    
    ================================================================================
    MÓDULO 5: EXPORTACIÓN DE DATOS
@@ -1185,7 +1209,7 @@ CAMBIOS VERSIÓN 1.1 (2026-02-09):
    - RF-026 nuevo: Verificación automática de estructura de hojas
    - RF-027 nuevo: Guardado dual de usuarios en hoja global
    - Apéndice B actualizado: Estructura detallada de Google Sheets
-   - Total de requisitos funcionales: 24 → 27
+   - Total de requisitos funcionales: 24 → 28
 
 
 F. MEJORAS FUTURAS
@@ -1242,7 +1266,7 @@ SECCIONES PRINCIPALES:
       2.5 Suposiciones y Dependencias
    
    3. REQUISITOS ESPECÍFICOS
-      3.1 Requisitos Funcionales (RF-001 a RF-027)
+      3.1 Requisitos Funcionales (RF-001 a RF-028)
       3.2 Requisitos No-Funcionales (NRF-001 a NRF-042)
    
    4. APÉNDICES:
@@ -1254,11 +1278,12 @@ SECCIONES PRINCIPALES:
       F. Mejoras Futuras
       G. Riesgos y Mitigación
 
-REQUISITOS FUNCIONALES (27 Total):
+REQUISITOS FUNCIONALES (28 Total):
    - Autenticación: RF-001 a RF-004
    - Escaneo: RF-005 a RF-009
    - Registros: RF-010 a RF-014
    - Estadísticas: RF-015 a RF-017
+   - Proyecciones: RF-028
    - Exportación: RF-018 a RF-019
    - Usuarios: RF-020 a RF-023
    - Sistema: RF-024 a RF-027 (incluye guardado dual y sincronización)
@@ -1394,7 +1419,7 @@ FIN DEL DOCUMENTO IEEE 830 - ESPECIFICACIÓN DE REQUISITOS DE SOFTWARE
 Documento completado: 2026-02-09
 Última actualización: 2026-02-09 (v1.1 - Guardado dual y sincronización)
 Líneas totales: Aprox. 1300+
-Requisitos funcionales: 27 (24 originales + 3 nuevos)
+Requisitos funcionales: 28 (24 originales + 4 nuevos)
 Requisitos no-funcionales: 42
 Casos de uso: 4
 Apéndices: 7
