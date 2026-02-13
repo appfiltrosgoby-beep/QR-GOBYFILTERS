@@ -395,47 +395,24 @@
                             </div>
                         </div>
 
-                        <!-- Tabla: Proyección de Pedidos -->
+                        <!-- Tabla: Próximos Cambios -->
                         <div style="margin-bottom: 30px;">
-                            <h3 style="margin-bottom: 15px;">📅 Proyección de Renuevos por Mes</h3>
-                            <div class="table-container">
-                                <table class="records-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Mes</th>
-                                            <th>Filtros a Renovar</th>
-                                            <th>Cliente</th>
-                                            <th>Promedio Días Instalado</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="ordersProjectionBody">
-                                        <tr>
-                                            <td colspan="4" class="no-data">Cargando proyecciones...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Tabla: Duración de Filtros -->
-                        <div>
-                            <h3 style="margin-bottom: 15px;">🔧 Duración de Filtros por Kilometraje</h3>
+                            <h3 style="margin-bottom: 15px;">⏰ Próximos Cambios de Filtro</h3>
                             <div class="table-container">
                                 <table class="records-table">
                                     <thead>
                                         <tr>
                                             <th>Cliente</th>
                                             <th>Referencia</th>
-                                            <th>Km Instalación</th>
-                                            <th>Km Desinstalación</th>
-                                            <th>Duración (Km)</th>
-                                            <th>Días Instalado</th>
+                                            <th>Instalado Desde</th>
+                                            <th>Duración Promedio</th>
+                                            <th>Est. Cambio</th>
                                             <th>Placa</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="filterDurationBody">
+                                    <tbody id="ordersProjectionBody">
                                         <tr>
-                                            <td colspan="7" class="no-data">Cargando datos...</td>
+                                            <td colspan="6" class="no-data">Cargando próximos cambios...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -445,19 +422,15 @@
                         <!-- Estadísticas Resumen -->
                         <div style="margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                             <div class="stat-card">
-                                <div class="stat-label">Promedio Duración (Km)</div>
-                                <div class="stat-value" id="avgKmDuration">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Promedio Días Instalado</div>
+                                <div class="stat-label">Promedio Días Duración</div>
                                 <div class="stat-value" id="avgDaysDuration">-</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-label">Total Filtros Analizados</div>
+                                <div class="stat-label">Históricos Analizados</div>
                                 <div class="stat-value" id="totalFiltersAnalyzed">-</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-label">Próximo Mes Pedidos</div>
+                                <div class="stat-label">Próximos Cambios</div>
                                 <div class="stat-value" id="nextMonthOrders">-</div>
                             </div>
                         </div>

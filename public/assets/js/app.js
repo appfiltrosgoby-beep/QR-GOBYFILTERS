@@ -2113,6 +2113,26 @@ function updateReferencesFilter(data, selectedRef) {
     }
 }
 
+/**
+ * Actualiza opciones del filtro de referencias (versión simplificada)
+ */
+function updateReferencesFilterOptions(referencias, selectedRef) {
+    const filterReferenciaProjections = document.getElementById('filterReferenciaProjections');
+    if (!filterReferenciaProjections) return;
+
+    filterReferenciaProjections.innerHTML = '<option value="">Todas las referencias</option>';
+    referencias.forEach(ref => {
+        const option = document.createElement('option');
+        option.value = ref;
+        option.textContent = ref;
+        filterReferenciaProjections.appendChild(option);
+    });
+
+    if (selectedRef && referencias.includes(selectedRef)) {
+        filterReferenciaProjections.value = selectedRef;
+    }
+}
+
 // ============================================
 // INTERFAZ DE USUARIO
 // ============================================
@@ -2775,35 +2795,28 @@ async function loadProjections() {
             return;
         }
 
-        const { filterDurations, monthlyProjections, stats } = result.data;
+        const { nextReplacements, stats } = result.data;
 
-        updateReferencesFilter(filterDurations, filterReferencia);
+        // Extraer referencias únicas de los datos para el filtro
+        const referencias = [...new Set(nextReplacements.map(item => item.referencia))].sort();
+        updateReferencesFilterOptions(referencias, filterReferencia);
 
-        let filteredDurations = filterDurations;
+        // Aplicar filtro de referencia
+        let filteredReplacements = nextReplacements;
         if (filterReferencia) {
-            filteredDurations = filterDurations.filter(item => item.referencia === filterReferencia);
+            filteredReplacements = nextReplacements.filter(item => item.referencia === filterReferencia);
         }
 
         // Actualizar tablas
-        updateFilterDurationTable(filteredDurations);
-        updateOrdersProjectionTable(monthlyProjections);
+        updateNextReplacementsTable(filteredReplacements);
 
-        // Actualizar estadísticas (segun filtro de referencia)
-        const avgKmDuration = filteredDurations.length > 0
-            ? Math.round(filteredDurations.reduce((sum, f) => sum + f.duracionKm, 0) / filteredDurations.length)
-            : 0;
-        const avgDaysDuration = filteredDurations.length > 0
-            ? Math.round(filteredDurations.reduce((sum, f) => sum + f.diasInstalado, 0) / filteredDurations.length)
-            : 0;
+        // Actualizar estadísticas
+        document.getElementById('avgDaysDuration').textContent = stats.avgDaysDuration + ' días';
+        document.getElementById('totalFiltersAnalyzed').textContent = stats.totalFiltersAnalyzed;
+        document.getElementById('nextMonthOrders').textContent = stats.nextReplacementsCount;
 
-        document.getElementById('avgKmDuration').textContent = avgKmDuration.toLocaleString() + ' km';
-        document.getElementById('avgDaysDuration').textContent = avgDaysDuration + ' días';
-        document.getElementById('totalFiltersAnalyzed').textContent = filteredDurations.length;
-        document.getElementById('nextMonthOrders').textContent = stats.nextMonthOrders;
-
-        // Actualizar gráficas
-        updateOrdersProjectionChart(monthlyProjections);
-        updateFilterDurationChart(filteredDurations);
+        // Actualizar gráfica de próximos cambios
+        updateNextReplacementsChart(filteredReplacements);
 
         showToast('Proyecciones actualizadas', 'success');
 
@@ -2838,33 +2851,32 @@ function updateFilterDurationTable(data) {
 }
 
 /**
- * Actualiza la tabla de proyecciones de pedidos
+ * Actualiza la tabla de próximos cambios (filtros a reemplazar)
  */
-function updateOrdersProjectionTable(data) {
+function updateNextReplacementsTable(data) {
     const tbody = document.getElementById('ordersProjectionBody');
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No hay proyecciones disponibles</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No hay próximos cambios programados</td></tr>';
         return;
     }
 
-    tbody.innerHTML = data.map(item => {
-        const clientesStr = item.clientes.map(c => `${c.name}: ${c.count}`).join(', ');
-        return `
-            <tr>
-                <td><strong>${item.month}</strong></td>
-                <td>${item.count}</td>
-                <td>${clientesStr || 'Todos'}</td>
-                <td>${item.avgDaysInstalled} días</td>
-            </tr>
-        `;
-    }).join('');
+    tbody.innerHTML = data.map(item => `
+        <tr>
+            <td>${item.cliente}</td>
+            <td>${item.referencia}</td>
+            <td>${item.fechaInstalacion}</td>
+            <td><strong>${item.duracionPromedioDias} días</strong></td>
+            <td><strong>${item.fechaEstimadaReemplazo}</strong></td>
+            <td>${item.placa || '-'}</td>
+        </tr>
+    `).join('');
 }
 
 /**
- * Actualiza la gráfica de proyección de pedidos
+ * Actualiza la gráfica de próximos cambios
  */
-function updateOrdersProjectionChart(data) {
+function updateNextReplacementsChart(data) {
     const ctx = document.getElementById('ordersProjectionChart');
     
     if (!ctx) return;
@@ -2878,18 +2890,39 @@ function updateOrdersProjectionChart(data) {
         return;
     }
 
-    const labels = data.map(item => item.month);
-    const values = data.map(item => item.count);
+    // Agrupar por mes de reemplazo estimado para visualización
+    const replacementsByMonth = {};
+    data.forEach(item => {
+        const parts = item.fechaEstimadaReemplazo.split('/');
+        const month = `${parts[1]}/${parts[2]}`; // MM/YYYY
+        replacementsByMonth[month] = (replacementsByMonth[month] || 0) + 1;
+    });
+
+    // Ordenar meses
+    const sortedMonths = Object.keys(replacementsByMonth).sort((a, b) => {
+        const [monthA, yearA] = a.split('/');
+        const [monthB, yearB] = b.split('/');
+        const dateA = new Date(yearA, monthA - 1);
+        const dateB = new Date(yearB, monthB - 1);
+        return dateA - dateB;
+    });
+
+    const labels = sortedMonths.map(m => {
+        const [month, year] = m.split('/');
+        const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        return `${months[parseInt(month) - 1]} ${year}`;
+    });
+    const values = sortedMonths.map(m => replacementsByMonth[m]);
 
     ordersProjectionChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Filtros a Reemplazar',
+                label: 'Cambios de Filtro Estimados',
                 data: values,
-                backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: 'rgba(255, 159, 64, 0.6)',
+                borderColor: 'rgba(255, 159, 64, 1)',
                 borderWidth: 2
             }]
         },
@@ -2899,7 +2932,7 @@ function updateOrdersProjectionChart(data) {
             plugins: {
                 legend: {
                     display: true,
-                    position: window.innerWidth < 768 ? 'top' : 'top',
+                    position: 'top',
                     labels: {
                         boxWidth: window.innerWidth < 480 ? 12 : 20,
                         font: {

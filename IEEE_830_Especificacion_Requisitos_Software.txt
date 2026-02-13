@@ -546,23 +546,29 @@ se detalla la información que debe incluir:
      - Datos precisos y actualizados
      - Incluir porcentaje del total
 
-    RF-028: Proyecciones de Pedidos y Duración de Filtros
+    RF-028: Proyecciones de Reemplazo de Filtros por Cliente
     Prioridad: MEDIA | Estado: Implementado
-    Descripción: El sistema debe mostrar proyecciones de pedidos y duración de filtros
-    basado en fechas de instalación/desinstalación y kilometraje.
-    Entrada: Registros de la hoja global REGISTROS, filtros de cliente y referencia
+    Descripción: El sistema debe proyectar fechas de reemplazo para filtros actualmente
+    instalados, basándose en la duración histórica promedio de cada referencia por cliente.
+    Entrada: Registros de la hoja global REGISTROS, filtros de cliente y referencia (opcional)
     Procesamiento:
-       1. Consultar la hoja global REGISTROS
-       2. Filtrar por cliente y referencia (opcional)
-       3. Calcular duración de filtros en kilómetros y días instalado
-       4. Proyectar reemplazos mensuales según promedios históricos
-       5. Generar tablas y gráficas de proyecciones
-    Salida: Tablas y gráficas con proyección mensual y duración promedio
+       1. Consultar la hoja global REGISTROS (todos los registros)
+       2. Calcular duración promedio (en días) para cada combinación (CLIENTE, REFERENCIA)
+          usando solo registros con ESTADO='DESINSTALADO' o con duración completada
+       3. Identificar todos los filtros con ESTADO='INSTALADO'
+       4. Para cada filtro instalado: Proyectar fecha de reemplazo = 
+          FECHA_INSTALACION + Duración promedio de esa (CLIENTE, REFERENCIA)
+       5. Aplicar filtros opcionales de cliente y referencia
+       6. Generar tabla de próximos cambios ordenada por fecha de reemplazo
+    Salida: Tabla "Próximos Cambios": Cliente | Referencia | Instalado Desde | 
+            Duración Promedio (días) | Est. Fecha Reemplazo
     Criterios de aceptación:
        - Solo superadmin puede acceder al módulo
-       - Datos provienen exclusivamente de REGISTROS
-       - Filtros por cliente y referencia actualizan tablas y gráficas
-       - Estadísticas resumen se recalculan según filtros
+       - Datos provienen exclusivamente de REGISTROS (hoja global)
+       - Filtro por cliente actualiza tabla y calcula duraciones correctas
+       - Filtro por referencia actualiza tabla manteniendo contexto del cliente
+       - Tabla ordenada ascendentemente por "Est. Fecha Reemplazo"
+       - Duración promedio excluye registros con días = 0 (no completados)
    
    ================================================================================
    MÓDULO 5: EXPORTACIÓN DE DATOS

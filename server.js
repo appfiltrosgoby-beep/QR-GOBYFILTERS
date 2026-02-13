@@ -1891,9 +1891,46 @@ app.get('/api/projections', async (req, res) => {
       });
     }
 
-    // Calcular duración de filtros (solo los que están desinstalados)
-    const filterDurations = [];
-    const monthlyProjections = {};
+    // PASO 1: Calcular duración promedio por (cliente, referencia) usando registros desinstalados
+    const durationsByClientRef = {}; // Key: "cliente|referencia", Value: array de duraciones en días
+    
+    allRows.forEach(row => {
+      const estado = row.get('ESTADO');
+      const cliente = row.get('CLIENTE') || 'Sin Cliente';
+      const referencia = row.get('REFERENCIA');
+      const fechaInst = row.get('FECHA_INSTALACION');
+      const fechaDesinst = row.get('FECHA_DESINSTALACION');
+
+      // Recopilar datos de filtros desinstalados para calcular promedios
+      if (estado === 'DESINSTALADO' && fechaInst && fechaDesinst) {
+        const dateInst = parseSpanishDate(fechaInst);
+        const dateDesinst = parseSpanishDate(fechaDesinst);
+        
+        if (dateInst && dateDesinst) {
+          const diasInstalado = Math.round((dateDesinst - dateInst) / (1000 * 60 * 60 * 24));
+          
+          // Solo registrar si tiene duración válida (> 0)
+          if (diasInstalado > 0) {
+            const key = `${cliente}|${referencia}`;
+            if (!durationsByClientRef[key]) {
+              durationsByClientRef[key] = [];
+            }
+            durationsByClientRef[key].push(diasInstalado);
+          }
+        }
+      }
+    });
+
+    // Calcular promedios por (cliente, referencia)
+    const avgDurationByClientRef = {};
+    for (const key in durationsByClientRef) {
+      const durations = durationsByClientRef[key];
+      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+      avgDurationByClientRef[key] = Math.round(avg);
+    }
+
+    // PASO 2: Para cada filtro instalado, calcular fecha estimada de reemplazo
+    const nextReplacements = [];
     
     allRows.forEach(row => {
       const estado = row.get('ESTADO');
@@ -1901,101 +1938,54 @@ app.get('/api/projections', async (req, res) => {
       const referencia = row.get('REFERENCIA');
       const serial = row.get('SERIAL');
       const placa = row.get('PLACA');
-      const kmInst = parseInt(row.get('KILOMETRAJE_INSTALACION')) || 0;
-      const kmDesinst = parseInt(row.get('KILOMETRAJE_DESINSTALACION')) || 0;
       const fechaInst = row.get('FECHA_INSTALACION');
-      const fechaDesinst = row.get('FECHA_DESINSTALACION');
 
-      // Calcular duración de filtros desinstalados
-      if (estado === 'DESINSTALADO' && kmInst > 0 && kmDesinst > 0) {
-        const duracionKm = kmDesinst - kmInst;
-        
-        // Calcular días instalado
-        let diasInstalado = 0;
-        if (fechaInst && fechaDesinst) {
-          const dateInst = parseSpanishDate(fechaInst);
-          const dateDesinst = parseSpanishDate(fechaDesinst);
-          if (dateInst && dateDesinst) {
-            diasInstalado = Math.round((dateDesinst - dateInst) / (1000 * 60 * 60 * 24));
-          }
-        }
+      if (estado === 'INSTALADO' && fechaInst && (cliente || referencia)) {
+        const dateInst = parseSpanishDate(fechaInst);
+        if (dateInst) {
+          const key = `${cliente}|${referencia}`;
+          
+          // Obtener duración promedio para esta (cliente, referencia), default 90 días si no hay histórico
+          const avgDuration = avgDurationByClientRef[key] || 90;
 
-        // Solo agregar registros con datos completos (días instalado debe ser > 0)
-        if (diasInstalado > 0) {
-          filterDurations.push({
+          // Calcular fecha estimada de reemplazo
+          const estimatedDate = new Date(dateInst);
+          estimatedDate.setDate(estimatedDate.getDate() + avgDuration);
+
+          nextReplacements.push({
             cliente,
             referencia,
             serial,
             placa,
-            kmInstalacion: kmInst,
-            kmDesinstalacion: kmDesinst,
-            duracionKm,
-            diasInstalado,
             fechaInstalacion: fechaInst,
-            fechaDesinstalacion: fechaDesinst
+            duracionPromedioDias: avgDuration,
+            fechaEstimadaReemplazo: formatDateToSpanish(estimatedDate)
           });
-        }
-      }
-
-      // Proyecciones de reemplazos basados en fechas de instalación
-      if (estado === 'INSTALADO' && fechaInst) {
-        const dateInst = parseSpanishDate(fechaInst);
-        if (dateInst) {
-          // Calcular promedio de duración (usar 90 días como default si no hay histórico)
-          const avgDuration = filterDurations.length > 0 
-            ? filterDurations.reduce((sum, f) => sum + f.diasInstalado, 0) / filterDurations.length 
-            : 90;
-
-          // Calcular fecha estimada de reemplazo
-          const estimatedReplacementDate = new Date(dateInst);
-          estimatedReplacementDate.setDate(estimatedReplacementDate.getDate() + Math.round(avgDuration));
-          
-          const monthYear = `${estimatedReplacementDate.getFullYear()}-${String(estimatedReplacementDate.getMonth() + 1).padStart(2, '0')}`;
-          
-          if (!monthlyProjections[monthYear]) {
-            monthlyProjections[monthYear] = {
-              month: monthYear,
-              count: 0,
-              clientes: {},
-              avgDaysInstalled: avgDuration
-            };
-          }
-          
-          monthlyProjections[monthYear].count++;
-          monthlyProjections[monthYear].clientes[cliente] = (monthlyProjections[monthYear].clientes[cliente] || 0) + 1;
         }
       }
     });
 
-    // Convertir proyecciones mensuales a array y ordenar
-    const projectionsArray = Object.values(monthlyProjections)
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .map(p => ({
-        month: formatMonthYear(p.month),
-        count: p.count,
-        clientes: Object.entries(p.clientes).map(([name, count]) => ({ name, count })),
-        avgDaysInstalled: Math.round(p.avgDaysInstalled)
-      }));
+    // Ordenar por fecha estimada de reemplazo (ascendente)
+    nextReplacements.sort((a, b) => {
+      const dateA = parseSpanishDate(a.fechaEstimadaReemplazo);
+      const dateB = parseSpanishDate(b.fechaEstimadaReemplazo);
+      return dateA - dateB;
+    });
 
-    // Calcular estadísticas
-    const avgKmDuration = filterDurations.length > 0
-      ? Math.round(filterDurations.reduce((sum, f) => sum + f.duracionKm, 0) / filterDurations.length)
-      : 0;
-
-    const avgDaysDuration = filterDurations.length > 0
-      ? Math.round(filterDurations.reduce((sum, f) => sum + f.diasInstalado, 0) / filterDurations.length)
+    // Calcular estadísticas generales
+    const allDurations = Object.values(durationsByClientRef).flat();
+    const avgDaysDuration = allDurations.length > 0
+      ? Math.round(allDurations.reduce((sum, d) => sum + d, 0) / allDurations.length)
       : 0;
 
     res.json({
       success: true,
       data: {
-        filterDurations: filterDurations.sort((a, b) => b.duracionKm - a.duracionKm),
-        monthlyProjections: projectionsArray,
+        nextReplacements: nextReplacements,
         stats: {
-          avgKmDuration,
           avgDaysDuration,
-          totalFiltersAnalyzed: filterDurations.length,
-          nextMonthOrders: projectionsArray.length > 0 ? projectionsArray[0].count : 0
+          totalFiltersAnalyzed: allDurations.length,
+          nextReplacementsCount: nextReplacements.length
         }
       }
     });
@@ -2013,6 +2003,17 @@ app.get('/api/projections', async (req, res) => {
 /**
  * Función auxiliar para parsear fechas en formato español dd/mm/yyyy
  */
+/**
+ * Convierte una fecha JavaScript a formato español DD/MM/YYYY
+ */
+function formatDateToSpanish(date) {
+  if (!date) return '';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 function parseSpanishDate(dateString) {
   if (!dateString) return null;
   const parts = dateString.split('/');
