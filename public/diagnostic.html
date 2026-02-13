@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PWA Diagnostic</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 900px; 
+            margin: 0 auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+        h1 { color: #333; margin-bottom: 30px; }
+        h2 { color: #555; margin-top: 0; }
+        
+        .section { 
+            background: white;
+            margin: 20px 0; 
+            padding: 20px; 
+            border-radius: 8px;
+            border-left: 4px solid #0066cc;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .test-result {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .ok { 
+            background: #d4edda; 
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .error { 
+            background: #f8d7da; 
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .info { 
+            background: #d1ecf1; 
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        img { 
+            max-width: 150px;
+            max-height: 150px;
+            border: 2px solid #ddd; 
+            border-radius: 4px;
+            margin: 10px 0;
+            display: block;
+        }
+        
+        .icon-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        
+        .icon-item {
+            text-align: center;
+        }
+        
+        .icon-item small {
+            display: block;
+            margin-top: 8px;
+            color: #666;
+        }
+        
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 PWA - Diagnostic para INDUSTRIAS GOBY</h1>
+    
+    <div class="loading">⏳ Verificando configuración PWA...</div>
+    <div id="diagnostics"></div>
+
+    <script>
+        async function test(name, fn) {
+            try {
+                return await fn();
+            } catch (e) {
+                return { error: e.message };
+            }
+        }
+
+        async function runTests() {
+            const diag = document.getElementById('diagnostics');
+            diag.innerHTML = '';
+            
+            // 1. MANIFEST
+            diag.innerHTML += '<div class="section"><h2>📋 1. Manifest.json</h2><div id="manifest-section"></div></div>';
+            
+            const manifestResult = await test('Manifest', async () => {
+                const res = await fetch('/manifest.json');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            });
+            
+            let manifestHtml = '';
+            if (manifestResult.error) {
+                manifestHtml = `<div class="test-result error">❌ Error: ${manifestResult.error}</div>`;
+            } else {
+                manifestHtml = `
+                    <div class="test-result ok">✅ Manifest válido y accesible</div>
+                    <div style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px;">
+                        <strong>Contenido:</strong><br>
+                        Nombre: <code>${manifestResult.name}</code><br>
+                        Short: <code>${manifestResult.short_name}</code><br>
+                        Display: <code>${manifestResult.display}</code><br>
+                        Iconos: <code>${manifestResult.icons.length}</code>
+                    </div>
+                `;
+            }
+            document.getElementById('manifest-section').innerHTML = manifestHtml;
+            
+            // 2. ICONOS
+            diag.innerHTML += '<div class="section"><h2>🖼️ 2. Iconos PWA</h2><div id="icons-section"></div></div>';
+            
+            let iconsHtml = '<div class="icon-container">';
+            
+            if (manifestResult.icons) {
+                for (const icon of manifestResult.icons) {
+                    const testIcon = await test(`Icon ${icon.sizes}`, async () => {
+                        const res = await fetch(icon.src);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const blob = await res.blob();
+                        return { ok: true, size: blob.size, blob };
+                    });
+                    
+                    if (testIcon.error) {
+                        iconsHtml += `
+                            <div class="icon-item">
+                                <div class="test-result error">❌ ${icon.sizes}</div>
+                                <small>${icon.src}</small><br>
+                                <small>Error: ${testIcon.error}</small>
+                            </div>
+                        `;
+                    } else {
+                        const url = URL.createObjectURL(testIcon.blob);
+                        iconsHtml += `
+                            <div class="icon-item">
+                                <div class="test-result ok">✅ ${icon.sizes}</div>
+                                <img src="${url}" alt="Icon ${icon.sizes}">
+                                <small>${(testIcon.size/1024).toFixed(1)}KB</small>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            iconsHtml += '</div>';
+            document.getElementById('icons-section').innerHTML = iconsHtml;
+            
+            // 3. SERVICE WORKER
+            diag.innerHTML += '<div class="section"><h2>⚙️ 3. Service Worker</h2><div id="sw-section"></div></div>';
+            
+            let swHtml = '';
+            if ('serviceWorker' in navigator) {
+                try {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    if (regs.length > 0) {
+                        swHtml = `<div class="test-result ok">✅ Service Worker registrado</div>`;
+                        regs.forEach((reg, i) => {
+                            swHtml += `<small>Registro ${i+1}: ${reg.scope}</small><br>`;
+                        });
+                    } else {
+                        swHtml = `<div class="test-result warning">⚠️ Service Worker soportado pero no registrado</div>
+                            <p>El navegador soporta Service Worker pero aún no se ha registrado. Esto es normal en primera visita.</p>`;
+                    }
+                } catch (e) {
+                    swHtml = `<div class="test-result error">❌ Error: ${e.message}</div>`;
+                }
+            } else {
+                swHtml = `<div class="test-result error">❌ Service Worker no soportado en este navegador</div>`;
+            }
+            document.getElementById('sw-section').innerHTML = swHtml;
+            
+            // 4. INFORMACIÓN NAVEGADOR
+            diag.innerHTML += '<div class="section"><h2>📱 4. Información del Navegador</h2><div id="browser-section"></div></div>';
+            
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            const manifestLink = document.querySelector('link[rel="manifest"]');
+            
+            let browserHtml = `
+                <div class="test-result info">ℹ️ Estado Actual</div>
+                <ul style="background: #f5f5f5; padding: 15px; border-radius: 4px;">
+                    <li><strong>Modo PWA:</strong> ${isStandalone ? '✅ Standalone (Instalada)' : '❌ Browser (No instalada)'}</li>
+                    <li><strong>Manifest Link:</strong> ${manifestLink ? '✅ Presente' : '❌ NO PRESENTE'}</li>
+                    <li><strong>Metro:</strong> ${navigator.userAgent.substring(0, 50)}...</li>
+                </ul>
+            `;
+            document.getElementById('browser-section').innerHTML = browserHtml;
+            
+            // 5. INSTRUCCIONES
+            diag.innerHTML += `
+                <div class="section" style="border-left-color: #17a2b8;">
+                    <h2>👉 Cómo Instalar la PWA</h2>
+                    <ol>
+                        <li><strong>Android Chrome:</strong> Toca el icono de menú (⋮) → "Instalar aplicación" o "Agregar a pantalla principal"</li>
+                        <li><strong>iOS Safari:</strong> Toca la opción compartir (↗️) → "Añadir a pantalla de inicio"</li>
+                        <li><strong>Si no ves la opción:</strong> Espera a que cargue la página completamente y recarga</li>
+                    </ol>
+                </div>
+            `;
+        }
+        
+        runTests();
+    </script>
+</body>
+</html>
+
