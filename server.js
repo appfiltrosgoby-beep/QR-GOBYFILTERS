@@ -1873,32 +1873,22 @@ app.get('/api/projections', async (req, res) => {
 
     const { tipo: authTipo, cliente: authCliente } = authData;
     
-    // Recopilar todos los registros relevantes
-    let allRows = [];
+    // Recopilar todos los registros solo de la hoja REGISTROS global
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    let allRows = await globalSheet.getRows();
     
-    if (authTipo === 'super') {
-      // Superadmin puede ver todos los clientes o filtrar por uno específico
-      if (cliente) {
-        const sheet = await getOrCreateClientRecordsSheet(doc, cliente);
-        allRows = await sheet.getRows();
-      } else {
-        // Obtener todos los registros de todos los clientes
-        await doc.loadInfo();
-        for (const sheet of doc.sheetsByIndex) {
-          if (sheet.title.endsWith('_REGISTROS')) {
-            const rows = await sheet.getRows();
-            allRows = allRows.concat(rows);
-          }
-        }
-        // También incluir la hoja global REGISTROS
-        const globalSheet = await getOrCreateRecordsSheet(doc);
-        const globalRows = await globalSheet.getRows();
-        allRows = allRows.concat(globalRows);
-      }
-    } else {
+    // Filtrar por cliente si se especifica
+    if (cliente) {
+      allRows = allRows.filter(row => {
+        const rowCliente = row.get('CLIENTE') || '';
+        return rowCliente.toUpperCase() === cliente.toUpperCase();
+      });
+    } else if (authTipo !== 'super') {
       // Administrador solo puede ver su cliente
-      const sheet = await getOrCreateClientRecordsSheet(doc, authCliente);
-      allRows = await sheet.getRows();
+      allRows = allRows.filter(row => {
+        const rowCliente = row.get('CLIENTE') || '';
+        return rowCliente.toUpperCase() === authCliente.toUpperCase();
+      });
     }
 
     // Calcular duración de filtros (solo los que están desinstalados)
