@@ -7,6 +7,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const compression = require('compression');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
@@ -26,25 +27,49 @@ const path = require('path');
 
 // Middlewares
 app.use(cors());
+app.use(compression()); // Comprimir respuestas
 app.use(bodyParser.json());
 
 // Debug: Log de rutas
 const publicPath = path.join(__dirname, 'public');
 console.log('📁 Public path:', publicPath);
 
-// Servir archivos estáticos desde public
-app.use(express.static(publicPath));
+// Middleware para servir archivos estáticos con cache apropiado
+app.use(express.static(publicPath, {
+  maxAge: '1d',
+  etag: false,
+  setHeaders: (res, path) => {
+    // No cachear HTML, JSON y JS de manera agresiva
+    if (path.endsWith('.html') || path.endsWith('.json') || path.endsWith('.js')) {
+      res.set('Cache-Control', 'public, max-age=3600, must-revalidate');
+    }
+    // Cachear imágenes por más tiempo
+    if (path.endsWith('.png') || path.endsWith('.svg')) {
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
 
 // Servir manifest.json con el content-type correcto
 app.get('/manifest.json', (req, res) => {
   res.type('application/manifest+json');
+  res.set('Cache-Control', 'public, max-age=3600, must-revalidate');
   res.sendFile(path.join(publicPath, 'manifest.json'));
 });
 
 // Servir Service Worker
 app.get('/service-worker.js', (req, res) => {
-  res.type('application/javascript');
+  res.type('application/javascript; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=3600, must-revalidate');
+  res.set('Service-Worker-Allowed', '/');
   res.sendFile(path.join(publicPath, 'service-worker.js'));
+});
+
+// Servir browserconfig.xml
+app.get('/browserconfig.xml', (req, res) => {
+  res.type('application/xml');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(publicPath, 'browserconfig.xml'));
 });
 
 // Health check para Render
