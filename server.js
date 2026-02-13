@@ -35,6 +35,18 @@ console.log('📁 Public path:', publicPath);
 // Servir archivos estáticos desde public
 app.use(express.static(publicPath));
 
+// Servir manifest.json con el content-type correcto
+app.get('/manifest.json', (req, res) => {
+  res.type('application/manifest+json');
+  res.sendFile(path.join(publicPath, 'manifest.json'));
+});
+
+// Servir Service Worker
+app.get('/service-worker.js', (req, res) => {
+  res.type('application/javascript');
+  res.sendFile(path.join(publicPath, 'service-worker.js'));
+});
+
 // Health check para Render
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });

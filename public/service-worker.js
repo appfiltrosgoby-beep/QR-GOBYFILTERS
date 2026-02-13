@@ -8,11 +8,18 @@ const urlsToCache = [
     '/',
     '/index.html',
     '/manifest.json',
+    '/browserconfig.xml',
+    '/service-worker.js',
     '/assets/css/styles.css',
     '/assets/js/app.js',
-    '/icon-192.png',
-    '/icon-512.png',
-    '/favicon-32.png'
+    '/assets/images/favicon-32.png',
+    '/assets/images/favicon.svg',
+    '/assets/images/icon-180.png',
+    '/assets/images/icon-192.png',
+    '/assets/images/icon-512.png',
+    '/assets/images/GOBY MARCA REGISTRADA.png',
+    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];
 
 // Instalar Service Worker y cachear archivos
