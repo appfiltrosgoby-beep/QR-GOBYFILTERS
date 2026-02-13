@@ -274,6 +274,13 @@ body {
 .header-actions {
     display: flex;
     gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.header-actions .input-filter {
+    max-width: 260px;
+    width: 100%;
 }
 
 /* ============================================
@@ -1420,6 +1427,17 @@ input:checked + .slider:before {
     .total-card {
         flex-direction: column;
         text-align: center;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .header-actions .input-filter {
+        max-width: 100%;
+        min-width: 0;
+        flex: 1 1 100%;
     }
 }
 /* ============================================
