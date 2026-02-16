@@ -619,7 +619,8 @@ async function getOrCreateRecordsSheet(doc) {
         'HORA_ALMACEN',
         'HORA_DESPACHO',
         'HORA_INSTALACION',
-        'HORA_DESINSTALACION'
+        'HORA_DESINSTALACION',
+        'NOMBRE_INSTALADOR'
       ]
     });
   }
@@ -2069,6 +2070,70 @@ function formatMonthYear(monthYear) {
   const [year, month] = monthYear.split('-');
   return `${months[parseInt(month) - 1]} ${year}`;
 }
+
+/**
+ * POST /api/save-installer
+ * Guarda el nombre del instalador en la hoja REGISTROS
+ */
+app.post('/api/save-installer', async (req, res) => {
+  try {
+    const { installerName } = req.body;
+
+    if (!installerName || typeof installerName !== 'string' || !installerName.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'El nombre del instalador es requerido'
+      });
+    }
+
+    // Conectar con Google Sheets
+    const auth = new JWT({
+      email: process.env.GOOGLE_CLIENT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY,
+      scopes: [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.file',
+      ],
+    });
+
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SPREADSHEET_ID, auth);
+    await doc.loadInfo();
+
+    // Obtener la hoja REGISTROS
+    const registrosSheet = await getOrCreateRecordsSheet(doc);
+    await registrosSheet.loadHeaderRow();
+
+    // Agregar fila con el nombre del instalador y timestamp
+    const timestamp = new Date().toLocaleString('es-ES', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    await registrosSheet.addRow({
+      'NOMBRE_INSTALADOR': installerName.trim(),
+      'FECHA_ALMACEN': timestamp.split(' ')[0],
+      'HORA_ALMACEN': timestamp.split(' ')[1]
+    });
+
+    console.log(`✅ Nombre del instalador guardado: ${installerName}`);
+    res.json({
+      success: true,
+      message: 'Nombre del instalador guardado correctamente',
+      installerName: installerName.trim()
+    });
+
+  } catch (error) {
+    console.error('❌ Error al guardar el nombre del instalador:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al guardar el nombre del instalador'
+    });
+  }
+});
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {
