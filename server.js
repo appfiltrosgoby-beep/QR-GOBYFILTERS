@@ -554,23 +554,22 @@ async function initializeRecordsSheet(sheet) {
     'HORA_ALMACEN',
     'HORA_DESPACHO',
     'HORA_INSTALACION',
-    'HORA_DESINSTALACION'
+    'HORA_DESINSTALACION',
+    'NOMBRE_INSTALADOR'
   ];
   
   // Si no hay encabezados, crearlos
   if (!sheet.headerValues || sheet.headerValues.length === 0) {
     await sheet.setHeaderRow(requiredHeaders);
   } else {
-    // Verificar si falta la columna CLIENTE y agregarla
-    if (!sheet.headerValues.includes('CLIENTE')) {
-      console.log('⚠️ Agregando columna CLIENTE a hoja:', sheet.title);
-      await sheet.setHeaderRow([...sheet.headerValues.slice(0, 4), 'CLIENTE', ...sheet.headerValues.slice(4)]);
+    // Verificar si falta alguna columna requerida y agregarla
+    const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+    
+    if (missingHeaders.length > 0) {
+      console.log(`⚠️ Agregando columnas faltantes a hoja ${sheet.title}:`, missingHeaders);
+      const newHeaders = [...sheet.headerValues, ...missingHeaders];
+      await sheet.setHeaderRow(newHeaders);
       await sheet.loadHeaderRow(); // Recargar headers
-    }
-    if (!sheet.headerValues.includes('USUARIO_DESPACHO')) {
-      console.log('⚠️ Agregando columna USUARIO_DESPACHO a hoja:', sheet.title);
-      await sheet.setHeaderRow([...sheet.headerValues, 'USUARIO_DESPACHO']);
-      await sheet.loadHeaderRow();
     }
   }
 }

@@ -1152,7 +1152,7 @@ async function submitInstalacion() {
         hideInstalacionModal();
         
         // Enviar datos al backend con la placa, kilometraje y nombre del instalador
-        await saveQRCode(pendingInstallationQR, placa, kilometraje, installerName);
+        await saveQRCode(pendingInstallationQR, placa, kilometraje, '', installerName);
         
         // Limpiar QR pendiente
         pendingInstallationQR = '';
