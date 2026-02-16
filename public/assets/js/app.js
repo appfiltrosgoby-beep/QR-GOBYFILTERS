@@ -83,6 +83,7 @@ const elements = {
     instalacionModal: document.getElementById('instalacionModal'),
     placaInput: document.getElementById('placaInput'),
     kilometrajeInput: document.getElementById('kilometrajeInput'),
+    installerNameInput: document.getElementById('installerNameInput'),
     submitInstalacionBtn: document.getElementById('submitInstalacionBtn'),
     cancelInstalacionBtn: document.getElementById('cancelInstalacionBtn'),
     instalacionError: document.getElementById('instalacionError'),
@@ -1096,6 +1097,7 @@ function showInstalacionModal() {
     elements.instalacionModal.style.display = 'flex';
     elements.placaInput.value = '';
     elements.kilometrajeInput.value = '';
+    elements.installerNameInput.value = '';
     elements.placaInput.focus();
     
     if (elements.instalacionError) {
@@ -1111,6 +1113,7 @@ function hideInstalacionModal() {
     elements.instalacionModal.style.display = 'none';
     elements.placaInput.value = '';
     elements.kilometrajeInput.value = '';
+    elements.installerNameInput.value = '';
     
     if (elements.instalacionError) {
         elements.instalacionError.textContent = '';
@@ -1124,9 +1127,10 @@ function hideInstalacionModal() {
 async function submitInstalacion() {
     const placa = elements.placaInput.value.trim();
     const kilometraje = elements.kilometrajeInput.value.trim();
+    const installerName = elements.installerNameInput.value.trim();
     
-    // Validar que ambos campos estén llenos
-    if (!placa || !kilometraje) {
+    // Validar que todos los campos estén llenos
+    if (!placa || !kilometraje || !installerName) {
         if (elements.instalacionError) {
             elements.instalacionError.textContent = 'Por favor completa todos los campos';
             elements.instalacionError.classList.remove('hidden');
@@ -1147,8 +1151,8 @@ async function submitInstalacion() {
         // Ocultar modal
         hideInstalacionModal();
         
-        // Enviar datos al backend con la placa y kilometraje
-        await saveQRCode(pendingInstallationQR, placa, kilometraje);
+        // Enviar datos al backend con la placa, kilometraje y nombre del instalador
+        await saveQRCode(pendingInstallationQR, placa, kilometraje, installerName);
         
         // Limpiar QR pendiente
         pendingInstallationQR = '';
@@ -1293,7 +1297,7 @@ function updateStatus(message, type = 'info') {
 /**
  * Guarda un código QR escaneado en el backend
  */
-async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', kilometrajeDesinstalacion = '') {
+async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', kilometrajeDesinstalacion = '', installerName = '') {
     try {
         updateStatus('💾 Guardando...', 'saving');
         
@@ -1321,7 +1325,8 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
                 userTipo: currentUserType,
                 placa,
                 kilometrajeInstalacion,
-                kilometrajeDesinstalacion
+                kilometrajeDesinstalacion,
+                installerName
             })
         });
 

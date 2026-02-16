@@ -847,7 +847,8 @@ async function getOrCreateClientRecordsSheet(doc, cliente) {
         'HORA_ALMACEN',
         'HORA_DESPACHO',
         'HORA_INSTALACION',
-        'HORA_DESINSTALACION'
+        'HORA_DESINSTALACION',
+        'NOMBRE_INSTALADOR'
       ]
     });
     console.log(`✅ Creada hoja de registros para cliente: ${sheetTitle}`);
@@ -1475,6 +1476,7 @@ app.post('/api/save-qr', async (req, res) => {
         // Extraer datos adicionales del body
         const placa = req.body.placa || '';
         const kilometrajeInstalacion = req.body.kilometrajeInstalacion || '';
+        const installerName = req.body.installerName || '';
         
         // Verificar si se enviaron los datos de instalación
         if (!placa || !kilometrajeInstalacion) {
@@ -1497,6 +1499,7 @@ app.post('/api/save-qr', async (req, res) => {
         existingGlobalRecord.set('USUARIO_INSTALACION', userEmail || '');
         existingGlobalRecord.set('PLACA', placa);
         existingGlobalRecord.set('KILOMETRAJE_INSTALACION', kilometrajeInstalacion);
+        existingGlobalRecord.set('NOMBRE_INSTALADOR', installerName);
         existingGlobalRecord.set('FECHA_INSTALACION', fecha);
         existingGlobalRecord.set('HORA_INSTALACION', hora);
         await existingGlobalRecord.save();
@@ -1507,6 +1510,7 @@ app.post('/api/save-qr', async (req, res) => {
           existingCurrentClientRecord.set('USUARIO_INSTALACION', userEmail || '');
           existingCurrentClientRecord.set('PLACA', placa);
           existingCurrentClientRecord.set('KILOMETRAJE_INSTALACION', kilometrajeInstalacion);
+          existingCurrentClientRecord.set('NOMBRE_INSTALADOR', installerName);
           existingCurrentClientRecord.set('FECHA_INSTALACION', fecha);
           existingCurrentClientRecord.set('HORA_INSTALACION', hora);
           await existingCurrentClientRecord.save();
@@ -1525,6 +1529,7 @@ app.post('/api/save-qr', async (req, res) => {
             'USUARIO_DESINSTALACION': '',
             'PLACA': placa,
             'KILOMETRAJE_INSTALACION': kilometrajeInstalacion,
+            'NOMBRE_INSTALADOR': installerName,
             'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
             'FECHA_DESPACHO': existingGlobalRecord.get('FECHA_DESPACHO'),
             'FECHA_INSTALACION': fecha,
@@ -1542,6 +1547,7 @@ app.post('/api/save-qr', async (req, res) => {
           existingOriginalClientRecord.set('USUARIO_INSTALACION', userEmail || '');
           existingOriginalClientRecord.set('PLACA', placa);
           existingOriginalClientRecord.set('KILOMETRAJE_INSTALACION', kilometrajeInstalacion);
+          existingOriginalClientRecord.set('NOMBRE_INSTALADOR', installerName);
           existingOriginalClientRecord.set('FECHA_INSTALACION', fecha);
           existingOriginalClientRecord.set('HORA_INSTALACION', hora);
           await existingOriginalClientRecord.save();
