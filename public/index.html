@@ -581,16 +581,16 @@
                     <p>Completa los datos para marcar el producto como INSTALADO</p>
                 </div>
                 <div class="modal-body">
-                    <form id="instalacionForm" class="password-form">
-                        <input type="text" id="placaInput" placeholder="Placa del vehículo" class="input-password" required autocomplete="off">
-                        <input type="number" id="kilometrajeInput" placeholder="Kilometraje de instalación" class="input-password" required autocomplete="off" min="0">
-                        <input type="text" id="installerNameInput" placeholder="Nombre del instalador" class="input-password" required autocomplete="off">
+                    <div id="instalacionFormContainer" class="password-form">
+                        <input type="text" id="instalacionPlaca" placeholder="Placa del vehículo" class="input-text" required autocomplete="off">
+                        <input type="number" id="instalacionKilometraje" placeholder="Kilometraje de instalación" class="input-text" required autocomplete="off" min="0">
+                        <input type="text" id="instalacionInstalador" placeholder="Nombre del instalador" class="input-text" required autocomplete="off">
                         <div class="password-actions">
-                            <button id="cancelInstalacionBtn" type="button" class="btn btn-secondary">Cancelar</button>
-                            <button id="submitInstalacionBtn" type="button" class="btn btn-primary">Confirmar Instalación</button>
+                            <button id="instalacionCancelarBtn" class="btn btn-secondary" type="button">Cancelar</button>
+                            <button id="instalacionGuardarBtn" class="btn btn-primary" type="button">Confirmar Instalación</button>
                         </div>
-                        <div id="instalacionError" class="error-message hidden"></div>
-                    </form>
+                        <div id="instalacionErrorMsg" class="error-message hidden"></div>
+                    </div>
                 </div>
             </div>
         </div>

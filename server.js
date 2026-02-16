@@ -1368,6 +1368,10 @@ app.post('/api/save-qr', async (req, res) => {
     // Conectar a Google Sheets y obtener la hoja REGISTROS global (fuente única de verdad)
     const doc = await getGoogleSheet();
     const globalSheet = await getOrCreateRecordsSheet(doc);
+    
+    // Asegurar que los headers estén cargados correctamente
+    await globalSheet.loadHeaderRow();
+    console.log('✅ Headers cargados en globalSheet:', globalSheet.headerValues);
 
     const existingGlobalRecord = await findExistingRecord(globalSheet, referencia, serial);
     const now = new Date();
@@ -1385,6 +1389,7 @@ app.post('/api/save-qr', async (req, res) => {
       let existingCurrentClientRecord = null;
       if (userClient && userClient.trim() !== '') {
         currentClientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
+        await currentClientSheet.loadHeaderRow(); // Asegurar headers cargados
         existingCurrentClientRecord = await findExistingRecord(currentClientSheet, referencia, serial);
       }
       
@@ -1393,6 +1398,7 @@ app.post('/api/save-qr', async (req, res) => {
       let existingOriginalClientRecord = null;
       if (recordClient && recordClient !== userClient) {
         originalClientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
+        await originalClientSheet.loadHeaderRow(); // Asegurar headers cargados
         existingOriginalClientRecord = await findExistingRecord(originalClientSheet, referencia, serial);
       }
       
@@ -1446,6 +1452,7 @@ app.post('/api/save-qr', async (req, res) => {
           'PLACA': '',
           'KILOMETRAJE_INSTALACION': '',
           'KILOMETRAJE_DESINSTALACION': '',
+          'NOMBRE_INSTALADOR': '',
           'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
           'FECHA_DESPACHO': fecha,
           'FECHA_INSTALACION': '',
@@ -1472,10 +1479,10 @@ app.post('/api/save-qr', async (req, res) => {
         });
       } else if (currentState === 'DESPACHADO') {
         // TERCER ESCANEO: Actualizar a INSTALADO
-        // Extraer datos adicionales del body
-        const placa = req.body.placa || '';
-        const kilometrajeInstalacion = req.body.kilometrajeInstalacion || '';
-        const installerName = req.body.installerName || '';
+        // Extraer datos adicionales del body con validación
+        const placa = (req.body.placa || '').trim();
+        const kilometrajeInstalacion = (req.body.kilometrajeInstalacion || '').trim();
+        const installerName = (req.body.installerName || '').trim();
         
         // Verificar si se enviaron los datos de instalación
         if (!placa || !kilometrajeInstalacion) {
@@ -1493,6 +1500,9 @@ app.post('/api/save-qr', async (req, res) => {
             }
           });
         }
+        
+        // Log para debugging
+        console.log(`📝 [INSTALACION] Guardando instalación - Placa: ${placa}, KM: ${kilometrajeInstalacion}, Instalador: "${installerName}" (length: ${installerName.length})`);
         
         existingGlobalRecord.set('ESTADO', 'INSTALADO');
         existingGlobalRecord.set('USUARIO_INSTALACION', userEmail || '');
