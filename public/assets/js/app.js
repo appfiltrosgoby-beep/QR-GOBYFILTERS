@@ -403,6 +403,9 @@ function applyRolePermissions() {
         if (projectionsNavBtn) {
             projectionsNavBtn.style.display = 'none';
         }
+        if (recordsNavBtn) {
+            recordsNavBtn.style.display = 'none';
+        }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
         }
@@ -410,7 +413,7 @@ function applyRolePermissions() {
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
-        // Si está en vista de estadísticas/usuarios/clientes, redirigir a escáner
+        // Si está en vista de estadísticas/usuarios/clientes/registros, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
@@ -418,6 +421,12 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
         if (document.getElementById('clientsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+        if (document.getElementById('recordsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+        if (document.getElementById('projectionsView').classList.contains('active')) {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
@@ -434,6 +443,9 @@ function applyRolePermissions() {
         if (projectionsNavBtn) {
             projectionsNavBtn.style.display = 'none';
         }
+        if (recordsNavBtn) {
+            recordsNavBtn.style.display = 'none';
+        }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
         }
@@ -442,7 +454,7 @@ function applyRolePermissions() {
             elements.clientSelectorContainer.classList.remove('hidden');
             loadClientsSelect();
         }
-        // Si está en vista de estadísticas/usuarios/clientes, redirigir a escáner
+        // Si está en vista de estadísticas/usuarios/clientes/registros/proyecciones, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
@@ -450,6 +462,12 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
         if (document.getElementById('clientsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+        if (document.getElementById('recordsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
+        if (document.getElementById('projectionsView').classList.contains('active')) {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'admin') {
@@ -556,25 +574,30 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: clientsView, projectionsView
-    // Admin y superadmin pueden acceder a: usersView
-    const superadminOnlyViews = ['clientsView', 'projectionsView'];
-    const adminSuperadminViews = ['usersView'];
+    // Solo superadmin puede acceder a: clientsView, projectionsView, statsView
+    // Admin y superadmin pueden acceder a: usersView, recordsView
+    // Mecánicos y despacho solo pueden acceder a: scannerView
+    const superadminOnlyViews = ['clientsView', 'projectionsView', 'statsView'];
+    const adminSuperadminViews = ['usersView', 'recordsView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
+    const isMecanico = currentUserType === 'mecanico';
+    const isDespacho = currentUserType === 'despacho';
     
+    // Bloquear acceso a vistas exclusivas de superadmin
     if (superadminOnlyViews.includes(viewId) && !isSuperadmin) {
         console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
         showToast('No tienes permiso para acceder a esta sección', 'error');
         // Redirigir a la vista permitida por defecto
-        viewId = (currentUserType === 'mecanico' || currentUserType === 'despacho') ? 'scannerView' : 'statsView';
+        viewId = (isMecanico || isDespacho) ? 'scannerView' : 'statsView';
     }
     
+    // Bloquear acceso a vistas de admin/superadmin
     if (adminSuperadminViews.includes(viewId) && !isSuperadmin && !isAdmin) {
         console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
         showToast('No tienes permiso para acceder a esta sección', 'error');
         // Redirigir a la vista permitida por defecto
-        viewId = (currentUserType === 'mecanico' || currentUserType === 'despacho') ? 'scannerView' : 'statsView';
+        viewId = 'scannerView';
     }
     
     // Ocultar todas las vistas
