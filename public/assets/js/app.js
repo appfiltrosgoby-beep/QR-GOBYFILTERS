@@ -556,11 +556,21 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: usersView, clientsView, projectionsView
-    const superadminOnlyViews = ['usersView', 'clientsView', 'projectionsView'];
+    // Solo superadmin puede acceder a: clientsView, projectionsView
+    // Admin y superadmin pueden acceder a: usersView
+    const superadminOnlyViews = ['clientsView', 'projectionsView'];
+    const adminSuperadminViews = ['usersView'];
     const isSuperadmin = currentUserType === 'super';
+    const isAdmin = currentUserType === 'administrador';
     
     if (superadminOnlyViews.includes(viewId) && !isSuperadmin) {
+        console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
+        showToast('No tienes permiso para acceder a esta sección', 'error');
+        // Redirigir a la vista permitida por defecto
+        viewId = (currentUserType === 'mecanico' || currentUserType === 'despacho') ? 'scannerView' : 'statsView';
+    }
+    
+    if (adminSuperadminViews.includes(viewId) && !isSuperadmin && !isAdmin) {
         console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
         showToast('No tienes permiso para acceder a esta sección', 'error');
         // Redirigir a la vista permitida por defecto
@@ -1798,6 +1808,12 @@ async function loadUsers() {
 
         if (result.success) {
             allUsersData = result.data;
+            
+            // Si es admin, filtrar solo usuarios de su cliente
+            if (currentUserRole === 'admin' && currentUserClient) {
+                allUsersData = allUsersData.filter(user => user.cliente === currentUserClient);
+            }
+            
             populateClientesSelectUsers();
             filterUsersByCliente(''); // Mostrar todos inicialmente
         } else {
