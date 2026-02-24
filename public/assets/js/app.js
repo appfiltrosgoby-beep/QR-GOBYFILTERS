@@ -25,6 +25,8 @@ let allUsersData = []; // Guardar todos los usuarios para filtrado
 let allClientsData = []; // Guardar todos los clientes para filtrado
 let pendingInstallationQR = null; // QR pendiente de instalación (tercer escaneo)
 let pendingUninstallationQR = null; // QR pendiente de desinstalación (cuarto escaneo)
+let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
+let scannerRestartTimeout = null; // Timer para reiniciar scanner
 
 // Elementos del DOM
 const elements = {
@@ -1040,10 +1042,17 @@ async function startScanning() {
     }
     
     try {
+        // Si ya está escaneando, no hacer nada
+        if (isScanning) {
+            console.log('Scanner ya está activo');
+            return;
+        }
+        
         const config = {
-            fps: 10,
+            fps: 15, // Aumentado de 10 a 15 para escaneo más rápido
             qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0
+            aspectRatio: 1.0,
+            disableFlip: false // Permite detectar QRs invertidos
         };
         
         await html5QrCode.start(
@@ -1057,8 +1066,23 @@ async function startScanning() {
         updateScannerUI(true);
         updateStatus('🔍 Escaneando... Apunta la cámara al código QR', 'scanning');
         
+        // Limpiar timeout anterior si existe
+        if (scannerRestartTimeout) {
+            clearTimeout(scannerRestartTimeout);
+            scannerRestartTimeout = null;
+        }
+        
     } catch (error) {
         console.error('Error al iniciar escáner:', error);
+        
+        // Si el error es porque ya está corriendo, marcar como escaneando
+        if (error.message && error.message.includes('running')) {
+            isScanning = true;
+            updateScannerUI(true);
+            updateStatus('🔍 Escaneando... Apunta la cámara al código QR', 'scanning');
+            return;
+        }
+        
         showToast('No se pudo iniciar el escáner', 'error');
         updateScannerUI(false);
     }
@@ -1069,43 +1093,106 @@ async function startScanning() {
  */
 async function stopScanning() {
     try {
+        if (!isScanning) {
+            return; // Ya está detenido
+        }
+        
         await html5QrCode.stop();
         isScanning = false;
         updateScannerUI(false);
         updateStatus('Escáner detenido', 'stopped');
+        
+        // Limpiar timeout si existe
+        if (scannerRestartTimeout) {
+            clearTimeout(scannerRestartTimeout);
+            scannerRestartTimeout = null;
+        }
     } catch (error) {
         console.error('Error al detener escáner:', error);
+        // Marcar como detenido de todos modos
+        isScanning = false;
+        updateScannerUI(false);
     }
 }
 
 /**
+ * Reinicia el scanner con control de intentos
+ */
+async function restartScanning(delayMs = 500) {
+    // Limpiar timeout anterior
+    if (scannerRestartTimeout) {
+        clearTimeout(scannerRestartTimeout);
+    }
+    
+    // Programar reinicio
+    scannerRestartTimeout = setTimeout(async () => {
+        try {
+            // Si está procesando, no reiniciar todavía
+            if (isProcessingQR) {
+                restartScanning(500); // Reintentar en 500ms
+                return;
+            }
+            
+            // Si ya está escaneando, mantenerlo activo
+            if (isScanning) {
+                updateStatus('🔍 Escaneando... Apunta la cámara al código QR', 'scanning');
+                return;
+            }
+            
+            console.log('📱 Reiniciando scanner...');
+            await startScanning();
+        } catch (error) {
+            console.error('Error al reiniciar scanner:', error);
+            // Reintentar
+            restartScanning(1000);
+        }
+    }, delayMs);
+}
+
+/**
  * Callback cuando se escanea un código QR exitosamente
+ * OPTIMIZADO: Permite escaneo continuo sin necesidad de recargar
  */
 async function onQRCodeScanned(decodedText, decodedResult) {
-    console.log('✅ QR detectado:', decodedText);
-    console.log('Contenido completo:', decodedText);
-    console.log('Longitud:', decodedText.length);
-    
-    // Pausar temporalmente el escaneo
-    await stopScanning();
-    
-    // Validar que no esté vacío
-    if (!decodedText || decodedText.trim() === '') {
-        showToast('⚠️ QR vacío o inválido', 'warning');
-        updateStatus('❌ QR vacío detectado', 'error');
-        setTimeout(() => startScanning(), 2000);
+    // Si ya estamos procesando un QR, ignorar este (evitar duplicados)
+    if (isProcessingQR) {
+        console.log('⏸️ Escaneando simultáneamente, ignorando...');
         return;
     }
     
-    // Guardar el QR
-    await saveQRCode(decodedText);
-    
-    // Reanudar escaneo después de 2 segundos
-    setTimeout(() => {
-        if (!isScanning) {
-            startScanning();
+    try {
+        // Marcar que estamos procesando
+        isProcessingQR = true;
+        
+        console.log('✅ QR detectado:', decodedText);
+        
+        // Validar que no esté vacío
+        if (!decodedText || decodedText.trim() === '') {
+            showToast('⚠️ QR vacío o inválido', 'warning');
+            updateStatus('❌ QR vacío detectado', 'error');
+            // Reintentar rápidamente
+            restartScanning(300);
+            return;
         }
-    }, 2000);
+        
+        // OPTIMIZACIÓN: Usar una pausa mínima durante procesamiento
+        updateStatus('💾 Guardando...', 'saving');
+        
+        // Guardar el QR (esto puede tomar 1-2 segundos)
+        await saveQRCode(decodedText);
+        
+    } catch (error) {
+        console.error('Error procesando QR:', error);
+        showToast('Error al procesar QR: ' + error.message, 'error');
+        updateStatus('❌ Error procesando QR', 'error');
+    } finally {
+        // Marcar que terminó el procesamiento
+        isProcessingQR = false;
+        
+        // Reiniciar scanner RÁPIDAMENTE después de terminar el guardado (100ms)
+        // Esto es mucho más rápido que los 2 segundos anteriores
+        restartScanning(100);
+    }
 }
 
 /**
@@ -1232,6 +1319,9 @@ async function onInstalacionSubmit() {
         // Limpiar QR pendiente
         pendingInstallationQR = null;
         
+        // Reiniciar scanner RÁPIDAMENTE después de guardar (100ms)
+        restartScanning(100);
+        
     } catch (error) {
         console.error('❌ Error al guardar instalación:', error);
         showToast('Error al guardar datos de instalación', 'error');
@@ -1255,6 +1345,9 @@ function onInstalacionCancel() {
     // Mostrar mensaje
     updateStatus('⚠️ Instalación cancelada', 'warning');
     showToast('Instalación cancelada', 'warning');
+    
+    // Reiniciar scanner
+    restartScanning(100);
 }
 
 /**
@@ -1318,6 +1411,9 @@ async function submitDesinstalacion() {
         // Limpiar QR pendiente
         pendingUninstallationQR = '';
         
+        // Reiniciar scanner RÁPIDAMENTE después de guardar (100ms)
+        restartScanning(100);
+        
     } catch (error) {
         console.error('Error al enviar datos de desinstalación:', error);
         showToast('Error al guardar datos de desinstalación', 'error');
@@ -1335,6 +1431,9 @@ function cancelDesinstalacion() {
     pendingUninstallationQR = '';
     updateStatus('⚠️ Desinstalación cancelada', 'warning');
     showToast('Desinstalación cancelada', 'warning');
+    
+    // Reiniciar scanner
+    restartScanning(100);
 }
 
 /**
@@ -1510,9 +1609,10 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
                 displayLastResult(result.data, result.data.estado);
             }
             
-            // Actualizar registros y estadísticas
-            await loadRecentScans();
-            await loadStats();
+            // Actualizar registros y estadísticas en BACKGROUND (sin esperar)
+            // Esto permite que el scanner se reinicie rápidamente
+            loadRecentScans().catch(err => console.error('Error cargando scans recientes:', err));
+            loadStats().catch(err => console.error('Error cargando stats:', err));
         } else {
             throw new Error(result.error || 'Error desconocido');
         }
