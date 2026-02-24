@@ -1189,9 +1189,8 @@ async function onQRCodeScanned(decodedText, decodedResult) {
         // Marcar que terminó el procesamiento
         isProcessingQR = false;
         
-        // Reiniciar scanner RÁPIDAMENTE después de terminar el guardado (100ms)
-        // Esto es mucho más rápido que los 2 segundos anteriores
-        restartScanning(100);
+        // Reiniciar scanner después de 1 segundo
+        restartScanning(1000);
     }
 }
 
@@ -1319,8 +1318,8 @@ async function onInstalacionSubmit() {
         // Limpiar QR pendiente
         pendingInstallationQR = null;
         
-        // Reiniciar scanner RÁPIDAMENTE después de guardar (100ms)
-        restartScanning(100);
+        // Reiniciar scanner después de 1 segundo
+        restartScanning(1000);
         
     } catch (error) {
         console.error('❌ Error al guardar instalación:', error);
@@ -1346,8 +1345,8 @@ function onInstalacionCancel() {
     updateStatus('⚠️ Instalación cancelada', 'warning');
     showToast('Instalación cancelada', 'warning');
     
-    // Reiniciar scanner
-    restartScanning(100);
+    // Reiniciar scanner después de 1 segundo
+    restartScanning(1000);
 }
 
 /**
@@ -1411,8 +1410,8 @@ async function submitDesinstalacion() {
         // Limpiar QR pendiente
         pendingUninstallationQR = '';
         
-        // Reiniciar scanner RÁPIDAMENTE después de guardar (100ms)
-        restartScanning(100);
+        // Reiniciar scanner después de 1 segundo
+        restartScanning(1000);
         
     } catch (error) {
         console.error('Error al enviar datos de desinstalación:', error);
@@ -1432,8 +1431,8 @@ function cancelDesinstalacion() {
     updateStatus('⚠️ Desinstalación cancelada', 'warning');
     showToast('Desinstalación cancelada', 'warning');
     
-    // Reiniciar scanner
-    restartScanning(100);
+    // Reiniciar scanner después de 1 segundo
+    restartScanning(1000);
 }
 
 /**
