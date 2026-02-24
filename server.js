@@ -1852,6 +1852,13 @@ app.get('/api/stats', async (req, res) => {
     const userEmail = req.query.userEmail || '';
     
     const doc = await getGoogleSheet();
+    
+    // Obtener SIEMPRE el total de registros globales de la hoja REGISTROS
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    const globalRows = await globalSheet.getRows();
+    const totalGlobal = globalRows.length;
+    
+    // Obtener registros filtrados para estadísticas por estado
     let sheet;
     
     if (cliente) {
@@ -1867,7 +1874,8 @@ app.get('/api/stats', async (req, res) => {
     const today = new Date().toLocaleDateString('es-ES');
 
     const stats = {
-      total: rows.length,
+      totalGlobal: totalGlobal, // Total de registros en la hoja REGISTROS
+      total: rows.length,       // Total filtrado (por cliente o usuario)
       enAlmacen: 0,
       despachados: 0,
       instalados: 0,

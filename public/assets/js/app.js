@@ -2576,6 +2576,13 @@ function displayStats(stats) {
     elements.totalScans.textContent = stats.total;
     elements.todayScans.textContent = stats.today;
     
+    // Mostrar el total global de registros
+    const totalCountElement = document.getElementById('totalCount');
+    if (totalCountElement) {
+        // Si hay totalGlobal, mostrar eso; si no, usar total como fallback
+        totalCountElement.textContent = stats.totalGlobal !== undefined ? stats.totalGlobal : stats.total;
+    }
+    
     const statsData = [
         { label: 'En Almacén', count: stats.enAlmacen, emoji: '📦', class: 'almacen' },
         { label: 'Despachados', count: stats.despachados, emoji: '🚚', class: 'despachado' },
@@ -2622,12 +2629,7 @@ function displayStatsTable(data) {
     // Actualizar estadísticas (almacén, despachados)
     updateDisplayStats(data);
     
-    // Actualizar total y label
-    if (totalCount) {
-        totalCount.textContent = data.length;
-    }
-    
-    // Actualizar label dinámico
+    // Actualizar label dinámico (sin cambiar el totalCount que ya tiene el global)
     if (totalLabel) {
         const selectedRef = document.getElementById('filterReferencia').value;
         if (selectedRef) {
