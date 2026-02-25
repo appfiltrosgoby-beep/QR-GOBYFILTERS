@@ -111,7 +111,8 @@ function initAuth() {
     const savedClient = localStorage.getItem('userClient');
     
     if (savedRole) {
-        if (savedRole === 'superadmin' && !savedPassword) {
+        if ((savedRole === 'superadmin' || savedRole === 'admin') && !savedPassword) {
+            // Si es admin o superadmin y no hay contraseña, limpiar sesión
             localStorage.removeItem('userRole');
             localStorage.removeItem('userType');
             localStorage.removeItem('userName');
@@ -3013,6 +3014,14 @@ let filterDurationChart = null;
  */
 async function loadProjections() {
     try {
+        // Verificar que el usuario tenga credenciales
+        if (!currentUsername || !currentUserPassword) {
+            showToast('Debes iniciar sesión para ver las proyecciones', 'error');
+            switchView('scannerView');
+            elements.loginModal.style.display = 'flex';
+            return;
+        }
+
         const filterClienteEl = document.getElementById('filterClienteProjections');
         const filterReferenciaEl = document.getElementById('filterReferenciaProjections');
         let filterCliente = filterClienteEl ? filterClienteEl.value : '';
