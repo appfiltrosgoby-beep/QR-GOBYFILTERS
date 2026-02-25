@@ -473,7 +473,7 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'admin') {
-        // Admin: mostrar escáner, estadísticas, usuarios; ocultar registros, clientes y proyecciones
+        // Admin: mostrar escáner, estadísticas, usuarios, proyecciones; ocultar registros y clientes
         if (statsNavBtn) {
             statsNavBtn.style.display = 'flex';
         }
@@ -484,7 +484,7 @@ function applyRolePermissions() {
             clientsNavBtn.style.display = 'none';
         }
         if (projectionsNavBtn) {
-            projectionsNavBtn.style.display = 'none';
+            projectionsNavBtn.style.display = 'flex';
         }
         if (scannerNavBtn) {
             scannerNavBtn.style.display = 'flex';
@@ -495,6 +495,12 @@ function applyRolePermissions() {
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
+        }
+        // Deshabilitar/ocultar filtro de cliente en proyecciones para admins
+        const filterClienteProjections = document.getElementById('filterClienteProjections');
+        if (filterClienteProjections) {
+            filterClienteProjections.disabled = true;
+            filterClienteProjections.style.opacity = '0.5';
         }
         // Si está en vista de registros o clientes, redirigir a escáner
         if (document.getElementById('recordsView').classList.contains('active')) {
@@ -532,6 +538,12 @@ function applyRolePermissions() {
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
+        }
+        // Habilitar filtro de cliente en proyecciones para superadmin
+        const filterClienteProjections = document.getElementById('filterClienteProjections');
+        if (filterClienteProjections) {
+            filterClienteProjections.disabled = false;
+            filterClienteProjections.style.opacity = '1';
         }
         // Cargar clientes para filtros
         loadClientsForProjectionsFilter();
@@ -576,11 +588,11 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: clientsView, projectionsView, recordsView
-    // Admin y superadmin pueden acceder a: usersView, statsView
+    // Solo superadmin puede acceder a: clientsView, recordsView
+    // Admin y superadmin pueden acceder a: usersView, statsView, projectionsView
     // Mecánicos y despacho solo pueden acceder a: scannerView
-    const superadminOnlyViews = ['clientsView', 'projectionsView', 'recordsView'];
-    const adminSuperadminViews = ['usersView', 'statsView'];
+    const superadminOnlyViews = ['clientsView', 'recordsView'];
+    const adminSuperadminViews = ['usersView', 'statsView', 'projectionsView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
     const isMecanico = currentUserType === 'mecanico';
@@ -3000,8 +3012,18 @@ async function loadProjections() {
     try {
         const filterClienteEl = document.getElementById('filterClienteProjections');
         const filterReferenciaEl = document.getElementById('filterReferenciaProjections');
-        const filterCliente = filterClienteEl ? filterClienteEl.value : '';
+        let filterCliente = filterClienteEl ? filterClienteEl.value : '';
         const filterReferencia = filterReferenciaEl ? filterReferenciaEl.value : '';
+        
+        // Si es admin, filtrar automáticamente por su cliente
+        if (currentUserRole === 'admin' && currentUserClient) {
+            filterCliente = currentUserClient;
+            // Actualizar el filtro visual
+            if (filterClienteEl) {
+                filterClienteEl.value = currentUserClient;
+            }
+        }
+        
         const clienteParam = filterCliente ? `?cliente=${encodeURIComponent(filterCliente)}` : '';
 
         const response = await fetch(`${API_URL}/api/projections${clienteParam}`, {
