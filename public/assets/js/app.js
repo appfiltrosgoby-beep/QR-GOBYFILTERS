@@ -474,7 +474,7 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'admin') {
-        // Admin: mostrar escáner, usuarios, proyecciones; ocultar estadísticas, registros y clientes
+        // Admin: mostrar escáner, usuarios, proyecciones, registros; ocultar estadísticas y clientes
         if (statsNavBtn) {
             statsNavBtn.style.display = 'none';
         }
@@ -491,7 +491,7 @@ function applyRolePermissions() {
             scannerNavBtn.style.display = 'flex';
         }
         if (recordsNavBtn) {
-            recordsNavBtn.style.display = 'none';
+            recordsNavBtn.style.display = 'flex';
         }
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
@@ -503,11 +503,17 @@ function applyRolePermissions() {
             filterClienteProjections.disabled = true;
             filterClienteProjections.style.opacity = '0.5';
         }
-        // Si está en vista de estadísticas, registros o clientes, redirigir a escáner
-        if (document.getElementById('statsView').classList.contains('active')) {
-            switchView('scannerView');
+        // Cargar cliente del admin en el filtro de proyecciones
+        if (currentUserClient) {
+            loadClientsForProjectionsFilter().then(() => {
+                const filterClienteProjections = document.getElementById('filterClienteProjections');
+                if (filterClienteProjections) {
+                    filterClienteProjections.value = currentUserClient;
+                }
+            });
         }
-        if (document.getElementById('recordsView').classList.contains('active')) {
+        // Si está en vista de estadísticas o clientes, redirigir a escáner
+        if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
         if (document.getElementById('clientsView').classList.contains('active')) {
@@ -592,11 +598,11 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: clientsView, recordsView, statsView
-    // Admin y superadmin pueden acceder a: usersView, projectionsView
+    // Solo superadmin puede acceder a: clientsView, statsView
+    // Admin y superadmin pueden acceder a: usersView, projectionsView, recordsView
     // Mecánicos y despacho solo pueden acceder a: scannerView
-    const superadminOnlyViews = ['clientsView', 'recordsView', 'statsView'];
-    const adminSuperadminViews = ['usersView', 'projectionsView'];
+    const superadminOnlyViews = ['clientsView', 'statsView'];
+    const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
     const isMecanico = currentUserType === 'mecanico';
@@ -3014,8 +3020,13 @@ let filterDurationChart = null;
  */
 async function loadProjections() {
     try {
+        console.log('🔍 loadProjections: Iniciando carga de proyecciones');
+        console.log('Usuario:', currentUsername, 'Rol:', currentUserRole, 'Cliente:', currentUserClient);
+        console.log('Password presente:', !!currentUserPassword);
+        
         // Verificar que el usuario tenga credenciales
         if (!currentUsername || !currentUserPassword) {
+            console.error('❌ No hay credenciales válidas');
             showToast('Debes iniciar sesión para ver las proyecciones', 'error');
             switchView('scannerView');
             elements.loginModal.style.display = 'flex';
@@ -3034,9 +3045,11 @@ async function loadProjections() {
             if (filterClienteEl) {
                 filterClienteEl.value = currentUserClient;
             }
+            console.log('🔒 Admin detectado, filtrando por cliente:', filterCliente);
         }
         
         const clienteParam = filterCliente ? `?cliente=${encodeURIComponent(filterCliente)}` : '';
+        console.log('📡 Llamando API:', `${API_URL}/api/projections${clienteParam}`);
 
         const response = await fetch(`${API_URL}/api/projections${clienteParam}`, {
             headers: {
@@ -3046,13 +3059,16 @@ async function loadProjections() {
         });
 
         const result = await response.json();
+        console.log('✅ Respuesta API:', result);
 
         if (!result.success) {
+            console.error('❌ Error en respuesta:', result.message);
             showToast(result.message || 'Error al cargar proyecciones', 'error');
             return;
         }
 
         const { nextReplacements, stats } = result.data;
+        console.log('📊 Datos recibidos - Reemplazos:', nextReplacements.length, 'Stats:', stats);
 
         // Extraer referencias únicas de los datos para el filtro
         const referencias = [...new Set(nextReplacements.map(item => item.referencia))].sort();
