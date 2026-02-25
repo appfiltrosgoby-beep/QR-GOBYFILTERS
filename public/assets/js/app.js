@@ -473,9 +473,9 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'admin') {
-        // Admin: mostrar escáner, estadísticas, usuarios, proyecciones; ocultar registros y clientes
+        // Admin: mostrar escáner, usuarios, proyecciones; ocultar estadísticas, registros y clientes
         if (statsNavBtn) {
-            statsNavBtn.style.display = 'flex';
+            statsNavBtn.style.display = 'none';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'flex';
@@ -502,7 +502,10 @@ function applyRolePermissions() {
             filterClienteProjections.disabled = true;
             filterClienteProjections.style.opacity = '0.5';
         }
-        // Si está en vista de registros o clientes, redirigir a escáner
+        // Si está en vista de estadísticas, registros o clientes, redirigir a escáner
+        if (document.getElementById('statsView').classList.contains('active')) {
+            switchView('scannerView');
+        }
         if (document.getElementById('recordsView').classList.contains('active')) {
             switchView('scannerView');
         }
@@ -588,11 +591,11 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: clientsView, recordsView
-    // Admin y superadmin pueden acceder a: usersView, statsView, projectionsView
+    // Solo superadmin puede acceder a: clientsView, recordsView, statsView
+    // Admin y superadmin pueden acceder a: usersView, projectionsView
     // Mecánicos y despacho solo pueden acceder a: scannerView
-    const superadminOnlyViews = ['clientsView', 'recordsView'];
-    const adminSuperadminViews = ['usersView', 'statsView', 'projectionsView'];
+    const superadminOnlyViews = ['clientsView', 'recordsView', 'statsView'];
+    const adminSuperadminViews = ['usersView', 'projectionsView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
     const isMecanico = currentUserType === 'mecanico';
