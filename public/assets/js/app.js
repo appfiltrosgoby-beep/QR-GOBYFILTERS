@@ -473,9 +473,9 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'admin') {
-        // Admin: ocultar estadísticas, clientes y selector, mostrar escáner, registros y usuarios
+        // Admin: mostrar escáner, estadísticas, usuarios; ocultar registros, clientes y proyecciones
         if (statsNavBtn) {
-            statsNavBtn.style.display = 'none';
+            statsNavBtn.style.display = 'flex';
         }
         if (usersNavBtn) {
             usersNavBtn.style.display = 'flex';
@@ -490,14 +490,14 @@ function applyRolePermissions() {
             scannerNavBtn.style.display = 'flex';
         }
         if (recordsNavBtn) {
-            recordsNavBtn.style.display = 'flex';
+            recordsNavBtn.style.display = 'none';
         }
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
-        // Si está en vista de estadísticas o clientes, redirigir a escáner
-        if (document.getElementById('statsView').classList.contains('active')) {
+        // Si está en vista de registros o clientes, redirigir a escáner
+        if (document.getElementById('recordsView').classList.contains('active')) {
             switchView('scannerView');
         }
         if (document.getElementById('clientsView').classList.contains('active')) {
@@ -576,11 +576,11 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: clientsView, projectionsView, statsView
-    // Admin y superadmin pueden acceder a: usersView, recordsView
+    // Solo superadmin puede acceder a: clientsView, projectionsView, recordsView
+    // Admin y superadmin pueden acceder a: usersView, statsView
     // Mecánicos y despacho solo pueden acceder a: scannerView
-    const superadminOnlyViews = ['clientsView', 'projectionsView', 'statsView'];
-    const adminSuperadminViews = ['usersView', 'recordsView'];
+    const superadminOnlyViews = ['clientsView', 'projectionsView', 'recordsView'];
+    const adminSuperadminViews = ['usersView', 'statsView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
     const isMecanico = currentUserType === 'mecanico';
