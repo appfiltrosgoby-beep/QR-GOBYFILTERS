@@ -1686,16 +1686,23 @@ async function loadRecentScans() {
  */
 async function loadStats() {
     try {
+        console.log('📊 loadStats: Iniciando carga de estadísticas');
+        console.log('Rol:', currentUserRole, 'Cliente:', currentUserClient);
+        
         // Obtener estadísticas según rol
         let queryParams = '';
         if (currentUserRole === 'admin' && currentUserClient) {
             queryParams = `?cliente=${encodeURIComponent(currentUserClient)}`;
+            console.log('🔒 Admin detectado, filtrando por cliente:', currentUserClient);
         } else if (currentUserRole !== 'superadmin' && currentUsername) {
             queryParams = `?userEmail=${encodeURIComponent(currentUsername)}`;
         }
 
+        console.log('📡 Llamando API:', `${API_URL}/api/stats${queryParams}`);
         const response = await fetch(`${API_URL}/api/stats${queryParams}`);
         const result = await response.json();
+        
+        console.log('✅ Respuesta stats API:', result);
         
         if (result.success) {
             displayStats(result.data);
@@ -2594,14 +2601,15 @@ function updateDisplayStats(data) {
 }
 
 function displayStats(stats) {
+    console.log('📊 displayStats recibido:', stats);
+    
     elements.totalScans.textContent = stats.total;
     elements.todayScans.textContent = stats.today;
     
-    // Mostrar el total global de registros
+    // Mostrar el total de registros
     const totalCountElement = document.getElementById('totalCount');
     if (totalCountElement) {
-        // Si hay totalGlobal, mostrar eso; si no, usar total como fallback
-        totalCountElement.textContent = stats.totalGlobal !== undefined ? stats.totalGlobal : stats.total;
+        totalCountElement.textContent = stats.total;
     }
     
     const statsData = [
@@ -2610,6 +2618,8 @@ function displayStats(stats) {
         { label: 'Instalados', count: stats.instalados || 0, emoji: '🔧', class: 'instalado' },
         { label: 'Desinstalados', count: stats.desinstalados || 0, emoji: '📤', class: 'desinstalado' }
     ];
+    
+    console.log('📈 Estadísticas calculadas:', statsData);
     
     elements.statsContainer.innerHTML = statsData.map(stat => {
         const percentage = stats.total > 0 ? ((stat.count / stats.total) * 100).toFixed(1) : 0;

@@ -1853,29 +1853,28 @@ app.get('/api/stats', async (req, res) => {
     
     const doc = await getGoogleSheet();
     
-    // Obtener SIEMPRE el total de registros globales de la hoja REGISTROS
+    // Obtener SIEMPRE el total de registros de la hoja REGISTROS global
     const globalSheet = await getOrCreateRecordsSheet(doc);
-    const globalRows = await globalSheet.getRows();
-    const totalGlobal = globalRows.length;
+    let rows = await globalSheet.getRows();
     
-    // Obtener registros filtrados para estadísticas por estado
-    let sheet;
+    console.log(`📊 Stats API: Total de registros en REGISTROS: ${rows.length}`);
     
+    // Filtrar por cliente si se especifica
     if (cliente) {
-      sheet = await getOrCreateClientRecordsSheet(doc, cliente);
-    } else {
-      sheet = await getOrCreateRecordsSheet(doc);
-    }
-
-    let rows = await sheet.getRows();
-    if (userEmail && !cliente) {
+      rows = rows.filter(row => {
+        const rowCliente = row.get('CLIENTE') || '';
+        return rowCliente.toUpperCase() === cliente.toUpperCase();
+      });
+      console.log(`🔒 Filtrado por cliente "${cliente}": ${rows.length} registros`);
+    } else if (userEmail) {
+      // Filtrar por usuario si se especifica
       rows = rows.filter(row => isUserInRecord(row, userEmail));
+      console.log(`👤 Filtrado por usuario "${userEmail}": ${rows.length} registros`);
     }
     const today = new Date().toLocaleDateString('es-ES');
 
     const stats = {
-      totalGlobal: totalGlobal, // Total de registros en la hoja REGISTROS
-      total: rows.length,       // Total filtrado (por cliente o usuario)
+      total: rows.length,       // Total de registros (global o filtrado por cliente/usuario)
       enAlmacen: 0,
       despachados: 0,
       instalados: 0,
@@ -1902,6 +1901,7 @@ app.get('/api/stats', async (req, res) => {
       }
     });
 
+    console.log(`📈 Estadísticas finales:`, stats);
     res.json({ success: true, data: stats });
 
   } catch (error) {
