@@ -24,7 +24,7 @@ let allRecordsData = []; // Guardar todos los registros para filtrado
 let allUsersData = []; // Guardar todos los usuarios para filtrado
 let allClientsData = []; // Guardar todos los clientes para filtrado
 let pendingInstallationQR = null; // QR pendiente de instalación (tercer escaneo)
-let pendingUninstallationQR = null; // QR pendiente de desinstalación (cuarto escaneo)
+let pendingUninstallationQR = null; // QR pendiente de desinstalación (sin uso en flujo de 3 escaneos)
 let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
 let scannerRestartTimeout = null; // Timer para reiniciar scanner
 
@@ -1502,15 +1502,15 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
     try {
         updateStatus('💾 Guardando...', 'saving');
         
-        // Para usuarios despacho: el cliente solo es requerido después del primer escaneo
-        // En el primer escaneo, pueden escanear sin seleccionar cliente
+        // Para usuarios despacho: el cliente es requerido desde el primer escaneo
         let userClientToUse = currentUserClient;
         if (currentUserRole === 'dispatch') {
-            userClientToUse = elements.selectedClient.value || ''; // Permitir vacío en primer escaneo
-            
-            // Si no hay cliente seleccionado, mostrar advertencia
+            userClientToUse = elements.selectedClient.value || '';
+
             if (!userClientToUse) {
-                showToast('⚠️ Recuerda: Necesitas seleccionar un cliente para DESPACHAR productos', 'warning');
+                showToast('⚠️ Debes seleccionar un cliente antes de escanear', 'warning');
+                updateStatus('⚠️ Selecciona un cliente para continuar', 'warning');
+                return;
             }
         }
         
@@ -1590,24 +1590,11 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
                 onShowInstalacion();
                 updateStatus(`🔧 Ingresa datos de instalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
                 return; // No continuar procesando
-            } else if (action === 'needs_uninstallation_data') {
-                // Se requieren datos de desinstalación - mostrar modal
-                pendingUninstallationQR = qrContent;
-                showDesinstalacionModal();
-                updateStatus(`📤 Ingresa datos de desinstalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
-                return; // No continuar procesando
             } else if (action === 'stored') {
                 // Primer escaneo - EN ALMACEN
                 showToast('✅ Producto registrado EN ALMACEN', 'success');
                 updateStatus(`✅ ${result.data.referencia} | ${result.data.serial} - EN ALMACEN`, 'success');
                 displayLastResult(result.data, 'EN ALMACEN');
-                
-                // Recordatorio para usuario despacho
-                if (currentUserRole === 'dispatch') {
-                    setTimeout(() => {
-                        showToast('ℹ️ Para despachar, selecciona un cliente y escanea nuevamente', 'info');
-                    }, 2000);
-                }
             } else if (action === 'dispatched') {
                 // Segundo escaneo - DESPACHADO
                 showToast('🚚 Producto marcado como DESPACHADO', 'success');
@@ -1618,11 +1605,6 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
                 showToast('🔧 Producto marcado como INSTALADO', 'success');
                 updateStatus(`🔧 ${result.data.referencia} | ${result.data.serial} - INSTALADO`, 'success');
                 displayLastResult(result.data, 'INSTALADO');
-            } else if (action === 'uninstalled') {
-                // Cuarto escaneo - DESINSTALADO
-                showToast('📤 Producto marcado como DESINSTALADO', 'success');
-                updateStatus(`📤 ${result.data.referencia} | ${result.data.serial} - DESINSTALADO`, 'success');
-                displayLastResult(result.data, 'DESINSTALADO');
             } else if (action === 'already_completed') {
                 // Ya completó todo el ciclo
                 showToast('⚠️ Producto ya completó todo el ciclo', 'warning');

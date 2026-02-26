@@ -1349,8 +1349,7 @@ app.post('/api/save-qr', async (req, res) => {
       });
     }
 
-    // El cliente solo es requerido para segundo escaneo en adelante (cuando es usuario despacho)
-    // En el primer escaneo, el cliente puede estar vacío
+    // El cliente es requerido desde el primer escaneo para usuarios despacho
 
     // Parsear el contenido del QR
     const parsedData = parseQRContent(qrContent);
@@ -1382,13 +1381,15 @@ app.post('/api/save-qr', async (req, res) => {
       // Registro existente: determinar siguiente estado
       // La trazabilidad es por serial, independiente del usuario que escanee
       const currentState = existingGlobalRecord.get('ESTADO');
-      const recordClient = existingGlobalRecord.get('CLIENTE'); // Cliente original del registro
+      const recordClient = (existingGlobalRecord.get('CLIENTE') || '').trim(); // Cliente original del registro
+      const normalizedUserClient = (userClient || '').trim();
+      const effectiveClient = recordClient || normalizedUserClient;
       
       // Obtener la hoja del cliente actual (quien escanea) solo si tiene cliente asignado
       let currentClientSheet = null;
       let existingCurrentClientRecord = null;
-      if (userClient && userClient.trim() !== '') {
-        currentClientSheet = await getOrCreateClientRecordsSheet(doc, userClient);
+      if (effectiveClient) {
+        currentClientSheet = await getOrCreateClientRecordsSheet(doc, effectiveClient);
         await currentClientSheet.loadHeaderRow(); // Asegurar headers cargados
         existingCurrentClientRecord = await findExistingRecord(currentClientSheet, referencia, serial);
       }
@@ -1396,7 +1397,7 @@ app.post('/api/save-qr', async (req, res) => {
       // Obtener la hoja del cliente original (si es diferente)
       let originalClientSheet = null;
       let existingOriginalClientRecord = null;
-      if (recordClient && recordClient !== userClient) {
+      if (recordClient && recordClient !== normalizedUserClient && recordClient !== effectiveClient) {
         originalClientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
         await originalClientSheet.loadHeaderRow(); // Asegurar headers cargados
         existingOriginalClientRecord = await findExistingRecord(originalClientSheet, referencia, serial);
@@ -1404,34 +1405,37 @@ app.post('/api/save-qr', async (req, res) => {
       
       if (currentState === 'EN ALMACEN') {
         // SEGUNDO ESCANEO: Actualizar a DESPACHADO
-        // Validar que usuario despacho tenga cliente seleccionado
-        if (userTipo === 'despacho' && (!userClient || userClient.trim() === '')) {
+        // Validar que exista cliente asignado (debe venir desde el primer escaneo)
+        if (!effectiveClient) {
           return res.status(400).json({ 
             success: false, 
-            error: 'Debes seleccionar un cliente para despachar este producto' 
+            error: 'Debes seleccionar un cliente para continuar con este producto' 
           });
         }
-        
-        // Aquí el usuario despacho agrega el cliente
+
+        // Asegurar cliente en el registro global si no estaba
+        if (!recordClient && effectiveClient) {
+          existingGlobalRecord.set('CLIENTE', effectiveClient);
+        }
+
         existingGlobalRecord.set('ESTADO', 'DESPACHADO');
-        existingGlobalRecord.set('CLIENTE', userClient); // Agregar cliente en segundo escaneo
         existingGlobalRecord.set('USUARIO_DESPACHO', userEmail || '');
         existingGlobalRecord.set('FECHA_DESPACHO', fecha);
         existingGlobalRecord.set('HORA_DESPACHO', hora);
         await existingGlobalRecord.save();
 
         // Registrar cliente en CLIENTES si no existe (solo para usuarios despacho)
-        if (userTipo === 'despacho') {
+        if (userTipo === 'despacho' && effectiveClient) {
           const clientsSheet = await getOrCreateClientsSheet(doc);
           const clientsRows = await clientsSheet.getRows();
-          const normalizedClientName = userClient.trim().toUpperCase();
+          const normalizedClientName = effectiveClient.trim().toUpperCase();
           const clientExists = clientsRows.some(row => 
             (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedClientName
           );
           
           if (!clientExists) {
             await clientsSheet.addRow({
-              'NOMBRE': userClient.trim(),
+              'NOMBRE': effectiveClient.trim(),
               'FECHA_REGISTRO': fecha
             });
           }
@@ -1444,7 +1448,7 @@ app.post('/api/save-qr', async (req, res) => {
           'REFERENCIA': referencia,
           'SERIAL': serial,
           'ESTADO': 'DESPACHADO',
-          'CLIENTE': userClient,
+          'CLIENTE': effectiveClient,
           'USUARIO_DESPACHO': userEmail || '',
           'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
           'USUARIO_INSTALACION': '',
@@ -1472,7 +1476,7 @@ app.post('/api/save-qr', async (req, res) => {
             referencia,
             serial,
             estado: 'DESPACHADO',
-            cliente: userClient, // Cliente agregado en segundo escaneo
+            cliente: effectiveClient, // Cliente ya asignado desde el primer escaneo
             fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: fecha
           }
@@ -1496,7 +1500,7 @@ app.post('/api/save-qr', async (req, res) => {
               referencia,
               serial,
               estado: currentState,
-              cliente: recordClient
+              cliente: effectiveClient
             }
           });
         }
@@ -1531,7 +1535,7 @@ app.post('/api/save-qr', async (req, res) => {
             'REFERENCIA': referencia,
             'SERIAL': serial,
             'ESTADO': 'INSTALADO',
-            'CLIENTE': recordClient,
+            'CLIENTE': effectiveClient,
             'USUARIO_DESPACHO': existingGlobalRecord.get('USUARIO_DESPACHO'),
             'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
             'USUARIO_INSTALACION': userEmail || '',
@@ -1571,7 +1575,7 @@ app.post('/api/save-qr', async (req, res) => {
             referencia,
             serial,
             estado: 'INSTALADO',
-            cliente: recordClient,
+            cliente: effectiveClient,
             fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
             fechaInstalacion: fecha,
@@ -1579,94 +1583,20 @@ app.post('/api/save-qr', async (req, res) => {
           }
         });
       } else if (currentState === 'INSTALADO') {
-        // CUARTO ESCANEO: Actualizar a DESINSTALADO
-        // Extraer datos adicionales del body
-        const kilometrajeDesinstalacion = req.body.kilometrajeDesinstalacion || '';
-        
-        // Verificar si se enviaron los datos de desinstalación
-        if (!kilometrajeDesinstalacion) {
-          // Pedir al frontend que solicite los datos de desinstalación
-          return res.json({ 
-            success: true, 
-            action: 'needs_uninstallation_data',
-            message: 'Se requieren datos de desinstalación',
-            data: {
-              id: existingGlobalRecord.get('ID'),
-              referencia,
-              serial,
-              estado: currentState,
-              cliente: recordClient
-            }
-          });
-        }
-        
-        existingGlobalRecord.set('ESTADO', 'DESINSTALADO');
-        existingGlobalRecord.set('USUARIO_DESINSTALACION', userEmail || '');
-        existingGlobalRecord.set('KILOMETRAJE_DESINSTALACION', kilometrajeDesinstalacion);
-        existingGlobalRecord.set('FECHA_DESINSTALACION', fecha);
-        existingGlobalRecord.set('HORA_DESINSTALACION', hora);
-        await existingGlobalRecord.save();
-
-        // Actualizar o crear en la hoja del cliente actual
-        if (existingCurrentClientRecord) {
-          existingCurrentClientRecord.set('ESTADO', 'DESINSTALADO');
-          existingCurrentClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
-          existingCurrentClientRecord.set('KILOMETRAJE_DESINSTALACION', kilometrajeDesinstalacion);
-          existingCurrentClientRecord.set('FECHA_DESINSTALACION', fecha);
-          existingCurrentClientRecord.set('HORA_DESINSTALACION', hora);
-          await existingCurrentClientRecord.save();
-        } else if (currentClientSheet) {
-          // Crear nuevo registro en la hoja del cliente actual con todos los datos
-          const currentClientRows = await currentClientSheet.getRows();
-          await currentClientSheet.addRow({
-            'ID': currentClientRows.length + 1,
-            'REFERENCIA': referencia,
-            'SERIAL': serial,
-            'ESTADO': 'DESINSTALADO',
-            'CLIENTE': recordClient,
-            'USUARIO_DESPACHO': existingGlobalRecord.get('USUARIO_DESPACHO'),
-            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
-            'USUARIO_INSTALACION': existingGlobalRecord.get('USUARIO_INSTALACION'),
-            'USUARIO_DESINSTALACION': userEmail || '',
-            'PLACA': existingGlobalRecord.get('PLACA'),
-            'KILOMETRAJE_INSTALACION': existingGlobalRecord.get('KILOMETRAJE_INSTALACION'),
-            'KILOMETRAJE_DESINSTALACION': kilometrajeDesinstalacion,
-            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
-            'FECHA_DESPACHO': existingGlobalRecord.get('FECHA_DESPACHO'),
-            'FECHA_INSTALACION': existingGlobalRecord.get('FECHA_INSTALACION'),
-            'FECHA_DESINSTALACION': fecha,
-            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
-            'HORA_DESPACHO': existingGlobalRecord.get('HORA_DESPACHO'),
-            'HORA_INSTALACION': existingGlobalRecord.get('HORA_INSTALACION'),
-            'HORA_DESINSTALACION': hora
-          });
-        }
-
-        // Actualizar también en hoja del cliente original (si es diferente)
-        if (existingOriginalClientRecord) {
-          existingOriginalClientRecord.set('ESTADO', 'DESINSTALADO');
-          existingOriginalClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
-          existingOriginalClientRecord.set('KILOMETRAJE_DESINSTALACION', kilometrajeDesinstalacion);
-          existingOriginalClientRecord.set('FECHA_DESINSTALACION', fecha);
-          existingOriginalClientRecord.set('HORA_DESINSTALACION', hora);
-          await existingOriginalClientRecord.save();
-        }
-
+        // Ciclo completo en 3 escaneos (EN ALMACEN -> DESPACHADO -> INSTALADO)
         return res.json({ 
           success: true, 
-          action: 'uninstalled',
-          message: '📤 Producto marcado como DESINSTALADO',
+          action: 'already_completed',
+          message: '⚠️ Este producto ya completó el ciclo (INSTALADO)',
           data: {
             id: existingGlobalRecord.get('ID'),
             referencia,
             serial,
-            estado: 'DESINSTALADO',
-            cliente: recordClient,
+            estado: currentState,
+            cliente: effectiveClient,
             fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
-            fechaInstalacion: existingGlobalRecord.get('FECHA_INSTALACION'),
-            fechaDesinstalacion: fecha,
-            usuarioDesinstalacion: userEmail
+            fechaInstalacion: existingGlobalRecord.get('FECHA_INSTALACION')
           }
         });
       } else {
@@ -1715,8 +1645,14 @@ app.post('/api/save-qr', async (req, res) => {
         });
       }
     } else {
-      // PRIMER ESCANEO: Crear nuevo registro EN ALMACEN
-      // En el primer escaneo NO se guarda el cliente
+      // PRIMER ESCANEO: Crear nuevo registro EN ALMACEN (con cliente)
+      const normalizedUserClient = (userClient || '').trim();
+      if (userTipo === 'despacho' && !normalizedUserClient) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Debes seleccionar un cliente para registrar este producto' 
+        });
+      }
       const globalRows = await globalSheet.getRows();
       const nextGlobalId = globalRows.length + 1;
 
@@ -1724,7 +1660,7 @@ app.post('/api/save-qr', async (req, res) => {
         'REFERENCIA': referencia,
         'SERIAL': serial,
         'ESTADO': 'EN ALMACEN',
-        'CLIENTE': '', // No se guarda cliente en el primer escaneo
+        'CLIENTE': normalizedUserClient,
         'USUARIO_DESPACHO': '',
         'USUARIO_PLANTA': userEmail || '',
         'USUARIO_INSTALACION': '',
@@ -1741,11 +1677,57 @@ app.post('/api/save-qr', async (req, res) => {
         'HORA_DESINSTALACION': ''
       };
 
-      // Guardar solo en hoja global REGISTROS (fuente única de verdad)
+      // Guardar en hoja global REGISTROS (fuente única de verdad)
       await globalSheet.addRow({
         'ID': nextGlobalId,
         ...newRecordData
       });
+
+      // Registrar cliente en CLIENTES si no existe
+      if (normalizedUserClient) {
+        const clientsSheet = await getOrCreateClientsSheet(doc);
+        const clientsRows = await clientsSheet.getRows();
+        const normalizedClientName = normalizedUserClient.toUpperCase();
+        const clientExists = clientsRows.some(row => 
+          (row.get('NOMBRE') || '').trim().toUpperCase() === normalizedClientName
+        );
+        if (!clientExists) {
+          await clientsSheet.addRow({
+            'NOMBRE': normalizedUserClient,
+            'FECHA_REGISTRO': fecha
+          });
+        }
+      }
+
+      // Guardar tambien en la hoja del cliente
+      if (normalizedUserClient) {
+        const clientSheet = await getOrCreateClientRecordsSheet(doc, normalizedUserClient);
+        await clientSheet.loadHeaderRow();
+        const clientRows = await clientSheet.getRows();
+        await clientSheet.addRow({
+          'ID': clientRows.length + 1,
+          'REFERENCIA': referencia,
+          'SERIAL': serial,
+          'ESTADO': 'EN ALMACEN',
+          'CLIENTE': normalizedUserClient,
+          'USUARIO_DESPACHO': '',
+          'USUARIO_PLANTA': userEmail || '',
+          'USUARIO_INSTALACION': '',
+          'USUARIO_DESINSTALACION': '',
+          'PLACA': '',
+          'KILOMETRAJE_INSTALACION': '',
+          'KILOMETRAJE_DESINSTALACION': '',
+          'NOMBRE_INSTALADOR': '',
+          'FECHA_ALMACEN': fecha,
+          'FECHA_DESPACHO': '',
+          'FECHA_INSTALACION': '',
+          'FECHA_DESINSTALACION': '',
+          'HORA_ALMACEN': hora,
+          'HORA_DESPACHO': '',
+          'HORA_INSTALACION': '',
+          'HORA_DESINSTALACION': ''
+        });
+      }
 
       res.json({ 
         success: true, 
@@ -1756,7 +1738,7 @@ app.post('/api/save-qr', async (req, res) => {
           referencia,
           serial,
           estado: 'EN ALMACEN',
-          cliente: '', // No se guarda cliente en primer escaneo
+          cliente: normalizedUserClient,
           fechaAlmacen: fecha
         }
       });
