@@ -1441,31 +1441,41 @@ app.post('/api/save-qr', async (req, res) => {
           }
         }
 
-        // Crear registro en la hoja del cliente
-        const currentClientRows = await currentClientSheet.getRows();
-        await currentClientSheet.addRow({
-          'ID': currentClientRows.length + 1,
-          'REFERENCIA': referencia,
-          'SERIAL': serial,
-          'ESTADO': 'DESPACHADO',
-          'CLIENTE': effectiveClient,
-          'USUARIO_DESPACHO': userEmail || '',
-          'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
-          'USUARIO_INSTALACION': '',
-          'USUARIO_DESINSTALACION': '',
-          'PLACA': '',
-          'KILOMETRAJE_INSTALACION': '',
-          'KILOMETRAJE_DESINSTALACION': '',
-          'NOMBRE_INSTALADOR': '',
-          'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
-          'FECHA_DESPACHO': fecha,
-          'FECHA_INSTALACION': '',
-          'FECHA_DESINSTALACION': '',
-          'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
-          'HORA_DESPACHO': hora,
-          'HORA_INSTALACION': '',
-          'HORA_DESINSTALACION': ''
-        });
+        // Actualizar o crear registro en la hoja del cliente
+        if (existingCurrentClientRecord) {
+          existingCurrentClientRecord.set('ESTADO', 'DESPACHADO');
+          existingCurrentClientRecord.set('CLIENTE', effectiveClient);
+          existingCurrentClientRecord.set('USUARIO_DESPACHO', userEmail || '');
+          existingCurrentClientRecord.set('USUARIO_PLANTA', existingGlobalRecord.get('USUARIO_PLANTA'));
+          existingCurrentClientRecord.set('FECHA_DESPACHO', fecha);
+          existingCurrentClientRecord.set('HORA_DESPACHO', hora);
+          await existingCurrentClientRecord.save();
+        } else {
+          const currentClientRows = await currentClientSheet.getRows();
+          await currentClientSheet.addRow({
+            'ID': currentClientRows.length + 1,
+            'REFERENCIA': referencia,
+            'SERIAL': serial,
+            'ESTADO': 'DESPACHADO',
+            'CLIENTE': effectiveClient,
+            'USUARIO_DESPACHO': userEmail || '',
+            'USUARIO_PLANTA': existingGlobalRecord.get('USUARIO_PLANTA'),
+            'USUARIO_INSTALACION': '',
+            'USUARIO_DESINSTALACION': '',
+            'PLACA': '',
+            'KILOMETRAJE_INSTALACION': '',
+            'KILOMETRAJE_DESINSTALACION': '',
+            'NOMBRE_INSTALADOR': '',
+            'FECHA_ALMACEN': existingGlobalRecord.get('FECHA_ALMACEN'),
+            'FECHA_DESPACHO': fecha,
+            'FECHA_INSTALACION': '',
+            'FECHA_DESINSTALACION': '',
+            'HORA_ALMACEN': existingGlobalRecord.get('HORA_ALMACEN'),
+            'HORA_DESPACHO': hora,
+            'HORA_INSTALACION': '',
+            'HORA_DESINSTALACION': ''
+          });
+        }
 
         return res.json({ 
           success: true, 
