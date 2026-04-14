@@ -143,7 +143,12 @@ function initAuth() {
  * Mostrar formulario de email para usuario (mecánico o despacho)
  */
 function showUserEmailForm() {
-    elements.loginUserBtn.parentElement.style.display = 'none';
+    // Cambiar estilos de los botones
+    elements.loginUserBtn.classList.remove('btn-secondary');
+    elements.loginUserBtn.classList.add('btn-primary');
+    elements.loginAdminBtn.classList.remove('btn-primary');
+    elements.loginAdminBtn.classList.add('btn-secondary');
+    
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
@@ -155,7 +160,12 @@ function showUserEmailForm() {
  * Mostrar formulario de email para administrador
  */
 function showAdminEmailForm() {
-    elements.loginUserBtn.parentElement.style.display = 'none';
+    // Cambiar estilos de los botones
+    elements.loginAdminBtn.classList.remove('btn-secondary');
+    elements.loginAdminBtn.classList.add('btn-primary');
+    elements.loginUserBtn.classList.remove('btn-primary');
+    elements.loginUserBtn.classList.add('btn-secondary');
+    
     elements.userLoginForm.classList.add('hidden');
     elements.adminLoginForm.classList.remove('hidden');
     elements.adminError.classList.add('hidden');
@@ -167,7 +177,11 @@ function showAdminEmailForm() {
  */
 function cancelUserLogin() {
     elements.userLoginForm.classList.add('hidden');
-    elements.loginUserBtn.parentElement.style.display = 'block';
+    // Restablecer estilos de botones
+    elements.loginUserBtn.classList.remove('btn-primary');
+    elements.loginUserBtn.classList.add('btn-secondary');
+    elements.loginAdminBtn.classList.remove('btn-primary');
+    elements.loginAdminBtn.classList.add('btn-secondary');
     elements.userUsername.value = '';
     elements.userPassword.value = '';
     elements.userError.textContent = '';
@@ -179,7 +193,11 @@ function cancelUserLogin() {
  */
 function cancelAdminEmailLogin() {
     elements.adminLoginForm.classList.add('hidden');
-    elements.loginUserBtn.parentElement.style.display = 'block';
+    // Restablecer estilos de botones
+    elements.loginAdminBtn.classList.remove('btn-primary');
+    elements.loginAdminBtn.classList.add('btn-secondary');
+    elements.loginUserBtn.classList.remove('btn-primary');
+    elements.loginUserBtn.classList.add('btn-secondary');
     elements.adminUsername.value = '';
     elements.adminPassword.value = '';
     elements.adminError.textContent = '';
