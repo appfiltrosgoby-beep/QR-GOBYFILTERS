@@ -611,6 +611,7 @@ input:checked + .slider:before {
 .btn-primary {
     background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
     color: white;
+    transition: all var(--transition-fast);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -625,10 +626,13 @@ input:checked + .slider:before {
 .btn-secondary {
     background: var(--bg-tertiary);
     color: var(--text-primary);
+    transition: all var(--transition-fast);
+    border: 2px solid var(--border-color);
 }
 
 .btn-secondary:hover:not(:disabled) {
     background: var(--border-color);
+    border-color: var(--text-secondary);
 }
 
 .btn-icon-text {
@@ -1004,6 +1008,22 @@ input:checked + .slider:before {
         box-shadow: var(--shadow-md);
     }
     
+    .btn-large {
+        padding: var(--spacing-lg);
+        font-size: 1.1rem;
+    }
+    
+    .btn-large.btn-primary {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        color: white;
+    }
+    
+    .btn-large.btn-secondary {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 2px solid var(--border-color);
+    }
+    
     .card:hover {
         transform: translateY(-2px);
         box-shadow: var(--shadow-lg);
@@ -1350,6 +1370,18 @@ input:checked + .slider:before {
     .btn-large {
         padding: var(--spacing-md);
         font-size: 1rem;
+        min-height: 50px;
+    }
+    
+    .btn-large.btn-primary {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        color: white;
+    }
+    
+    .btn-large.btn-secondary {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 2px solid var(--border-color);
     }
 }
 
