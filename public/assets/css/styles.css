@@ -60,8 +60,8 @@
 }
 
 body {
-    font-family: Impact, 'Arial Black', sans-serif;
-    font-style: italic;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-style: normal;
     background: linear-gradient(135deg, #5BC2E7 0%, #1565C0 100%);
     color: var(--text-primary);
     line-height: 1.6;
