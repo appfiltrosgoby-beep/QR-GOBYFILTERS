@@ -1014,15 +1014,16 @@ input:checked + .slider:before {
     }
     
     .btn-large.btn-primary {
-        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-        color: white;
-        box-shadow: 0 4px 12px rgba(21, 101, 192, 0.3);
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)) !important;
+        color: white !important;
+        box-shadow: 0 6px 16px rgba(21, 101, 192, 0.4) !important;
+        transform: scale(1.02) !important;
     }
     
     .btn-large.btn-secondary {
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-        border: 2px solid var(--border-color);
+        background: #f3f4f6 !important;
+        color: #111827 !important;
+        border: 2px solid #d1d5db !important;
     }
     
     .card:hover {
@@ -1206,27 +1207,32 @@ input:checked + .slider:before {
 }
 
 .btn-large.btn-primary {
-    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-    color: white;
-    box-shadow: 0 4px 12px rgba(21, 101, 192, 0.3);
-    transform: scale(1.02);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)) !important;
+    color: white !important;
+    box-shadow: 0 6px 16px rgba(21, 101, 192, 0.4) !important;
+    transform: scale(1.02) !important;
+}
+
+.btn-large.btn-primary:hover:not(:disabled) {
+    transform: scale(1.04) !important;
+    box-shadow: 0 8px 20px rgba(21, 101, 192, 0.5) !important;
 }
 
 .btn-large.btn-primary:active:not(:disabled) {
-    transform: scale(0.98);
+    transform: scale(0.98) !important;
 }
 
 .btn-large.btn-secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-color);
-    box-shadow: none;
-    transform: scale(1);
+    background: #f3f4f6 !important;
+    color: #111827 !important;
+    border: 2px solid #d1d5db !important;
+    box-shadow: none !important;
+    transform: scale(1) !important;
 }
 
-.btn-large.btn-secondary:hover {
-    background: var(--border-color);
-    border-color: var(--text-secondary);
+.btn-large.btn-secondary:hover:not(:disabled) {
+    background: #e5e7eb !important;
+    border-color: #9ca3af !important;
 }
 
 .password-form {
@@ -1396,18 +1402,18 @@ input:checked + .slider:before {
     }
     
     .btn-large.btn-primary {
-        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-        color: white;
-        box-shadow: 0 6px 16px rgba(21, 101, 192, 0.4);
-        transform: scale(1.02);
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)) !important;
+        color: white !important;
+        box-shadow: 0 6px 16px rgba(21, 101, 192, 0.4) !important;
+        transform: scale(1.02) !important;
     }
     
     .btn-large.btn-secondary {
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-        border: 2px solid #ccc;
-        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
-        transform: scale(1);
+        background: #f3f4f6 !important;
+        color: #111827 !important;
+        border: 2px solid #d1d5db !important;
+        box-shadow: none !important;
+        transform: scale(1) !important;
     }
     
     .modal-body {
