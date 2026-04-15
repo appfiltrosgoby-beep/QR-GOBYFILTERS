@@ -1041,14 +1041,14 @@ input:checked + .slider:before {
     
     .main-content {
         padding: 0;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        flex-direction: column;
         gap: var(--spacing-lg);
     }
     
     .view {
         display: block;
-        grid-column: 1 / -1;
+        width: 100%;
     }
     
     .logo h1 {
