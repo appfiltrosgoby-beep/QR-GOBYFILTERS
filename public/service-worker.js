@@ -3,7 +3,7 @@
  * Maneja caching, offline mode y actualización en segundo plano
  */
 
-const CACHE_NAME = 'goby-v1';
+const CACHE_NAME = 'goby-v2';
 const urlsToCache = [
     '/',
     '/index.html',
@@ -11,7 +11,7 @@ const urlsToCache = [
     '/browserconfig.xml',
     '/service-worker.js',
     '/assets/css/styles.css',
-    '/assets/js/app.js',
+    '/assets/js/app.js?v=20260415',
     '/assets/images/favicon-32.png',
     '/assets/images/favicon.svg',
     '/assets/images/icon-180.png',
