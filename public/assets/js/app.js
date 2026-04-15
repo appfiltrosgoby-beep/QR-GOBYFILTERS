@@ -94,8 +94,27 @@ const elements = {
     kilometrajeDesinstalacionInput: document.getElementById('kilometrajeDesinstalacionInput'),
     submitDesinstalacionBtn: document.getElementById('submitDesinstalacionBtn'),
     cancelDesinstalacionBtn: document.getElementById('cancelDesinstalacionBtn'),
-    desinstalacionError: document.getElementById('desinstalacionError')
+    desinstalacionError: document.getElementById('desinstalacionError'),
+    menuToggleBtn: document.getElementById('menuToggleBtn'),
+    menuCloseBtn: document.getElementById('menuCloseBtn'),
+    menuOverlay: document.getElementById('menuOverlay'),
+    sideMenu: document.getElementById('sideMenu')
 };
+
+function setViewButtonVisibility(viewId, visible) {
+    document.querySelectorAll(`[data-view="${viewId}"]`).forEach(button => {
+        button.style.display = visible ? '' : 'none';
+    });
+}
+
+function toggleSideMenu(forceOpen) {
+    const shouldOpen = typeof forceOpen === 'boolean'
+        ? forceOpen
+        : !elements.sideMenu.classList.contains('open');
+
+    elements.sideMenu.classList.toggle('open', shouldOpen);
+    elements.menuOverlay.classList.toggle('open', shouldOpen);
+}
 
 // ============================================
 // SISTEMA DE AUTENTICACIÓN
@@ -402,34 +421,14 @@ function applyRolePermissions() {
     elements.currentRole.textContent = displayText;
     elements.currentRole.className = `role-badge ${currentUserRole}`;
     
-    // Ocultar/mostrar vistas
-    const statsNavBtn = document.querySelector('[data-view="statsView"]');
-    const usersNavBtn = document.querySelector('[data-view="usersView"]');
-    const clientsNavBtn = document.querySelector('[data-view="clientsView"]');
-    const projectionsNavBtn = document.querySelector('[data-view="projectionsView"]');
-    const scannerNavBtn = document.querySelector('[data-view="scannerView"]');
-    const recordsNavBtn = document.querySelector('[data-view="recordsView"]');
-    
     if (currentUserRole === 'user' && currentUserType === 'mecanico') {
         // Usuario mecánico: ocultar estadísticas, usuarios y clientes, mostrar escáner sin selector
-        if (statsNavBtn) {
-            statsNavBtn.style.display = 'none';
-        }
-        if (usersNavBtn) {
-            usersNavBtn.style.display = 'none';
-        }
-        if (clientsNavBtn) {
-            clientsNavBtn.style.display = 'none';
-        }
-        if (projectionsNavBtn) {
-            projectionsNavBtn.style.display = 'none';
-        }
-        if (recordsNavBtn) {
-            recordsNavBtn.style.display = 'none';
-        }
-        if (scannerNavBtn) {
-            scannerNavBtn.style.display = 'flex';
-        }
+        setViewButtonVisibility('statsView', false);
+        setViewButtonVisibility('usersView', false);
+        setViewButtonVisibility('clientsView', false);
+        setViewButtonVisibility('projectionsView', false);
+        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('scannerView', true);
         // Ocultar selector de cliente para mecánicos
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
@@ -452,24 +451,12 @@ function applyRolePermissions() {
         }
     } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
         // Usuario despacho: ocultar estadísticas, usuarios y clientes, mostrar selector de cliente
-        if (statsNavBtn) {
-            statsNavBtn.style.display = 'none';
-        }
-        if (usersNavBtn) {
-            usersNavBtn.style.display = 'none';
-        }
-        if (clientsNavBtn) {
-            clientsNavBtn.style.display = 'none';
-        }
-        if (projectionsNavBtn) {
-            projectionsNavBtn.style.display = 'none';
-        }
-        if (recordsNavBtn) {
-            recordsNavBtn.style.display = 'none';
-        }
-        if (scannerNavBtn) {
-            scannerNavBtn.style.display = 'flex';
-        }
+        setViewButtonVisibility('statsView', false);
+        setViewButtonVisibility('usersView', false);
+        setViewButtonVisibility('clientsView', false);
+        setViewButtonVisibility('projectionsView', false);
+        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('scannerView', true);
         // Mostrar selector de cliente para usuarios despacho
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.remove('hidden');
@@ -493,24 +480,12 @@ function applyRolePermissions() {
         }
     } else if (currentUserRole === 'admin') {
         // Admin: mostrar escáner, usuarios, proyecciones, registros; ocultar estadísticas y clientes
-        if (statsNavBtn) {
-            statsNavBtn.style.display = 'none';
-        }
-        if (usersNavBtn) {
-            usersNavBtn.style.display = 'flex';
-        }
-        if (clientsNavBtn) {
-            clientsNavBtn.style.display = 'none';
-        }
-        if (projectionsNavBtn) {
-            projectionsNavBtn.style.display = 'flex';
-        }
-        if (scannerNavBtn) {
-            scannerNavBtn.style.display = 'flex';
-        }
-        if (recordsNavBtn) {
-            recordsNavBtn.style.display = 'flex';
-        }
+        setViewButtonVisibility('statsView', false);
+        setViewButtonVisibility('usersView', true);
+        setViewButtonVisibility('clientsView', false);
+        setViewButtonVisibility('projectionsView', true);
+        setViewButtonVisibility('scannerView', true);
+        setViewButtonVisibility('recordsView', true);
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
@@ -545,24 +520,12 @@ function applyRolePermissions() {
         }
     } else {
         // Superadmin: mostrar estadísticas, registros, usuarios, clientes y proyecciones (ocultar escáner)
-        if (statsNavBtn) {
-            statsNavBtn.style.display = 'flex';
-        }
-        if (usersNavBtn) {
-            usersNavBtn.style.display = 'flex';
-        }
-        if (clientsNavBtn) {
-            clientsNavBtn.style.display = 'flex';
-        }
-        if (projectionsNavBtn) {
-            projectionsNavBtn.style.display = 'flex';
-        }
-        if (scannerNavBtn) {
-            scannerNavBtn.style.display = 'none';
-        }
-        if (recordsNavBtn) {
-            recordsNavBtn.style.display = 'none';
-        }
+        setViewButtonVisibility('statsView', true);
+        setViewButtonVisibility('usersView', true);
+        setViewButtonVisibility('clientsView', true);
+        setViewButtonVisibility('projectionsView', true);
+        setViewButtonVisibility('scannerView', false);
+        setViewButtonVisibility('recordsView', false);
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
@@ -654,14 +617,15 @@ function switchView(viewId) {
     }
     
     // Actualizar botones de navegación
-    document.querySelectorAll('.nav-item').forEach(btn => {
+    document.querySelectorAll('.nav-item, .menu-item').forEach(btn => {
         btn.classList.remove('active');
     });
-    
-    const activeBtn = document.querySelector(`[data-view="${viewId}"]`);
-    if (activeBtn) {
+
+    document.querySelectorAll(`[data-view="${viewId}"]`).forEach(activeBtn => {
         activeBtn.classList.add('active');
-    }
+    });
+
+    toggleSideMenu(false);
     
     // Cargar datos según la vista
     if (viewId === 'recordsView') {
@@ -678,7 +642,7 @@ function switchView(viewId) {
 }
 
 // Event listeners para navegación
-document.querySelectorAll('.nav-item').forEach(btn => {
+document.querySelectorAll('.nav-item, .menu-item').forEach(btn => {
     btn.addEventListener('click', () => {
         const viewId = btn.getAttribute('data-view');
         switchView(viewId);
@@ -767,6 +731,9 @@ function setupEventListeners() {
     elements.submitAdminEmailBtn.addEventListener('click', validateAdminLogin);
     elements.cancelAdminEmailBtn.addEventListener('click', cancelAdminEmailLogin);
     elements.logoutBtn.addEventListener('click', logout);
+    elements.menuToggleBtn.addEventListener('click', () => toggleSideMenu(true));
+    elements.menuCloseBtn.addEventListener('click', () => toggleSideMenu(false));
+    elements.menuOverlay.addEventListener('click', () => toggleSideMenu(false));
     
     // Enter en campo de usuario (mecánico)
     elements.userUsername.addEventListener('keypress', (e) => {

@@ -19,7 +19,7 @@
     <meta name="apple-mobile-web-app-title" content="GOBY">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     
-    <link rel="stylesheet" href="assets/css/styles.css?v=20260415">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20260415b">
     <!-- Librería html5-qrcode para escaneo de QR -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <!-- Librería Chart.js para gráficas -->
@@ -45,6 +45,13 @@
                         <span class="stat-value" id="todayScans">0</span>
                     </div>
                 </div>
+                <button id="menuToggleBtn" class="btn-menu" title="Abrir menú" aria-label="Abrir menú">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
                 <button id="logoutBtn" class="btn-logout" title="Cambiar rol">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -55,6 +62,22 @@
                 </button>
             </div>
         </header>
+
+        <div id="menuOverlay" class="menu-overlay"></div>
+        <aside id="sideMenu" class="side-menu" aria-label="Menú principal">
+            <div class="side-menu-header">
+                <h3>Secciones</h3>
+                <button id="menuCloseBtn" class="menu-close" aria-label="Cerrar menú">×</button>
+            </div>
+            <nav class="side-menu-nav">
+                <button class="menu-item active" data-view="scannerView">Escanear</button>
+                <button class="menu-item" data-view="recordsView">Registros</button>
+                <button class="menu-item" data-view="statsView">Estadísticas</button>
+                <button class="menu-item" data-view="usersView">Usuarios</button>
+                <button class="menu-item" data-view="clientsView">Clientes</button>
+                <button class="menu-item" data-view="projectionsView">Proyecciones</button>
+            </nav>
+        </aside>
 
         <!-- Contenido principal -->
         <main class="main-content">
@@ -617,6 +640,6 @@
     </div>
 
     <!-- Script principal -->
-    <script src="assets/js/app.js?v=20260415"></script>
+    <script src="assets/js/app.js?v=20260415b"></script>
 </body>
 </html>

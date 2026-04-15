@@ -128,6 +128,25 @@ body {
     gap: var(--spacing-xl);
 }
 
+.btn-menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-menu:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
 .stat-item {
     display: flex;
     flex-direction: column;
@@ -164,6 +183,93 @@ body {
     animation: fadeIn 0.3s ease;
 }
 
+.menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.45);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-normal);
+    z-index: 1200;
+}
+
+.menu-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.side-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: min(320px, 84vw);
+    height: 100vh;
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-xl);
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+    z-index: 1201;
+    display: flex;
+    flex-direction: column;
+}
+
+.side-menu.open {
+    transform: translateX(0);
+}
+
+.side-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.side-menu-header h3 {
+    font-size: 1rem;
+    margin: 0;
+}
+
+.menu-close {
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    line-height: 1;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.side-menu-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 0.8rem;
+    gap: 0.4rem;
+}
+
+.menu-item {
+    display: block;
+    text-align: left;
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-primary);
+    padding: 0.85rem 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.menu-item:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.menu-item.active {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    color: #fff;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -191,6 +297,7 @@ body {
     padding: var(--spacing-sm) 0;
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
     z-index: 1000;
+    display: none;
 }
 
 .nav-item {
@@ -1041,13 +1148,10 @@ input:checked + .slider:before {
     
     .main-content {
         padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-lg);
+        display: block;
     }
     
     .view {
-        display: block;
         width: 100%;
     }
     
