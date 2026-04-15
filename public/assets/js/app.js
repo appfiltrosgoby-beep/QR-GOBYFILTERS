@@ -27,6 +27,7 @@ let pendingInstallationQR = null; // QR pendiente de instalación (tercer escane
 let pendingUninstallationQR = null; // QR pendiente de desinstalación (sin uso en flujo de 3 escaneos)
 let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
 let scannerRestartTimeout = null; // Timer para reiniciar scanner
+let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admin' | null)
 
 // Elementos del DOM
 const elements = {
@@ -143,11 +144,7 @@ function initAuth() {
  * Mostrar formulario de email para usuario (mecánico o despacho)
  */
 function showUserEmailForm() {
-    // Cambiar estilos de los botones
-    elements.loginUserBtn.classList.remove('btn-secondary');
-    elements.loginUserBtn.classList.add('btn-primary');
-    elements.loginAdminBtn.classList.remove('btn-primary');
-    elements.loginAdminBtn.classList.add('btn-secondary');
+    setLoginSelection('user');
     
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
@@ -160,11 +157,7 @@ function showUserEmailForm() {
  * Mostrar formulario de email para administrador
  */
 function showAdminEmailForm() {
-    // Cambiar estilos de los botones
-    elements.loginAdminBtn.classList.remove('btn-secondary');
-    elements.loginAdminBtn.classList.add('btn-primary');
-    elements.loginUserBtn.classList.remove('btn-primary');
-    elements.loginUserBtn.classList.add('btn-secondary');
+    setLoginSelection('admin');
     
     elements.userLoginForm.classList.add('hidden');
     elements.adminLoginForm.classList.remove('hidden');
@@ -177,11 +170,6 @@ function showAdminEmailForm() {
  */
 function cancelUserLogin() {
     elements.userLoginForm.classList.add('hidden');
-    // Restablecer estilos de botones
-    elements.loginUserBtn.classList.remove('btn-primary');
-    elements.loginUserBtn.classList.add('btn-secondary');
-    elements.loginAdminBtn.classList.remove('btn-primary');
-    elements.loginAdminBtn.classList.add('btn-secondary');
     elements.userUsername.value = '';
     elements.userPassword.value = '';
     elements.userError.textContent = '';
@@ -193,15 +181,26 @@ function cancelUserLogin() {
  */
 function cancelAdminEmailLogin() {
     elements.adminLoginForm.classList.add('hidden');
-    // Restablecer estilos de botones
-    elements.loginAdminBtn.classList.remove('btn-primary');
-    elements.loginAdminBtn.classList.add('btn-secondary');
-    elements.loginUserBtn.classList.remove('btn-primary');
-    elements.loginUserBtn.classList.add('btn-secondary');
     elements.adminUsername.value = '';
     elements.adminPassword.value = '';
     elements.adminError.textContent = '';
     elements.adminError.classList.add('hidden');
+}
+
+/**
+ * Mantiene resaltado (azul) el botón seleccionado hasta que se toque el otro.
+ */
+function setLoginSelection(type) {
+    selectedLoginType = type;
+
+    const isUserSelected = selectedLoginType === 'user';
+    const isAdminSelected = selectedLoginType === 'admin';
+
+    elements.loginUserBtn.classList.toggle('btn-primary', isUserSelected);
+    elements.loginUserBtn.classList.toggle('btn-secondary', !isUserSelected);
+
+    elements.loginAdminBtn.classList.toggle('btn-primary', isAdminSelected);
+    elements.loginAdminBtn.classList.toggle('btn-secondary', !isAdminSelected);
 }
 
 /**
@@ -372,6 +371,7 @@ function logout() {
     elements.userError.classList.add('hidden');
     elements.adminError.textContent = '';
     elements.adminError.classList.add('hidden');
+    setLoginSelection(null);
     
     // Mostrar modal
     elements.loginModal.style.display = 'flex';
