@@ -2421,10 +2421,10 @@ function clearLastResult() {
 
 function getRecordsColspan() {
     if (currentUserRole === 'admin') {
-        return 7;
+        return 5;
     }
 
-    return currentUserRole === 'superadmin' ? 7 : 6;
+    return currentUserRole === 'superadmin' ? 5 : 4;
 }
 
 /**
@@ -2496,8 +2496,6 @@ function displayRecords(records) {
 
         return `
             <tr>
-                <td class="content-cell"><strong>${record.referencia}</strong></td>
-                <td class="content-cell">${record.serial}</td>
                 <td><span class="type-badge type-${estadoClass}">${estadoEmoji} ${record.estado}</span></td>
                 <td class="cliente-col" style="display: ${currentUserRole === 'superadmin' ? 'table-cell' : 'none'};">${record.cliente || '-'}</td>
                 <td style="display: ${showInstallColumns ? 'none' : 'table-cell'};">${usuarioDisplay}</td>
@@ -2583,7 +2581,7 @@ function displayStatsTable(data) {
     }
     
     if (!data || data.length === 0) {
-        const colSpan = currentUserRole === 'superadmin' ? '7' : '6';
+        const colSpan = currentUserRole === 'superadmin' ? '6' : '5';
         statsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="no-data">No hay datos para mostrar</td></tr>`;
         return;
     }
@@ -2603,7 +2601,6 @@ function displayStatsTable(data) {
         
         return `
             <tr>
-                <td>${row.referencia || 'N/A'}</td>
                 <td>
                     <span class="type-badge type-${estadoClass}">
                         ${row.estado || 'N/A'}
@@ -3027,14 +3024,13 @@ function updateFilterDurationTable(data) {
     const tbody = document.getElementById('filterDurationBody');
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="no-data">No hay datos de duración de filtros</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No hay datos de duración de filtros</td></tr>';
         return;
     }
 
     tbody.innerHTML = data.map(item => `
         <tr>
             <td>${item.cliente}</td>
-            <td>${item.referencia}</td>
             <td>${item.kmInstalacion.toLocaleString()}</td>
             <td>${item.kmDesinstalacion.toLocaleString()}</td>
             <td><strong>${item.duracionKm.toLocaleString()} km</strong></td>
@@ -3051,14 +3047,13 @@ function updateNextReplacementsTable(data) {
     const tbody = document.getElementById('ordersProjectionBody');
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No hay próximos cambios programados</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No hay próximos cambios programados</td></tr>';
         return;
     }
 
     tbody.innerHTML = data.map(item => `
         <tr>
             <td>${item.cliente}</td>
-            <td>${item.referencia}</td>
             <td>${item.fechaInstalacion}</td>
             <td><strong>${item.duracionPromedioDias} días</strong></td>
             <td><strong>${item.fechaEstimadaReemplazo}</strong></td>
