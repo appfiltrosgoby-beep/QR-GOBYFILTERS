@@ -2583,7 +2583,7 @@ function displayStatsTable(data) {
     }
     
     if (!data || data.length === 0) {
-        const colSpan = currentUserRole === 'superadmin' ? '8' : '7';
+        const colSpan = currentUserRole === 'superadmin' ? '7' : '6';
         statsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="no-data">No hay datos para mostrar</td></tr>`;
         return;
     }
@@ -2604,7 +2604,6 @@ function displayStatsTable(data) {
         return `
             <tr>
                 <td>${row.referencia || 'N/A'}</td>
-                <td>${row.serial || 'N/A'}</td>
                 <td>
                     <span class="type-badge type-${estadoClass}">
                         ${row.estado || 'N/A'}
