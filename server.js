@@ -1034,25 +1034,9 @@ app.post('/api/clients', async (req, res) => {
       'FECHA_REGISTRO': now
     });
 
-    // Crear automáticamente las hojas de usuarios y registros para este cliente
+    // Crear automáticamente la hoja de registros para este cliente
     await doc.loadInfo();
     const clienteNormalizado = nombre.trim().toUpperCase();
-    
-    // Crear hoja de usuarios del cliente
-    const usersSheetName = `${clienteNormalizado}_USUARIOS`;
-    let usersSheet = doc.sheetsByTitle[usersSheetName];
-    if (!usersSheet) {
-      usersSheet = await doc.addSheet({
-        title: usersSheetName,
-        headerValues: [
-          'USUARIO',
-          'TIPO',
-          'CONTRASEÑA',
-          'CLIENTE'
-        ]
-      });
-      console.log(`✅ Creada hoja de usuarios: ${usersSheetName}`);
-    }
     
     // Crear hoja de registros del cliente
     const recordsSheetName = `${clienteNormalizado}_REGISTROS`;
@@ -1087,11 +1071,11 @@ app.post('/api/clients', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: '✅ Cliente y hojas creadas correctamente',
+      message: '✅ Cliente y hoja de registros creados correctamente',
       data: {
         nombre: nombre.trim(),
         fechaRegistro: now,
-        hojasCreadas: [usersSheetName, recordsSheetName]
+        hojasCreadas: [recordsSheetName]
       }
     });
   } catch (error) {
