@@ -198,9 +198,13 @@ app.get('/api/users', async (req, res) => {
         });
       }
     } else {
-      // Administrador solo puede ver usuarios de su cliente
-      const clientSheet = await getOrCreateClientUsersSheet(doc, authCliente);
-      const rows = await clientSheet.getRows();
+      // Administrador: validar usuarios por columna CLIENTE en hoja global USUARIOS
+      const normalizedAuthClient = normalizeClient(authCliente || '');
+      const globalRows = await globalSheet.getRows();
+      const rows = globalRows.filter(row => {
+        const rowClient = normalizeClient(row.get('CLIENTE') || '');
+        return !!rowClient && rowClient === normalizedAuthClient;
+      });
       for (const row of rows) {
         allUsers.push({
           usuario: normalizeUser(row.get('USUARIO')),
@@ -2487,8 +2491,13 @@ app.get('/api/rewards/users', async (req, res) => {
           error: 'El administrador no tiene cliente asignado'
         });
       }
-      const clientUsersSheet = await getOrCreateClientUsersSheet(doc, authData.cliente || '');
-      usersRows = await clientUsersSheet.getRows();
+      const adminClient = normalizeClient(authData.cliente || '');
+      const globalUsersSheet = await getOrCreateUsersSheet(doc);
+      const globalRows = await globalUsersSheet.getRows();
+      usersRows = globalRows.filter(row => {
+        const rowClient = normalizeClient(row.get('CLIENTE') || '');
+        return !!rowClient && rowClient === adminClient;
+      });
     } else {
       const globalUsersSheet = await getOrCreateUsersSheet(doc);
       usersRows = await globalUsersSheet.getRows();
