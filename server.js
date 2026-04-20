@@ -492,6 +492,8 @@ const SCOPES = [
 
 const RECORDS_SHEET_TITLE = 'REGISTROS';
 const USERS_SHEET_TITLE = 'USUARIOS';
+const REWARDS_SHEET_TITLE = 'RECOMPENSAS';
+const REWARDS_HISTORY_SHEET_TITLE = 'RECOMPENSAS_HISTORIAL';
 const SUPERADMIN_1_EMAIL = process.env.SUPERADMIN_1_EMAIL || '';
 const SUPERADMIN_2_EMAIL = process.env.SUPERADMIN_2_EMAIL || '';
 
@@ -672,6 +674,220 @@ async function getOrCreateUsersSheet(doc) {
 
   await initializeUsersSheet(sheet);
   return sheet;
+}
+
+async function initializeRewardsSheet(sheet) {
+  await sheet.loadHeaderRow();
+
+  const requiredHeaders = [
+    'IDENTIFICADOR',
+    'NOMBRE',
+    'PUNTOS',
+    'INSTALACIONES',
+    'REDENCIONES',
+    'ACTUALIZADO_EN'
+  ];
+
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    await sheet.setHeaderRow(requiredHeaders);
+    return;
+  }
+
+  const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+  if (missingHeaders.length > 0) {
+    await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
+    await sheet.loadHeaderRow();
+  }
+}
+
+async function initializeRewardsHistorySheet(sheet) {
+  await sheet.loadHeaderRow();
+
+  const requiredHeaders = [
+    'IDENTIFICADOR',
+    'MOVIMIENTO',
+    'PUNTOS',
+    'REFERENCIA',
+    'SERIAL',
+    'DESCRIPCION',
+    'FECHA'
+  ];
+
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    await sheet.setHeaderRow(requiredHeaders);
+    return;
+  }
+
+  const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+  if (missingHeaders.length > 0) {
+    await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
+    await sheet.loadHeaderRow();
+  }
+}
+
+async function getOrCreateRewardsSheet(doc) {
+  let sheet = doc.sheetsByTitle[REWARDS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: REWARDS_SHEET_TITLE,
+      headerValues: [
+        'IDENTIFICADOR',
+        'NOMBRE',
+        'PUNTOS',
+        'INSTALACIONES',
+        'REDENCIONES',
+        'ACTUALIZADO_EN'
+      ]
+    });
+  }
+
+  await initializeRewardsSheet(sheet);
+  return sheet;
+}
+
+async function getOrCreateRewardsHistorySheet(doc) {
+  let sheet = doc.sheetsByTitle[REWARDS_HISTORY_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: REWARDS_HISTORY_SHEET_TITLE,
+      headerValues: [
+        'IDENTIFICADOR',
+        'MOVIMIENTO',
+        'PUNTOS',
+        'REFERENCIA',
+        'SERIAL',
+        'DESCRIPCION',
+        'FECHA'
+      ]
+    });
+  }
+
+  await initializeRewardsHistorySheet(sheet);
+  return sheet;
+}
+
+function normalizeRewardIdentifier(identifier) {
+  return (identifier || '').trim().toLowerCase();
+}
+
+async function getRewardBalanceRow(rewardsSheet, identifier) {
+  const normalizedIdentifier = normalizeRewardIdentifier(identifier);
+  if (!normalizedIdentifier) {
+    return null;
+  }
+
+  const rows = await rewardsSheet.getRows();
+  return rows.find(row => normalizeRewardIdentifier(row.get('IDENTIFICADOR')) === normalizedIdentifier) || null;
+}
+
+async function creditRewardPoints(doc, identifier, displayName, points, metadata = {}) {
+  const normalizedIdentifier = normalizeRewardIdentifier(identifier);
+  if (!normalizedIdentifier || !Number.isFinite(points) || points <= 0) {
+    return null;
+  }
+
+  const rewardsSheet = await getOrCreateRewardsSheet(doc);
+  const historySheet = await getOrCreateRewardsHistorySheet(doc);
+  const now = new Date().toLocaleString('es-ES');
+
+  const rewardRow = await getRewardBalanceRow(rewardsSheet, normalizedIdentifier);
+  const currentPoints = rewardRow ? parseInt(rewardRow.get('PUNTOS') || '0', 10) || 0 : 0;
+  const currentInstallations = rewardRow ? parseInt(rewardRow.get('INSTALACIONES') || '0', 10) || 0 : 0;
+  const currentRedemptions = rewardRow ? parseInt(rewardRow.get('REDENCIONES') || '0', 10) || 0 : 0;
+  const nextPoints = currentPoints + points;
+  const nextInstallations = currentInstallations + points;
+
+  if (rewardRow) {
+    rewardRow.set('NOMBRE', displayName || rewardRow.get('NOMBRE') || identifier);
+    rewardRow.set('PUNTOS', nextPoints);
+    rewardRow.set('INSTALACIONES', nextInstallations);
+    rewardRow.set('REDENCIONES', currentRedemptions);
+    rewardRow.set('ACTUALIZADO_EN', now);
+    await rewardRow.save();
+  } else {
+    await rewardsSheet.addRow({
+      'IDENTIFICADOR': normalizedIdentifier,
+      'NOMBRE': displayName || identifier,
+      'PUNTOS': nextPoints,
+      'INSTALACIONES': nextInstallations,
+      'REDENCIONES': 0,
+      'ACTUALIZADO_EN': now
+    });
+  }
+
+  await historySheet.addRow({
+    'IDENTIFICADOR': normalizedIdentifier,
+    'MOVIMIENTO': 'GANADO',
+    'PUNTOS': points,
+    'REFERENCIA': metadata.referencia || '',
+    'SERIAL': metadata.serial || '',
+    'DESCRIPCION': metadata.descripcion || 'Punto por instalación completada',
+    'FECHA': now
+  });
+
+  return {
+    identifier: normalizedIdentifier,
+    nombre: displayName || identifier,
+    puntos: nextPoints,
+    instalaciones: nextInstallations,
+    redenciones: currentRedemptions,
+    actualizadoEn: now
+  };
+}
+
+async function redeemRewardPoints(doc, identifier, displayName, points, metadata = {}) {
+  const normalizedIdentifier = normalizeRewardIdentifier(identifier);
+  if (!normalizedIdentifier || !Number.isFinite(points) || points <= 0) {
+    return { success: false, message: 'Datos inválidos para redención' };
+  }
+
+  const rewardsSheet = await getOrCreateRewardsSheet(doc);
+  const historySheet = await getOrCreateRewardsHistorySheet(doc);
+  const rewardRow = await getRewardBalanceRow(rewardsSheet, normalizedIdentifier);
+
+  if (!rewardRow) {
+    return { success: false, message: 'El usuario no tiene puntos registrados' };
+  }
+
+  const currentPoints = parseInt(rewardRow.get('PUNTOS') || '0', 10) || 0;
+  const currentRedemptions = parseInt(rewardRow.get('REDENCIONES') || '0', 10) || 0;
+
+  if (currentPoints < points) {
+    return { success: false, message: 'Puntos insuficientes para redimir' };
+  }
+
+  const now = new Date().toLocaleString('es-ES');
+  const nextPoints = currentPoints - points;
+
+  rewardRow.set('NOMBRE', displayName || rewardRow.get('NOMBRE') || identifier);
+  rewardRow.set('PUNTOS', nextPoints);
+  rewardRow.set('REDENCIONES', currentRedemptions + points);
+  rewardRow.set('ACTUALIZADO_EN', now);
+  await rewardRow.save();
+
+  await historySheet.addRow({
+    'IDENTIFICADOR': normalizedIdentifier,
+    'MOVIMIENTO': 'REDIMIDO',
+    'PUNTOS': points,
+    'REFERENCIA': metadata.referencia || '',
+    'SERIAL': metadata.serial || '',
+    'DESCRIPCION': metadata.descripcion || 'Canje de premio',
+    'FECHA': now
+  });
+
+  return {
+    success: true,
+    reward: {
+      identifier: normalizedIdentifier,
+      nombre: displayName || rewardRow.get('NOMBRE') || identifier,
+      puntos: nextPoints,
+      instalaciones: parseInt(rewardRow.get('INSTALACIONES') || '0', 10) || 0,
+      redenciones: currentRedemptions + points,
+      actualizadoEn: now
+    }
+  };
 }
 
 function normalizeUser(user) {
@@ -1511,6 +1727,18 @@ app.post('/api/save-qr', async (req, res) => {
         existingGlobalRecord.set('HORA_INSTALACION', hora);
         await existingGlobalRecord.save();
 
+        const rewardSummary = await creditRewardPoints(
+          doc,
+          userEmail || installerName || 'usuario',
+          installerName || userEmail || 'Usuario',
+          1,
+          {
+            referencia,
+            serial,
+            descripcion: 'Punto por instalación completada'
+          }
+        );
+
         // Actualizar o crear en la hoja del cliente actual
         if (existingCurrentClientRecord) {
           existingCurrentClientRecord.set('ESTADO', 'INSTALADO');
@@ -1573,7 +1801,8 @@ app.post('/api/save-qr', async (req, res) => {
             fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
             fechaInstalacion: fecha,
-            usuarioInstalacion: userEmail
+            usuarioInstalacion: userEmail,
+            rewardSummary
           }
         });
       } else if (currentState === 'INSTALADO') {
@@ -2130,6 +2359,111 @@ app.post('/api/save-installer', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Error al guardar el nombre del instalador'
+    });
+  }
+});
+
+/**
+ * GET /api/rewards
+ * Obtiene saldo e historial de recompensas de un usuario
+ */
+app.get('/api/rewards', async (req, res) => {
+  try {
+    const { identifier } = req.query;
+
+    if (!identifier) {
+      return res.status(400).json({
+        success: false,
+        error: 'El identificador del usuario es requerido'
+      });
+    }
+
+    const doc = await getGoogleSheet();
+    const rewardsSheet = await getOrCreateRewardsSheet(doc);
+    const historySheet = await getOrCreateRewardsHistorySheet(doc);
+    const normalizedIdentifier = normalizeRewardIdentifier(identifier);
+    const rewardRow = await getRewardBalanceRow(rewardsSheet, normalizedIdentifier);
+    const historyRows = await historySheet.getRows();
+
+    const history = historyRows
+      .filter(row => normalizeRewardIdentifier(row.get('IDENTIFICADOR')) === normalizedIdentifier)
+      .map(row => ({
+        movimiento: row.get('MOVIMIENTO') || '',
+        puntos: parseInt(row.get('PUNTOS') || '0', 10) || 0,
+        referencia: row.get('REFERENCIA') || '',
+        serial: row.get('SERIAL') || '',
+        descripcion: row.get('DESCRIPCION') || '',
+        fecha: row.get('FECHA') || ''
+      }))
+      .reverse();
+
+    return res.json({
+      success: true,
+      data: {
+        reward: rewardRow ? {
+          identifier: rewardRow.get('IDENTIFICADOR') || normalizedIdentifier,
+          nombre: rewardRow.get('NOMBRE') || identifier,
+          puntos: parseInt(rewardRow.get('PUNTOS') || '0', 10) || 0,
+          instalaciones: parseInt(rewardRow.get('INSTALACIONES') || '0', 10) || 0,
+          redenciones: parseInt(rewardRow.get('REDENCIONES') || '0', 10) || 0,
+          actualizadoEn: rewardRow.get('ACTUALIZADO_EN') || ''
+        } : {
+          identifier: normalizedIdentifier,
+          nombre: identifier,
+          puntos: 0,
+          instalaciones: 0,
+          redenciones: 0,
+          actualizadoEn: ''
+        },
+        history
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener recompensas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener recompensas'
+    });
+  }
+});
+
+/**
+ * POST /api/rewards/redeem
+ * Redime puntos por un premio
+ */
+app.post('/api/rewards/redeem', async (req, res) => {
+  try {
+    const { identifier, points, rewardName, referencia, serial } = req.body;
+    const parsedPoints = parseInt(points, 10);
+
+    if (!identifier || !rewardName || !Number.isFinite(parsedPoints) || parsedPoints <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Identificador, premio y puntos válidos son requeridos'
+      });
+    }
+
+    const doc = await getGoogleSheet();
+    const result = await redeemRewardPoints(doc, identifier, rewardName, parsedPoints, {
+      referencia,
+      serial,
+      descripcion: `Canje de ${rewardName}`
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Premio redimido correctamente',
+      data: result.reward
+    });
+  } catch (error) {
+    console.error('❌ Error al redimir recompensas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al redimir recompensas'
     });
   }
 });

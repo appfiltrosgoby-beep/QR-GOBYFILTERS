@@ -28,6 +28,14 @@ let pendingUninstallationQR = null; // QR pendiente de desinstalación (sin uso 
 let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
 let scannerRestartTimeout = null; // Timer para reiniciar scanner
 let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admin' | null)
+let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
+
+const rewardsCatalog = [
+    { id: 'goby-cup', name: 'Taza GOBY', cost: 5, description: 'Canjea una taza oficial con 5 puntos.' },
+    { id: 'goby-cap', name: 'Gorra GOBY', cost: 8, description: 'Canjea una gorra oficial con 8 puntos.' },
+    { id: 'goby-kit', name: 'Kit promocional', cost: 12, description: 'Canjea un kit promocional con 12 puntos.' },
+    { id: 'goby-premium', name: 'Premio especial', cost: 20, description: 'Premio especial para 20 puntos o más.' }
+];
 
 // Elementos del DOM
 const elements = {
@@ -42,9 +50,18 @@ const elements = {
     recordsBody: document.getElementById('recordsBody'),
     refreshBtn: document.getElementById('refreshBtn'),
     exportBtn: document.getElementById('exportBtn'),
+    refreshRewardsBtn: document.getElementById('refreshRewardsBtn'),
     totalScans: document.getElementById('totalScans'),
     todayScans: document.getElementById('todayScans'),
     statsContainer: document.getElementById('statsContainer'),
+    rewardsUserName: document.getElementById('rewardsUserName'),
+    rewardsUserHint: document.getElementById('rewardsUserHint'),
+    rewardsPoints: document.getElementById('rewardsPoints'),
+    rewardsInstallations: document.getElementById('rewardsInstallations'),
+    rewardsRedemptions: document.getElementById('rewardsRedemptions'),
+    rewardsUpdatedAt: document.getElementById('rewardsUpdatedAt'),
+    rewardsCatalog: document.getElementById('rewardsCatalog'),
+    rewardsHistoryBody: document.getElementById('rewardsHistoryBody'),
     toastContainer: document.getElementById('toastContainer'),
     loginModal: document.getElementById('loginModal'),
     loginUserBtn: document.getElementById('loginUserBtn'),
@@ -428,6 +445,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
         setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
         // Ocultar selector de cliente para mecánicos
         if (elements.clientSelectorContainer) {
@@ -456,6 +474,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
         setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
         // Mostrar selector de cliente para usuarios despacho
         if (elements.clientSelectorContainer) {
@@ -486,6 +505,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('projectionsView', true);
         setViewButtonVisibility('scannerView', true);
         setViewButtonVisibility('recordsView', true);
+        setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
@@ -526,6 +546,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('projectionsView', true);
         setViewButtonVisibility('scannerView', false);
         setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
@@ -632,6 +653,8 @@ function switchView(viewId) {
         loadRecentScans();
     } else if (viewId === 'statsView') {
         loadStats();
+    } else if (viewId === 'rewardsView') {
+        loadRewards();
     } else if (viewId === 'usersView') {
         loadUsers();
     } else if (viewId === 'clientsView') {
@@ -688,6 +711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
             await loadStats();
         }
+        await loadRewards();
     }
     
     // Actualizar datos cada 30 segundos
@@ -699,6 +723,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
                 await loadStats();
             }
+            await loadRewards();
         }
     }, 30000);
     
@@ -720,8 +745,12 @@ function setupEventListeners() {
         if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
             await loadStats();
         }
+        await loadRewards();
     });
     elements.exportBtn.addEventListener('click', exportToCSV);
+    if (elements.refreshRewardsBtn) {
+        elements.refreshRewardsBtn.addEventListener('click', loadRewards);
+    }
     
     // Event listeners de autenticación
     elements.loginUserBtn.addEventListener('click', showUserEmailForm);
@@ -1601,6 +1630,7 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
             // Esto permite que el scanner se reinicie rápidamente
             loadRecentScans().catch(err => console.error('Error cargando scans recientes:', err));
             loadStats().catch(err => console.error('Error cargando stats:', err));
+            loadRewards().catch(err => console.error('Error cargando recompensas:', err));
         } else {
             throw new Error(result.error || 'Error desconocido');
         }
@@ -1684,6 +1714,170 @@ async function loadStats() {
     } catch (error) {
         console.error('Error al cargar estadísticas:', error);
         showToast('Error al cargar estadísticas', 'error');
+    }
+}
+
+function renderRewardsCatalog(pointsAvailable) {
+    if (!elements.rewardsCatalog) {
+        return;
+    }
+
+    elements.rewardsCatalog.innerHTML = rewardsCatalog.map(reward => {
+        const canRedeem = pointsAvailable >= reward.cost;
+        return `
+            <article class="reward-card ${canRedeem ? 'reward-card-available' : 'reward-card-locked'}">
+                <div class="reward-card-top">
+                    <div>
+                        <p class="reward-card-cost">${reward.cost} puntos</p>
+                        <h4>${reward.name}</h4>
+                    </div>
+                    <span class="reward-card-badge">${canRedeem ? 'Disponible' : 'Bloqueado'}</span>
+                </div>
+                <p class="reward-card-description">${reward.description}</p>
+                <button
+                    class="btn ${canRedeem ? 'btn-primary' : 'btn-secondary'} reward-redeem-btn"
+                    data-reward-id="${reward.id}"
+                    data-reward-name="${reward.name}"
+                    data-reward-cost="${reward.cost}"
+                    ${canRedeem ? '' : 'disabled'}
+                >
+                    ${canRedeem ? 'Canjear premio' : 'Necesitas más puntos'}
+                </button>
+            </article>
+        `;
+    }).join('');
+
+    elements.rewardsCatalog.querySelectorAll('.reward-redeem-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const rewardName = button.getAttribute('data-reward-name') || '';
+            const cost = parseInt(button.getAttribute('data-reward-cost') || '0', 10);
+            redeemReward({ name: rewardName, cost });
+        });
+    });
+}
+
+function renderRewardsHistory(history) {
+    if (!elements.rewardsHistoryBody) {
+        return;
+    }
+
+    if (!history || history.length === 0) {
+        elements.rewardsHistoryBody.innerHTML = `
+            <tr>
+                <td colspan="4" class="no-data">Todavía no hay movimientos de recompensas</td>
+            </tr>
+        `;
+        return;
+    }
+
+    elements.rewardsHistoryBody.innerHTML = history.map(item => {
+        const label = item.movimiento === 'REDIMIDO'
+            ? 'Canjeado'
+            : 'Ganado';
+        const detail = item.movimiento === 'REDIMIDO' && item.referencia
+            ? `${item.descripcion} · ${item.referencia}`
+            : (item.descripcion || '-');
+        return `
+            <tr>
+                <td><span class="reward-history-pill ${item.movimiento === 'REDIMIDO' ? 'reward-history-pill-redeem' : 'reward-history-pill-earn'}">${label}</span></td>
+                <td>${item.movimiento === 'REDIMIDO' ? '-' : '+'}${item.puntos}</td>
+                <td>${detail}</td>
+                <td>${item.fecha || '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderRewardsView(data) {
+    const reward = data && data.reward ? data.reward : null;
+    const history = data && Array.isArray(data.history) ? data.history : [];
+
+    currentRewardsData = { reward, history };
+
+    const displayName = reward && reward.nombre ? reward.nombre : (currentUsername || 'Usuario');
+    if (elements.rewardsUserName) {
+        elements.rewardsUserName.textContent = displayName;
+    }
+    if (elements.rewardsUserHint) {
+        elements.rewardsUserHint.textContent = 'Cada instalación completada suma 1 punto y el saldo se actualiza en tiempo real.';
+    }
+
+    const points = reward ? reward.puntos || 0 : 0;
+    const installations = reward ? reward.instalaciones || 0 : 0;
+    const redemptions = reward ? reward.redenciones || 0 : 0;
+    const updatedAt = reward && reward.actualizadoEn ? reward.actualizadoEn : '-';
+
+    if (elements.rewardsPoints) elements.rewardsPoints.textContent = points;
+    if (elements.rewardsInstallations) elements.rewardsInstallations.textContent = installations;
+    if (elements.rewardsRedemptions) elements.rewardsRedemptions.textContent = redemptions;
+    if (elements.rewardsUpdatedAt) elements.rewardsUpdatedAt.textContent = updatedAt;
+
+    renderRewardsCatalog(points);
+    renderRewardsHistory(history);
+}
+
+async function loadRewards() {
+    try {
+        const identifier = currentUsername || localStorage.getItem('userName') || '';
+        if (!identifier) {
+            renderRewardsView({ reward: null, history: [] });
+            return;
+        }
+
+        const response = await fetch(`${API_URL}/api/rewards?identifier=${encodeURIComponent(identifier)}`);
+        const result = await response.json();
+
+        if (result.success) {
+            renderRewardsView(result.data);
+        } else {
+            throw new Error(result.error || 'No se pudieron cargar las recompensas');
+        }
+    } catch (error) {
+        console.error('Error al cargar recompensas:', error);
+        showToast('Error al cargar recompensas', 'error');
+        renderRewardsView({ reward: null, history: [] });
+    }
+}
+
+async function redeemReward(reward) {
+    try {
+        const identifier = currentUsername || localStorage.getItem('userName') || '';
+        if (!identifier) {
+            showToast('Debes iniciar sesión para canjear premios', 'warning');
+            return;
+        }
+
+        if (!reward || !reward.name || !Number.isFinite(reward.cost)) {
+            showToast('Premio inválido', 'error');
+            return;
+        }
+
+        const balance = currentRewardsData?.reward?.puntos || 0;
+        if (balance < reward.cost) {
+            showToast('No tienes suficientes puntos para este premio', 'warning');
+            return;
+        }
+
+        const response = await fetch(`${API_URL}/api/rewards/redeem`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                identifier,
+                points: reward.cost,
+                rewardName: reward.name
+            })
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || result.message || 'No se pudo canjear el premio');
+        }
+
+        showToast(`Premio canjeado: ${reward.name}`, 'success');
+        await loadRewards();
+    } catch (error) {
+        console.error('Error al canjear recompensa:', error);
+        showToast(error.message || 'Error al canjear recompensa', 'error');
     }
 }
 
