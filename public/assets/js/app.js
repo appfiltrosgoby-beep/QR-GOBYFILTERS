@@ -53,6 +53,7 @@ const elements = {
     rewardsUserHint: document.getElementById('rewardsUserHint'),
     rewardsPoints: document.getElementById('rewardsPoints'),
     rewardsInstallations: document.getElementById('rewardsInstallations'),
+    rewardsUninstallations: document.getElementById('rewardsUninstallations'),
     rewardsRedemptions: document.getElementById('rewardsRedemptions'),
     rewardsUpdatedAt: document.getElementById('rewardsUpdatedAt'),
     rewardsCatalog: document.getElementById('rewardsCatalog'),
@@ -1818,16 +1819,18 @@ function renderRewardsView(data) {
         elements.rewardsUserName.textContent = displayName;
     }
     if (elements.rewardsUserHint) {
-        elements.rewardsUserHint.textContent = 'Cada instalación completada suma 1 punto y el saldo se actualiza en tiempo real.';
+        elements.rewardsUserHint.textContent = 'Cada instalación y desinstalación completada suma 1 punto.';
     }
 
     const points = reward ? reward.puntos || 0 : 0;
     const installations = reward ? reward.instalaciones || 0 : 0;
+    const uninstallations = reward ? reward.desinstalaciones || 0 : 0;
     const redemptions = reward ? reward.redenciones || 0 : 0;
     const updatedAt = reward && reward.actualizadoEn ? reward.actualizadoEn : '-';
 
     if (elements.rewardsPoints) elements.rewardsPoints.textContent = points;
     if (elements.rewardsInstallations) elements.rewardsInstallations.textContent = installations;
+    if (elements.rewardsUninstallations) elements.rewardsUninstallations.textContent = uninstallations;
     if (elements.rewardsRedemptions) elements.rewardsRedemptions.textContent = redemptions;
     if (elements.rewardsUpdatedAt) elements.rewardsUpdatedAt.textContent = updatedAt;
 
