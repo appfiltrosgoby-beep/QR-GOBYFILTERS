@@ -684,6 +684,7 @@ async function initializeRewardsSheet(sheet) {
     'NOMBRE',
     'PUNTOS',
     'INSTALACIONES',
+    'DESINSTALACIONES',
     'REDENCIONES',
     'ACTUALIZADO_EN'
   ];
@@ -736,6 +737,7 @@ async function getOrCreateRewardsSheet(doc) {
         'NOMBRE',
         'PUNTOS',
         'INSTALACIONES',
+        'DESINSTALACIONES',
         'REDENCIONES',
         'ACTUALIZADO_EN'
       ]
@@ -793,16 +795,24 @@ async function creditRewardPoints(doc, identifier, displayName, points, metadata
   const now = new Date().toLocaleString('es-ES');
 
   const rewardRow = await getRewardBalanceRow(rewardsSheet, normalizedIdentifier);
+  const movementType = metadata.movementType === 'uninstallation' ? 'uninstallation' : 'installation';
   const currentPoints = rewardRow ? parseInt(rewardRow.get('PUNTOS') || '0', 10) || 0 : 0;
   const currentInstallations = rewardRow ? parseInt(rewardRow.get('INSTALACIONES') || '0', 10) || 0 : 0;
+  const currentUninstallations = rewardRow ? parseInt(rewardRow.get('DESINSTALACIONES') || '0', 10) || 0 : 0;
   const currentRedemptions = rewardRow ? parseInt(rewardRow.get('REDENCIONES') || '0', 10) || 0 : 0;
   const nextPoints = currentPoints + points;
-  const nextInstallations = currentInstallations + points;
+  const nextInstallations = movementType === 'installation'
+    ? currentInstallations + points
+    : currentInstallations;
+  const nextUninstallations = movementType === 'uninstallation'
+    ? currentUninstallations + points
+    : currentUninstallations;
 
   if (rewardRow) {
     rewardRow.set('NOMBRE', displayName || rewardRow.get('NOMBRE') || identifier);
     rewardRow.set('PUNTOS', nextPoints);
     rewardRow.set('INSTALACIONES', nextInstallations);
+    rewardRow.set('DESINSTALACIONES', nextUninstallations);
     rewardRow.set('REDENCIONES', currentRedemptions);
     rewardRow.set('ACTUALIZADO_EN', now);
     await rewardRow.save();
@@ -812,6 +822,7 @@ async function creditRewardPoints(doc, identifier, displayName, points, metadata
       'NOMBRE': displayName || identifier,
       'PUNTOS': nextPoints,
       'INSTALACIONES': nextInstallations,
+      'DESINSTALACIONES': nextUninstallations,
       'REDENCIONES': 0,
       'ACTUALIZADO_EN': now
     });
@@ -819,7 +830,7 @@ async function creditRewardPoints(doc, identifier, displayName, points, metadata
 
   await historySheet.addRow({
     'IDENTIFICADOR': normalizedIdentifier,
-    'MOVIMIENTO': 'GANADO',
+    'MOVIMIENTO': movementType === 'uninstallation' ? 'GANADO_DESINSTALACION' : 'GANADO_INSTALACION',
     'PUNTOS': points,
     'REFERENCIA': metadata.referencia || '',
     'SERIAL': metadata.serial || '',
@@ -832,6 +843,7 @@ async function creditRewardPoints(doc, identifier, displayName, points, metadata
     nombre: displayName || identifier,
     puntos: nextPoints,
     instalaciones: nextInstallations,
+    desinstalaciones: nextUninstallations,
     redenciones: currentRedemptions,
     actualizadoEn: now
   };
@@ -884,6 +896,7 @@ async function redeemRewardPoints(doc, identifier, displayName, points, metadata
       nombre: displayName || rewardRow.get('NOMBRE') || identifier,
       puntos: nextPoints,
       instalaciones: parseInt(rewardRow.get('INSTALACIONES') || '0', 10) || 0,
+      desinstalaciones: parseInt(rewardRow.get('DESINSTALACIONES') || '0', 10) || 0,
       redenciones: currentRedemptions + points,
       actualizadoEn: now
     }
@@ -1735,6 +1748,7 @@ app.post('/api/save-qr', async (req, res) => {
           {
             referencia,
             serial,
+            movementType: 'installation',
             descripcion: 'Punto por instalación completada'
           }
         );
@@ -1839,6 +1853,7 @@ app.post('/api/save-qr', async (req, res) => {
           {
             referencia,
             serial,
+            movementType: 'uninstallation',
             descripcion: 'Punto por desinstalación completada'
           }
         );
@@ -2462,6 +2477,7 @@ app.get('/api/rewards', async (req, res) => {
           nombre: rewardRow.get('NOMBRE') || identifier,
           puntos: parseInt(rewardRow.get('PUNTOS') || '0', 10) || 0,
           instalaciones: parseInt(rewardRow.get('INSTALACIONES') || '0', 10) || 0,
+          desinstalaciones: parseInt(rewardRow.get('DESINSTALACIONES') || '0', 10) || 0,
           redenciones: parseInt(rewardRow.get('REDENCIONES') || '0', 10) || 0,
           actualizadoEn: rewardRow.get('ACTUALIZADO_EN') || ''
         } : {
@@ -2469,6 +2485,7 @@ app.get('/api/rewards', async (req, res) => {
           nombre: identifier,
           puntos: 0,
           instalaciones: 0,
+          desinstalaciones: 0,
           redenciones: 0,
           actualizadoEn: ''
         },
