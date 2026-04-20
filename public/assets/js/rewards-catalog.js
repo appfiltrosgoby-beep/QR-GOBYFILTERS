@@ -8,7 +8,7 @@ window.REWARDS_CATALOG = [
         id: 'sacacorchos-destapador',
         name: 'Sacacorchos, Destapador',
         cost: 150,
-        image: 'public/assets/images/rewards/sacacorchos.jpg',
+        image: 'sacacorchos.jpg',
         description: 'Premio canjeable por 150 puntos.'
     },
     {
