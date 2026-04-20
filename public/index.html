@@ -1,60 +1,119 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>INDUSTRIAS GOBY - QR Scanner</title>
-    
-    <!-- PWA Manifest -->
+                        <div id="rewardsUserPanel">
+                            <div class="rewards-hero">
+                                <div>
+                                    <p class="rewards-kicker">Puntos acumulados</p>
+                                    <h3 id="rewardsUserName">Usuario</h3>
+                                    <p id="rewardsUserHint" class="rewards-hint">Cada instalación completada suma 1 punto.</p>
+                                </div>
+                                <div class="rewards-balance-pill">
+                                    <span class="rewards-balance-label">Saldo actual</span>
+                                    <span id="rewardsPoints" class="rewards-balance-value">0</span>
+                                </div>
     <link rel="manifest" href="/manifest.json">
-    
-    <!-- App Icons -->
-    <link rel="icon" type="image/png" href="/assets/images/icon-192.png">
+
+                            <div class="stats-grid rewards-stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-label">Instalaciones</div>
+                                    <div id="rewardsInstallations" class="stat-value">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Desinstalaciones</div>
+                                    <div id="rewardsUninstallations" class="stat-value">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Premios canjeados</div>
+                                    <div id="rewardsRedemptions" class="stat-value">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Última actualización</div>
+                                    <div id="rewardsUpdatedAt" class="stat-value">-</div>
+                                </div>
     <link rel="apple-touch-icon" href="/assets/images/icon-192.png">
-    
-    <!-- Meta Tags -->
-    <meta name="theme-color" content="#1a1a1a">
-    <meta name="description" content="Sistema QR Scanner para filtros INDUSTRIAS GOBY">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="GOBY">
+
+                            <div class="rewards-section">
+                                <div class="section-title-row">
+                                    <h3>Premios disponibles</h3>
+                                    <span class="section-note">Selecciona un premio para canjearlo con tus puntos.</span>
+                                </div>
+                                <div id="rewardsCatalog" class="rewards-catalog"></div>
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    
-    <link rel="stylesheet" href="assets/css/styles.css?v=20260420c">
-    <!-- Librería html5-qrcode para escaneo de QR -->
+
+                            <div class="rewards-section">
+                                <div class="section-title-row">
+                                    <h3>Historial</h3>
+                                    <span class="section-note">Movimientos de puntos y canjes recientes.</span>
+                                </div>
+                                <div class="table-container">
+                                    <table class="records-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Movimiento</th>
+                                                <th>Puntos</th>
+                                                <th>Premio / Detalle</th>
+                                                <th>Fecha</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="rewardsHistoryBody">
+                                            <tr>
+                                                <td colspan="4" class="no-data">Cargando recompensas...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+                        </div>
+
+                        <div id="rewardsAdminPanel" class="hidden">
+                            <div class="rewards-hero">
+                                <div>
+                                    <p class="rewards-kicker">Vista Administrador</p>
+                                    <h3>Puntaje por Usuario</h3>
+                                    <p class="rewards-hint">Consulta el avance de puntos de cada usuario de tu cliente.</p>
+                                </div>
+                                <div class="rewards-balance-pill">
+                                    <span class="rewards-balance-label">Total puntos equipo</span>
+                                    <span id="rewardsTeamPoints" class="rewards-balance-value">0</span>
+                                </div>
+                            </div>
+
+                            <div class="stats-grid rewards-stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-label">Usuarios</div>
+                                    <div id="rewardsUsersCount" class="stat-value">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Instalaciones</div>
+                                    <div id="rewardsTeamInstallations" class="stat-value">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Desinstalaciones</div>
+                                    <div id="rewardsTeamUninstallations" class="stat-value">0</div>
+                                </div>
+                            </div>
+
+                            <div class="table-container">
+                                <table class="records-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Usuario</th>
+                                            <th>Tipo</th>
+                                            <th>Puntos</th>
+                                            <th>Instalaciones</th>
+                                            <th>Desinstalaciones</th>
+                                            <th>Canjes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="rewardsUsersBody">
+                                        <tr>
+                                            <td colspan="6" class="no-data">Cargando puntos por usuario...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
     <!-- Librería Chart.js para gráficas -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-</head>
-<body>
-    <!-- Contenedor principal -->
-    <div class="container">
-        <!-- Encabezado -->
-        <header class="header">
-            <div class="header-content">
-                <div class="logo">
-                    <img src="assets/images/GOBY MARCA REGISTRADA.png" alt="INDUSTRIAS GOBY Logo">
-                    <h1>INDUSTRIAS GOBY</h1>
-                </div>
-                <div class="header-stats mobile-hidden">
-                    <div class="stat-item">
-                        <span class="stat-label">Total</span>
-                        <span class="stat-value" id="totalScans">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Hoy</span>
-                        <span class="stat-value" id="todayScans">0</span>
-                    </div>
-                </div>
-                <button id="menuToggleBtn" class="btn-menu" title="Abrir menú" aria-label="Abrir menú">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="3" y1="6" x2="21" y2="6"></line>
-                        <line x1="3" y1="12" x2="21" y2="12"></line>
-                        <line x1="3" y1="18" x2="21" y2="18"></line>
-                    </svg>
-                </button>
-                <button id="logoutBtn" class="btn-logout" title="Cambiar rol">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                         <polyline points="16 17 21 12 16 7"/>
                         <line x1="21" y1="12" x2="9" y2="12"/>
                     </svg>
@@ -725,6 +784,6 @@
     <!-- Configuración del catálogo de recompensas -->
     <script src="assets/js/rewards-catalog.js?v=20260420b"></script>
     <!-- Script principal -->
-    <script src="assets/js/app.js?v=20260420c"></script>
+    <script src="assets/js/app.js?v=20260420d"></script>
 </body>
 </html>

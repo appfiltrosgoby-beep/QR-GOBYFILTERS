@@ -49,6 +49,8 @@ const elements = {
     totalScans: document.getElementById('totalScans'),
     todayScans: document.getElementById('todayScans'),
     statsContainer: document.getElementById('statsContainer'),
+    rewardsUserPanel: document.getElementById('rewardsUserPanel'),
+    rewardsAdminPanel: document.getElementById('rewardsAdminPanel'),
     rewardsUserName: document.getElementById('rewardsUserName'),
     rewardsUserHint: document.getElementById('rewardsUserHint'),
     rewardsPoints: document.getElementById('rewardsPoints'),
@@ -56,6 +58,11 @@ const elements = {
     rewardsUninstallations: document.getElementById('rewardsUninstallations'),
     rewardsRedemptions: document.getElementById('rewardsRedemptions'),
     rewardsUpdatedAt: document.getElementById('rewardsUpdatedAt'),
+    rewardsTeamPoints: document.getElementById('rewardsTeamPoints'),
+    rewardsUsersCount: document.getElementById('rewardsUsersCount'),
+    rewardsTeamInstallations: document.getElementById('rewardsTeamInstallations'),
+    rewardsTeamUninstallations: document.getElementById('rewardsTeamUninstallations'),
+    rewardsUsersBody: document.getElementById('rewardsUsersBody'),
     rewardsCatalog: document.getElementById('rewardsCatalog'),
     rewardsHistoryBody: document.getElementById('rewardsHistoryBody'),
     toastContainer: document.getElementById('toastContainer'),
@@ -1809,6 +1816,13 @@ function renderRewardsHistory(history) {
 }
 
 function renderRewardsView(data) {
+    if (elements.rewardsUserPanel) {
+        elements.rewardsUserPanel.classList.remove('hidden');
+    }
+    if (elements.rewardsAdminPanel) {
+        elements.rewardsAdminPanel.classList.add('hidden');
+    }
+
     const reward = data && data.reward ? data.reward : null;
     const history = data && Array.isArray(data.history) ? data.history : [];
 
@@ -1838,8 +1852,82 @@ function renderRewardsView(data) {
     renderRewardsHistory(history);
 }
 
+function renderAdminRewardsView(usersData) {
+    if (elements.rewardsUserPanel) {
+        elements.rewardsUserPanel.classList.add('hidden');
+    }
+    if (elements.rewardsAdminPanel) {
+        elements.rewardsAdminPanel.classList.remove('hidden');
+    }
+
+    const rows = Array.isArray(usersData) ? usersData : [];
+    const totalPoints = rows.reduce((sum, row) => sum + (row.puntos || 0), 0);
+    const totalInstallations = rows.reduce((sum, row) => sum + (row.instalaciones || 0), 0);
+    const totalUninstallations = rows.reduce((sum, row) => sum + (row.desinstalaciones || 0), 0);
+
+    if (elements.rewardsTeamPoints) elements.rewardsTeamPoints.textContent = totalPoints;
+    if (elements.rewardsUsersCount) elements.rewardsUsersCount.textContent = rows.length;
+    if (elements.rewardsTeamInstallations) elements.rewardsTeamInstallations.textContent = totalInstallations;
+    if (elements.rewardsTeamUninstallations) elements.rewardsTeamUninstallations.textContent = totalUninstallations;
+
+    if (!elements.rewardsUsersBody) {
+        return;
+    }
+
+    if (!rows.length) {
+        elements.rewardsUsersBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="no-data">No hay usuarios con puntos para mostrar</td>
+            </tr>
+        `;
+        return;
+    }
+
+    elements.rewardsUsersBody.innerHTML = rows.map(row => `
+        <tr>
+            <td>${row.usuario || '-'}</td>
+            <td>${row.tipo || '-'}</td>
+            <td><strong>${row.puntos || 0}</strong></td>
+            <td>${row.instalaciones || 0}</td>
+            <td>${row.desinstalaciones || 0}</td>
+            <td>${row.redenciones || 0}</td>
+        </tr>
+    `).join('');
+}
+
+async function loadAdminRewards() {
+    try {
+        if (!currentUsername || !currentUserPassword) {
+            throw new Error('Credenciales de administrador no disponibles');
+        }
+
+        const response = await fetch(`${API_URL}/api/rewards/users`, {
+            headers: {
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'No se pudieron cargar los puntos por usuario');
+        }
+
+        renderAdminRewardsView(result.data || []);
+    } catch (error) {
+        console.error('Error al cargar vista admin de recompensas:', error);
+        showToast('Error al cargar puntos por usuario', 'error');
+        renderAdminRewardsView([]);
+    }
+}
+
 async function loadRewards() {
     try {
+        if (currentUserRole === 'admin') {
+            await loadAdminRewards();
+            return;
+        }
+
         const identifier = currentUsername || localStorage.getItem('userName') || '';
         if (!identifier) {
             renderRewardsView({ reward: null, history: [] });

@@ -2436,6 +2436,105 @@ app.post('/api/save-installer', async (req, res) => {
 });
 
 /**
+ * GET /api/rewards/users
+ * Obtiene el puntaje de recompensas por usuario (vista admin/superadmin)
+ */
+app.get('/api/rewards/users', async (req, res) => {
+  try {
+    const authUser = req.headers['x-auth-user'] || '';
+    const authPassword = req.headers['x-auth-password'] || '';
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({
+        success: false,
+        error: 'Credenciales requeridas'
+      });
+    }
+
+    const doc = await getGoogleSheet();
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    if (!authData) {
+      return res.status(401).json({
+        success: false,
+        error: 'No autorizado'
+      });
+    }
+
+    const rewardsSheet = await getOrCreateRewardsSheet(doc);
+    const rewardRows = await rewardsSheet.getRows();
+    const rewardsByUser = new Map();
+
+    rewardRows.forEach(row => {
+      const key = normalizeRewardIdentifier(row.get('IDENTIFICADOR'));
+      if (!key) {
+        return;
+      }
+
+      rewardsByUser.set(key, {
+        puntos: parseInt(row.get('PUNTOS') || '0', 10) || 0,
+        instalaciones: parseInt(row.get('INSTALACIONES') || '0', 10) || 0,
+        desinstalaciones: parseInt(row.get('DESINSTALACIONES') || '0', 10) || 0,
+        redenciones: parseInt(row.get('REDENCIONES') || '0', 10) || 0,
+        actualizadoEn: row.get('ACTUALIZADO_EN') || ''
+      });
+    });
+
+    let usersRows = [];
+    if (authData.tipo === 'administrador') {
+      if (!authData.cliente) {
+        return res.status(400).json({
+          success: false,
+          error: 'El administrador no tiene cliente asignado'
+        });
+      }
+      const clientUsersSheet = await getOrCreateClientUsersSheet(doc, authData.cliente || '');
+      usersRows = await clientUsersSheet.getRows();
+    } else {
+      const globalUsersSheet = await getOrCreateUsersSheet(doc);
+      usersRows = await globalUsersSheet.getRows();
+    }
+
+    const usersPoints = usersRows
+      .map(row => {
+        const usuario = normalizeUser(row.get('USUARIO'));
+        const tipo = normalizeType(row.get('TIPO'));
+        const cliente = row.get('CLIENTE') || '';
+        const rewardData = rewardsByUser.get(usuario) || {
+          puntos: 0,
+          instalaciones: 0,
+          desinstalaciones: 0,
+          redenciones: 0,
+          actualizadoEn: ''
+        };
+
+        return {
+          usuario,
+          tipo,
+          cliente,
+          ...rewardData
+        };
+      })
+      .filter(item => !!item.usuario)
+      .sort((a, b) => b.puntos - a.puntos);
+
+    return res.json({
+      success: true,
+      data: usersPoints,
+      meta: {
+        scope: authData.tipo === 'administrador' ? 'cliente' : 'global',
+        cliente: authData.cliente || ''
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener recompensas por usuarios:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener recompensas por usuarios'
+    });
+  }
+});
+
+/**
  * GET /api/rewards
  * Obtiene saldo e historial de recompensas de un usuario
  */
