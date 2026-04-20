@@ -1724,7 +1724,7 @@ function renderRewardsCatalog(pointsAvailable) {
 
     elements.rewardsCatalog.innerHTML = rewardsCatalog.map(reward => {
         const canRedeem = pointsAvailable >= reward.cost;
-        const imagePath = reward.image ? `assets/images/rewards/${reward.image}` : '';
+        const imagePath = reward.image ? `/assets/images/rewards/${encodeURIComponent(reward.image)}` : '';
         const imageMarkup = imagePath
             ? `<img src="${imagePath}" alt="${reward.name}" class="reward-image" loading="lazy">`
             : '<div class="reward-image-placeholder">Sin imagen</div>';
