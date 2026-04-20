@@ -29,6 +29,7 @@ let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
 let scannerRestartTimeout = null; // Timer para reiniciar scanner
 let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admin' | null)
 let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
+let currentAdminRewardsUsersData = []; // Datos de recompensas por usuario para admin/superadmin
 
 const rewardsCatalog = Array.isArray(window.REWARDS_CATALOG) ? window.REWARDS_CATALOG : [];
 
@@ -62,6 +63,9 @@ const elements = {
     rewardsUsersCount: document.getElementById('rewardsUsersCount'),
     rewardsTeamInstallations: document.getElementById('rewardsTeamInstallations'),
     rewardsTeamUninstallations: document.getElementById('rewardsTeamUninstallations'),
+    rewardsClientFilterContainer: document.getElementById('rewardsClientFilterContainer'),
+    rewardsClientFilter: document.getElementById('rewardsClientFilter'),
+    rewardsClientHeader: document.getElementById('rewardsClientHeader'),
     rewardsUsersBody: document.getElementById('rewardsUsersBody'),
     rewardsCatalog: document.getElementById('rewardsCatalog'),
     rewardsHistoryBody: document.getElementById('rewardsHistoryBody'),
@@ -753,6 +757,11 @@ function setupEventListeners() {
     elements.exportBtn.addEventListener('click', exportToCSV);
     if (elements.refreshRewardsBtn) {
         elements.refreshRewardsBtn.addEventListener('click', loadRewards);
+    }
+    if (elements.rewardsClientFilter) {
+        elements.rewardsClientFilter.addEventListener('change', () => {
+            renderAdminRewardsView(currentAdminRewardsUsersData);
+        });
     }
     
     // Event listeners de autenticación
@@ -1861,12 +1870,49 @@ function renderAdminRewardsView(usersData) {
     }
 
     const rows = Array.isArray(usersData) ? usersData : [];
-    const totalPoints = rows.reduce((sum, row) => sum + (row.puntos || 0), 0);
-    const totalInstallations = rows.reduce((sum, row) => sum + (row.instalaciones || 0), 0);
-    const totalUninstallations = rows.reduce((sum, row) => sum + (row.desinstalaciones || 0), 0);
+    const isSuperadmin = currentUserRole === 'superadmin';
+
+    if (elements.rewardsClientHeader) {
+        elements.rewardsClientHeader.classList.toggle('hidden', !isSuperadmin);
+    }
+
+    let filteredRows = rows;
+    if (elements.rewardsClientFilterContainer && elements.rewardsClientFilter) {
+        if (isSuperadmin) {
+            elements.rewardsClientFilterContainer.classList.remove('hidden');
+
+            const previousValue = (elements.rewardsClientFilter.value || '').trim().toUpperCase();
+            const clients = Array.from(new Set(
+                rows
+                    .map(row => (row.cliente || '').trim())
+                    .filter(Boolean)
+            )).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+            elements.rewardsClientFilter.innerHTML = `
+                <option value="">Todos los clientes</option>
+                ${clients.map(client => `<option value="${client}">${client}</option>`).join('')}
+            `;
+
+            if (previousValue) {
+                const matchedClient = clients.find(client => client.trim().toUpperCase() === previousValue);
+                elements.rewardsClientFilter.value = matchedClient || '';
+            }
+
+            const selectedClient = (elements.rewardsClientFilter.value || '').trim().toUpperCase();
+            if (selectedClient) {
+                filteredRows = rows.filter(row => (row.cliente || '').trim().toUpperCase() === selectedClient);
+            }
+        } else {
+            elements.rewardsClientFilterContainer.classList.add('hidden');
+        }
+    }
+
+    const totalPoints = filteredRows.reduce((sum, row) => sum + (row.puntos || 0), 0);
+    const totalInstallations = filteredRows.reduce((sum, row) => sum + (row.instalaciones || 0), 0);
+    const totalUninstallations = filteredRows.reduce((sum, row) => sum + (row.desinstalaciones || 0), 0);
 
     if (elements.rewardsTeamPoints) elements.rewardsTeamPoints.textContent = totalPoints;
-    if (elements.rewardsUsersCount) elements.rewardsUsersCount.textContent = rows.length;
+    if (elements.rewardsUsersCount) elements.rewardsUsersCount.textContent = filteredRows.length;
     if (elements.rewardsTeamInstallations) elements.rewardsTeamInstallations.textContent = totalInstallations;
     if (elements.rewardsTeamUninstallations) elements.rewardsTeamUninstallations.textContent = totalUninstallations;
 
@@ -1874,17 +1920,19 @@ function renderAdminRewardsView(usersData) {
         return;
     }
 
-    if (!rows.length) {
+    if (!filteredRows.length) {
+        const noDataColspan = isSuperadmin ? 7 : 6;
         elements.rewardsUsersBody.innerHTML = `
             <tr>
-                <td colspan="6" class="no-data">No hay usuarios con puntos para mostrar</td>
+                <td colspan="${noDataColspan}" class="no-data">No hay usuarios con puntos para mostrar</td>
             </tr>
         `;
         return;
     }
 
-    elements.rewardsUsersBody.innerHTML = rows.map(row => `
+    elements.rewardsUsersBody.innerHTML = filteredRows.map(row => `
         <tr>
+            ${isSuperadmin ? `<td>${row.cliente || '-'}</td>` : ''}
             <td>${row.usuario || '-'}</td>
             <td>${row.tipo || '-'}</td>
             <td><strong>${row.puntos || 0}</strong></td>
@@ -1913,17 +1961,19 @@ async function loadAdminRewards() {
             throw new Error(result.error || 'No se pudieron cargar los puntos por usuario');
         }
 
-        renderAdminRewardsView(result.data || []);
+        currentAdminRewardsUsersData = result.data || [];
+        renderAdminRewardsView(currentAdminRewardsUsersData);
     } catch (error) {
         console.error('Error al cargar vista admin de recompensas:', error);
         showToast('Error al cargar puntos por usuario', 'error');
+        currentAdminRewardsUsersData = [];
         renderAdminRewardsView([]);
     }
 }
 
 async function loadRewards() {
     try {
-        if (currentUserRole === 'admin') {
+        if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
             await loadAdminRewards();
             return;
         }
