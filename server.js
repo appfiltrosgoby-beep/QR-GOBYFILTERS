@@ -1806,20 +1806,77 @@ app.post('/api/save-qr', async (req, res) => {
           }
         });
       } else if (currentState === 'INSTALADO') {
-        // Ciclo completo en 3 escaneos (EN ALMACEN -> DESPACHADO -> INSTALADO)
-        return res.json({ 
-          success: true, 
-          action: 'already_completed',
-          message: '⚠️ Este producto ya completó el ciclo (INSTALADO)',
+        // CUARTO ESCANEO: Actualizar a DESINSTALADO
+        const kilometrajeDesinstalacion = (req.body.kilometrajeDesinstalacion || '').trim();
+
+        if (!kilometrajeDesinstalacion) {
+          return res.json({
+            success: true,
+            action: 'needs_uninstallation_data',
+            message: 'Se requieren datos de desinstalación',
+            data: {
+              id: existingGlobalRecord.get('ID'),
+              referencia,
+              serial,
+              estado: currentState,
+              cliente: effectiveClient
+            }
+          });
+        }
+
+        existingGlobalRecord.set('ESTADO', 'DESINSTALADO');
+        existingGlobalRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+        existingGlobalRecord.set('KILOMETRAJE_DESINSTALACION', kilometrajeDesinstalacion);
+        existingGlobalRecord.set('FECHA_DESINSTALACION', fecha);
+        existingGlobalRecord.set('HORA_DESINSTALACION', hora);
+        await existingGlobalRecord.save();
+
+        const rewardSummary = await creditRewardPoints(
+          doc,
+          userEmail || existingGlobalRecord.get('NOMBRE_INSTALADOR') || 'usuario',
+          existingGlobalRecord.get('NOMBRE_INSTALADOR') || userEmail || 'Usuario',
+          1,
+          {
+            referencia,
+            serial,
+            descripcion: 'Punto por desinstalación completada'
+          }
+        );
+
+        if (existingCurrentClientRecord) {
+          existingCurrentClientRecord.set('ESTADO', 'DESINSTALADO');
+          existingCurrentClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+          existingCurrentClientRecord.set('KILOMETRAJE_DESINSTALACION', kilometrajeDesinstalacion);
+          existingCurrentClientRecord.set('FECHA_DESINSTALACION', fecha);
+          existingCurrentClientRecord.set('HORA_DESINSTALACION', hora);
+          await existingCurrentClientRecord.save();
+        }
+
+        if (existingOriginalClientRecord) {
+          existingOriginalClientRecord.set('ESTADO', 'DESINSTALADO');
+          existingOriginalClientRecord.set('USUARIO_DESINSTALACION', userEmail || '');
+          existingOriginalClientRecord.set('KILOMETRAJE_DESINSTALACION', kilometrajeDesinstalacion);
+          existingOriginalClientRecord.set('FECHA_DESINSTALACION', fecha);
+          existingOriginalClientRecord.set('HORA_DESINSTALACION', hora);
+          await existingOriginalClientRecord.save();
+        }
+
+        return res.json({
+          success: true,
+          action: 'uninstalled',
+          message: '📤 Producto marcado como DESINSTALADO',
           data: {
             id: existingGlobalRecord.get('ID'),
             referencia,
             serial,
-            estado: currentState,
+            estado: 'DESINSTALADO',
             cliente: effectiveClient,
             fechaAlmacen: existingGlobalRecord.get('FECHA_ALMACEN'),
             fechaDespacho: existingGlobalRecord.get('FECHA_DESPACHO'),
-            fechaInstalacion: existingGlobalRecord.get('FECHA_INSTALACION')
+            fechaInstalacion: existingGlobalRecord.get('FECHA_INSTALACION'),
+            fechaDesinstalacion: fecha,
+            usuarioDesinstalacion: userEmail,
+            rewardSummary
           }
         });
       } else {

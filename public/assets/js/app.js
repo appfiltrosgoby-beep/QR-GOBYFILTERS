@@ -1599,6 +1599,12 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
                 onShowInstalacion();
                 updateStatus(`🔧 Ingresa datos de instalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
                 return; // No continuar procesando
+            } else if (action === 'needs_uninstallation_data') {
+                // Se requieren datos de desinstalación - mostrar modal
+                pendingUninstallationQR = qrContent;
+                showDesinstalacionModal();
+                updateStatus(`📤 Ingresa kilometraje de desinstalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
+                return; // No continuar procesando
             } else if (action === 'stored') {
                 // Primer escaneo - EN ALMACEN
                 showToast('✅ Producto registrado EN ALMACEN', 'success');
@@ -1614,6 +1620,11 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
                 showToast('🔧 Producto marcado como INSTALADO', 'success');
                 updateStatus(`🔧 ${result.data.referencia} | ${result.data.serial} - INSTALADO`, 'success');
                 displayLastResult(result.data, 'INSTALADO');
+            } else if (action === 'uninstalled') {
+                // Cuarto escaneo - DESINSTALADO
+                showToast('📤 Producto marcado como DESINSTALADO', 'success');
+                updateStatus(`📤 ${result.data.referencia} | ${result.data.serial} - DESINSTALADO`, 'success');
+                displayLastResult(result.data, 'DESINSTALADO');
             } else if (action === 'already_completed') {
                 // Ya completó todo el ciclo
                 showToast('⚠️ Producto ya completó todo el ciclo', 'warning');
