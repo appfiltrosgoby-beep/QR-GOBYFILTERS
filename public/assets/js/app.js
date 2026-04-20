@@ -30,12 +30,7 @@ let scannerRestartTimeout = null; // Timer para reiniciar scanner
 let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admin' | null)
 let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
 
-const rewardsCatalog = [
-    { id: 'goby-cup', name: 'Taza GOBY', cost: 5, description: 'Canjea una taza oficial con 5 puntos.' },
-    { id: 'goby-cap', name: 'Gorra GOBY', cost: 8, description: 'Canjea una gorra oficial con 8 puntos.' },
-    { id: 'goby-kit', name: 'Kit promocional', cost: 12, description: 'Canjea un kit promocional con 12 puntos.' },
-    { id: 'goby-premium', name: 'Premio especial', cost: 20, description: 'Premio especial para 20 puntos o más.' }
-];
+const rewardsCatalog = Array.isArray(window.REWARDS_CATALOG) ? window.REWARDS_CATALOG : [];
 
 // Elementos del DOM
 const elements = {
@@ -1722,10 +1717,23 @@ function renderRewardsCatalog(pointsAvailable) {
         return;
     }
 
+    if (!rewardsCatalog.length) {
+        elements.rewardsCatalog.innerHTML = '<p class="no-data">No hay premios configurados</p>';
+        return;
+    }
+
     elements.rewardsCatalog.innerHTML = rewardsCatalog.map(reward => {
         const canRedeem = pointsAvailable >= reward.cost;
+        const imagePath = reward.image ? `assets/images/rewards/${reward.image}` : '';
+        const imageMarkup = imagePath
+            ? `<img src="${imagePath}" alt="${reward.name}" class="reward-image" loading="lazy">`
+            : '<div class="reward-image-placeholder">Sin imagen</div>';
+
         return `
             <article class="reward-card ${canRedeem ? 'reward-card-available' : 'reward-card-locked'}">
+                <div class="reward-image-wrap">
+                    ${imageMarkup}
+                </div>
                 <div class="reward-card-top">
                     <div>
                         <p class="reward-card-cost">${reward.cost} puntos</p>
