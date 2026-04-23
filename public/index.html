@@ -738,6 +738,31 @@
                         </div>
                         <div id="loginError" class="error-message hidden"></div>
                     </form>
+
+                    <div class="password-actions" style="justify-content:center; margin-top: .75rem;">
+                        <button id="showRegisterBtn" type="button" class="btn btn-secondary">Registrar</button>
+                    </div>
+
+                    <form id="registerForm" class="password-form hidden" autocomplete="on">
+                        <input type="email" id="registerEmail" placeholder="Correo" class="input-password" autocomplete="username">
+                        <div class="password-container">
+                            <input type="password" id="registerPassword" placeholder="Contraseña" class="input-password" autocomplete="new-password">
+                            <button type="button" class="toggle-password-btn" data-target="registerPassword">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <small style="display:block; margin-top:.25rem; opacity:.8;">
+                            Mínimo 9 caracteres, con mayúscula, minúscula y carácter especial.
+                        </small>
+                        <div class="password-actions" style="margin-top:.75rem;">
+                            <button id="cancelRegisterBtn" type="button" class="btn btn-secondary">Volver</button>
+                            <button id="submitRegisterBtn" type="button" class="btn btn-primary">Crear cuenta</button>
+                        </div>
+                        <div id="registerError" class="error-message hidden"></div>
+                    </form>
                 </div>
                 <div id="passwordError" class="error-message hidden"></div>
             </div>

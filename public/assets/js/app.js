@@ -77,6 +77,13 @@ const elements = {
     submitLoginBtn: document.getElementById('submitLoginBtn'),
     cancelLoginBtn: document.getElementById('cancelLoginBtn'),
     loginError: document.getElementById('loginError'),
+    showRegisterBtn: document.getElementById('showRegisterBtn'),
+    registerForm: document.getElementById('registerForm'),
+    registerEmail: document.getElementById('registerEmail'),
+    registerPassword: document.getElementById('registerPassword'),
+    submitRegisterBtn: document.getElementById('submitRegisterBtn'),
+    cancelRegisterBtn: document.getElementById('cancelRegisterBtn'),
+    registerError: document.getElementById('registerError'),
     loginUserBtn: document.getElementById('loginUserBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
     userLoginForm: document.getElementById('userLoginForm'),
@@ -185,6 +192,7 @@ function initAuth() {
         applyRolePermissions();
         elements.loginModal.style.display = 'none';
     } else {
+        showLoginForm();
         elements.loginModal.style.display = 'flex';
     }
 }
@@ -195,6 +203,103 @@ function clearUnifiedLoginForm() {
     if (elements.loginError) {
         elements.loginError.textContent = '';
         elements.loginError.classList.add('hidden');
+    }
+}
+
+function clearRegisterForm() {
+    if (elements.registerEmail) elements.registerEmail.value = '';
+    if (elements.registerPassword) elements.registerPassword.value = '';
+    if (elements.registerError) {
+        elements.registerError.textContent = '';
+        elements.registerError.classList.add('hidden');
+    }
+}
+
+function showLoginForm() {
+    if (elements.registerForm) elements.registerForm.classList.add('hidden');
+    if (elements.loginForm) elements.loginForm.classList.remove('hidden');
+    if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'inline-flex';
+    clearRegisterForm();
+    if (elements.loginUsername) elements.loginUsername.focus();
+}
+
+function showRegisterForm() {
+    if (elements.loginForm) elements.loginForm.classList.add('hidden');
+    if (elements.registerForm) elements.registerForm.classList.remove('hidden');
+    if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'none';
+    if (elements.registerEmail) elements.registerEmail.focus();
+}
+
+function isValidEmail(email) {
+    const value = (email || '').trim().toLowerCase();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validateStrongPassword(password) {
+    const value = (password || '').toString();
+    if (value.length < 9) return 'La contraseña debe tener mínimo 9 caracteres';
+    if (!/[a-z]/.test(value)) return 'La contraseña debe tener al menos una minúscula';
+    if (!/[A-Z]/.test(value)) return 'La contraseña debe tener al menos una mayúscula';
+    if (!/[^A-Za-z0-9]/.test(value)) return 'La contraseña debe tener al menos un carácter especial';
+    return '';
+}
+
+async function registerUser() {
+    const email = (elements.registerEmail?.value || '').trim();
+    const password = (elements.registerPassword?.value || '').trim();
+
+    if (!email || !password) {
+        if (elements.registerError) {
+            elements.registerError.textContent = 'Correo y contraseña son requeridos';
+            elements.registerError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (!isValidEmail(email)) {
+        if (elements.registerError) {
+            elements.registerError.textContent = 'El usuario debe ser un correo válido';
+            elements.registerError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    const passwordError = validateStrongPassword(password);
+    if (passwordError) {
+        if (elements.registerError) {
+            elements.registerError.textContent = passwordError;
+            elements.registerError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuario: email, password })
+        });
+        const data = await response.json();
+
+        if (!data || !data.success) {
+            if (elements.registerError) {
+                elements.registerError.textContent = (data && data.message) ? data.message : 'No se pudo registrar el usuario';
+                elements.registerError.classList.remove('hidden');
+            }
+            return;
+        }
+
+        showToast('✅ Usuario registrado correctamente', 'success');
+        // Llevar al login y prellenar el usuario
+        if (elements.loginUsername) elements.loginUsername.value = email.trim();
+        if (elements.loginPassword) elements.loginPassword.value = '';
+        showLoginForm();
+    } catch (error) {
+        console.error('Error registrando usuario:', error);
+        if (elements.registerError) {
+            elements.registerError.textContent = 'Error al registrar usuario';
+            elements.registerError.classList.remove('hidden');
+        }
     }
 }
 
@@ -241,6 +346,7 @@ async function validateUnifiedLogin() {
     applyRolePermissions();
     elements.loginModal.style.display = 'none';
     clearUnifiedLoginForm();
+    clearRegisterForm();
     showToast(`Bienvenido ${currentUsername || 'Usuario'}`, 'success');
 }
 
@@ -351,6 +457,7 @@ function logout() {
     
     clearUnifiedLoginForm();
     if (elements.passwordError) elements.passwordError.classList.add('hidden');
+    showLoginForm();
     
     // Mostrar modal
     elements.loginModal.style.display = 'flex';
@@ -725,6 +832,16 @@ function setupEventListeners() {
         elements.cancelLoginBtn.addEventListener('click', clearUnifiedLoginForm);
     }
 
+    if (elements.showRegisterBtn) {
+        elements.showRegisterBtn.addEventListener('click', showRegisterForm);
+    }
+    if (elements.cancelRegisterBtn) {
+        elements.cancelRegisterBtn.addEventListener('click', showLoginForm);
+    }
+    if (elements.submitRegisterBtn) {
+        elements.submitRegisterBtn.addEventListener('click', registerUser);
+    }
+
     // Compatibilidad: si existen botones antiguos (por cache), mantenerlos funcionando
     if (elements.loginUserBtn) elements.loginUserBtn.addEventListener('click', showUserEmailForm);
     if (elements.loginAdminBtn) elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
@@ -761,6 +878,31 @@ function setupEventListeners() {
             if (!elements.loginError) return;
             elements.loginError.textContent = '';
             elements.loginError.classList.add('hidden');
+        });
+    }
+
+    if (elements.registerEmail) {
+        elements.registerEmail.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                registerUser();
+            }
+        });
+        elements.registerEmail.addEventListener('input', () => {
+            if (!elements.registerError) return;
+            elements.registerError.textContent = '';
+            elements.registerError.classList.add('hidden');
+        });
+    }
+    if (elements.registerPassword) {
+        elements.registerPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                registerUser();
+            }
+        });
+        elements.registerPassword.addEventListener('input', () => {
+            if (!elements.registerError) return;
+            elements.registerError.textContent = '';
+            elements.registerError.classList.add('hidden');
         });
     }
     

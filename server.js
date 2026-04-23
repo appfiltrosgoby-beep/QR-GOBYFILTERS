@@ -164,6 +164,79 @@ app.post('/api/validate-user', async (req, res) => {
   }
 });
 
+function isValidEmail(email) {
+  const value = (email || '').trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validateStrongPassword(password) {
+  const value = (password || '').toString();
+  if (value.length < 9) return 'La contraseña debe tener mínimo 9 caracteres';
+  if (!/[a-z]/.test(value)) return 'La contraseña debe tener al menos una minúscula';
+  if (!/[A-Z]/.test(value)) return 'La contraseña debe tener al menos una mayúscula';
+  if (!/[^A-Za-z0-9]/.test(value)) return 'La contraseña debe tener al menos un carácter especial';
+  return '';
+}
+
+/**
+ * Registro de usuario (público)
+ * POST /api/register
+ * Body: { usuario, password }
+ * Crea usuario como 'mecanico' en hoja global USUARIOS.
+ */
+app.post('/api/register', async (req, res) => {
+  try {
+    const { usuario, password } = req.body;
+
+    if (!usuario || !password) {
+      return res.status(400).json({ success: false, message: 'Correo y contraseña son requeridos' });
+    }
+
+    if (!isValidEmail(usuario)) {
+      return res.status(400).json({ success: false, message: 'El usuario debe ser un correo válido' });
+    }
+
+    const passwordError = validateStrongPassword(password);
+    if (passwordError) {
+      return res.status(400).json({ success: false, message: passwordError });
+    }
+
+    const doc = await getGoogleSheet();
+    const normalizedUser = normalizeUser(usuario);
+    const globalSheet = await getOrCreateUsersSheet(doc);
+
+    // Validar duplicado en hoja global
+    const globalRows = await globalSheet.getRows();
+    const existsGlobal = globalRows.some(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+    if (existsGlobal) {
+      return res.status(409).json({ success: false, message: 'El usuario ya existe' });
+    }
+
+    // Validar duplicado en hojas por cliente (si existen)
+    await doc.loadInfo();
+    for (const sheet of doc.sheetsByIndex) {
+      if (!sheet.title.endsWith('_USUARIOS')) continue;
+      const rows = await sheet.getRows();
+      const exists = rows.some(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+      if (exists) {
+        return res.status(409).json({ success: false, message: 'El usuario ya existe' });
+      }
+    }
+
+    await globalSheet.addRow({
+      'USUARIO': normalizedUser,
+      'TIPO': 'mecanico',
+      'CONTRASEÑA': password,
+      'CLIENTE': ''
+    });
+
+    return res.json({ success: true, message: 'Usuario registrado correctamente' });
+  } catch (error) {
+    console.error('Error al registrar usuario:', error);
+    return res.status(500).json({ success: false, message: 'Error al registrar usuario' });
+  }
+});
+
 /**
  * Lista usuarios (solo superadmin)
  * GET /api/users
