@@ -181,12 +181,12 @@ function validateStrongPassword(password) {
 /**
  * Registro de usuario (público)
  * POST /api/register
- * Body: { usuario, password }
- * Crea usuario como 'mecanico' en hoja global USUARIOS.
+ * Body: { usuario, password, tipo }
+ * Crea usuario como 'mecanico' o 'despacho' en hoja global USUARIOS.
  */
 app.post('/api/register', async (req, res) => {
   try {
-    const { usuario, password } = req.body;
+    const { usuario, password, tipo } = req.body;
 
     if (!usuario || !password) {
       return res.status(400).json({ success: false, message: 'Correo y contraseña son requeridos' });
@@ -199,6 +199,11 @@ app.post('/api/register', async (req, res) => {
     const passwordError = validateStrongPassword(password);
     if (passwordError) {
       return res.status(400).json({ success: false, message: passwordError });
+    }
+
+    const normalizedTipo = normalizeType(tipo || 'despacho');
+    if (!['mecanico', 'despacho'].includes(normalizedTipo)) {
+      return res.status(400).json({ success: false, message: 'Tipo inválido para registro' });
     }
 
     const doc = await getGoogleSheet();
@@ -225,7 +230,7 @@ app.post('/api/register', async (req, res) => {
 
     await globalSheet.addRow({
       'USUARIO': normalizedUser,
-      'TIPO': 'mecanico',
+      'TIPO': normalizedTipo,
       'CONTRASEÑA': password,
       'CLIENTE': ''
     });

@@ -80,6 +80,7 @@ const elements = {
     showRegisterBtn: document.getElementById('showRegisterBtn'),
     registerForm: document.getElementById('registerForm'),
     registerEmail: document.getElementById('registerEmail'),
+    registerType: document.getElementById('registerType'),
     registerPassword: document.getElementById('registerPassword'),
     submitRegisterBtn: document.getElementById('submitRegisterBtn'),
     cancelRegisterBtn: document.getElementById('cancelRegisterBtn'),
@@ -210,6 +211,7 @@ function clearUnifiedLoginForm() {
 
 function clearRegisterForm() {
     if (elements.registerEmail) elements.registerEmail.value = '';
+    if (elements.registerType) elements.registerType.value = 'despacho';
     if (elements.registerPassword) elements.registerPassword.value = '';
     if (elements.registerError) {
         elements.registerError.textContent = '';
@@ -258,6 +260,7 @@ function validateStrongPassword(password) {
 
 async function registerUser() {
     const email = (elements.registerEmail?.value || '').trim();
+    const tipo = (elements.registerType?.value || 'despacho').trim();
     const password = (elements.registerPassword?.value || '').trim();
 
     if (!email || !password) {
@@ -289,7 +292,7 @@ async function registerUser() {
         const response = await fetch(`${API_URL}/api/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuario: email, password })
+            body: JSON.stringify({ usuario: email, password, tipo })
         });
         const data = await response.json();
 
