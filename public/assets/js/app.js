@@ -192,7 +192,6 @@ function showUserEmailForm() {
     elements.adminLoginForm.classList.add('hidden');
     elements.userLoginForm.classList.remove('hidden');
     elements.userError.classList.add('hidden');
-    currentLoginType = 'user'; // Acepta mecánico y despacho
     elements.userUsername.focus();
 }
 
@@ -259,7 +258,7 @@ async function validateUserLogin() {
         return;
     }
 
-    const result = await validateCredentials(usuario, currentLoginType, password);
+    const result = await validateCredentials(usuario, 'user', password);
     if (!result.success) {
         elements.userError.textContent = result.message || 'Credenciales inválidas';
         elements.userError.classList.remove('hidden');

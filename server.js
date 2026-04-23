@@ -919,6 +919,35 @@ function normalizeClient(client) {
   return (client || '').trim().toUpperCase();
 }
 
+function normalizeSheetTitleKey(title) {
+  return (title || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s\-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/[^A-Z0-9_]/g, '');
+}
+
+function findSheetByTitleCandidates(doc, titles) {
+  const candidates = (titles || []).filter(Boolean);
+  for (const title of candidates) {
+    if (doc.sheetsByTitle[title]) {
+      return doc.sheetsByTitle[title];
+    }
+  }
+
+  const candidateKeys = new Set(candidates.map(normalizeSheetTitleKey));
+  for (const sheet of doc.sheetsByIndex) {
+    if (candidateKeys.has(normalizeSheetTitleKey(sheet.title))) {
+      return sheet;
+    }
+  }
+
+  return null;
+}
+
 function isSuperadminUser(usuario) {
   const normalizedUser = normalizeUser(usuario);
   return normalizedUser === normalizeUser(SUPERADMIN_1_EMAIL) ||
@@ -1028,8 +1057,9 @@ async function validateSuperadminCredentials(doc, usuario, password) {
 async function getOrCreateClientUsersSheet(doc, cliente) {
   const normalizedClient = normalizeClient(cliente);
   const sheetTitle = `${normalizedClient}_USUARIOS`;
+  const altTitle = `${normalizedClient.replace(/\s+/g, '_')}_USUARIOS`;
   
-  let sheet = doc.sheetsByTitle[sheetTitle];
+  let sheet = findSheetByTitleCandidates(doc, [sheetTitle, altTitle]);
 
   if (!sheet) {
     sheet = await doc.addSheet({
@@ -1056,8 +1086,9 @@ async function getOrCreateClientUsersSheet(doc, cliente) {
 async function getOrCreateClientRecordsSheet(doc, cliente) {
   const normalizedClient = normalizeClient(cliente);
   const sheetTitle = `${normalizedClient}_REGISTROS`;
+  const altTitle = `${normalizedClient.replace(/\s+/g, '_')}_REGISTROS`;
   
-  let sheet = doc.sheetsByTitle[sheetTitle];
+  let sheet = findSheetByTitleCandidates(doc, [sheetTitle, altTitle]);
 
   if (!sheet) {
     sheet = await doc.addSheet({
@@ -1072,6 +1103,9 @@ async function getOrCreateClientRecordsSheet(doc, cliente) {
         'USUARIO_PLANTA',
         'USUARIO_INSTALACION',
         'USUARIO_DESINSTALACION',
+        'PLACA',
+        'KILOMETRAJE_INSTALACION',
+        'KILOMETRAJE_DESINSTALACION',
         'FECHA_ALMACEN',
         'FECHA_DESPACHO',
         'FECHA_INSTALACION',
@@ -2133,24 +2167,24 @@ app.get('/api/stats', async (req, res) => {
     const userEmail = req.query.userEmail || '';
     
     const doc = await getGoogleSheet();
-    
-    // Obtener SIEMPRE el total de registros de la hoja REGISTROS global
-    const globalSheet = await getOrCreateRecordsSheet(doc);
-    let rows = await globalSheet.getRows();
-    
-    console.log(`📊 Stats API: Total de registros en REGISTROS: ${rows.length}`);
-    
-    // Filtrar por cliente si se especifica
+
+    let rows = [];
+
     if (cliente) {
-      rows = rows.filter(row => {
-        const rowCliente = row.get('CLIENTE') || '';
-        return rowCliente.toUpperCase() === cliente.toUpperCase();
-      });
-      console.log(`🔒 Filtrado por cliente "${cliente}": ${rows.length} registros`);
-    } else if (userEmail) {
-      // Filtrar por usuario si se especifica
-      rows = rows.filter(row => isUserInRecord(row, userEmail));
-      console.log(`👤 Filtrado por usuario "${userEmail}": ${rows.length} registros`);
+      // Para stats filtradas por cliente, usar la hoja del cliente (fuente por-cliente)
+      const clientSheet = await getOrCreateClientRecordsSheet(doc, cliente);
+      rows = await clientSheet.getRows();
+      console.log(`📊 Stats API: Registros en hoja cliente "${cliente}": ${rows.length}`);
+    } else {
+      // Default: hoja REGISTROS global
+      const globalSheet = await getOrCreateRecordsSheet(doc);
+      rows = await globalSheet.getRows();
+      console.log(`📊 Stats API: Total de registros en REGISTROS: ${rows.length}`);
+
+      if (userEmail) {
+        rows = rows.filter(row => isUserInRecord(row, userEmail));
+        console.log(`👤 Filtrado por usuario "${userEmail}": ${rows.length} registros`);
+      }
     }
     const today = new Date().toLocaleDateString('es-ES');
 
