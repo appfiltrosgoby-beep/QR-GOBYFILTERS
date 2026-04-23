@@ -71,6 +71,12 @@ const elements = {
     rewardsHistoryBody: document.getElementById('rewardsHistoryBody'),
     toastContainer: document.getElementById('toastContainer'),
     loginModal: document.getElementById('loginModal'),
+    loginForm: document.getElementById('loginForm'),
+    loginUsername: document.getElementById('loginUsername'),
+    loginPassword: document.getElementById('loginPassword'),
+    submitLoginBtn: document.getElementById('submitLoginBtn'),
+    cancelLoginBtn: document.getElementById('cancelLoginBtn'),
+    loginError: document.getElementById('loginError'),
     loginUserBtn: document.getElementById('loginUserBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
     userLoginForm: document.getElementById('userLoginForm'),
@@ -155,8 +161,8 @@ function initAuth() {
     const savedClient = localStorage.getItem('userClient');
     
     if (savedRole) {
-        if ((savedRole === 'superadmin' || savedRole === 'admin') && !savedPassword) {
-            // Si es admin o superadmin y no hay contraseña, limpiar sesión
+        if (!savedPassword) {
+            // Si no hay contraseña (sessionStorage), forzar re-login
             localStorage.removeItem('userRole');
             localStorage.removeItem('userType');
             localStorage.removeItem('userName');
@@ -183,154 +189,98 @@ function initAuth() {
     }
 }
 
-/**
- * Mostrar formulario de email para usuario (mecánico o despacho)
- */
+function clearUnifiedLoginForm() {
+    if (elements.loginUsername) elements.loginUsername.value = '';
+    if (elements.loginPassword) elements.loginPassword.value = '';
+    if (elements.loginError) {
+        elements.loginError.textContent = '';
+        elements.loginError.classList.add('hidden');
+    }
+}
+
+async function validateUnifiedLogin() {
+    const usuario = (elements.loginUsername?.value || '').trim();
+    const password = (elements.loginPassword?.value || '').trim();
+
+    if (!usuario || !password) {
+        if (elements.loginError) {
+            elements.loginError.textContent = 'Usuario y contraseña son requeridos';
+            elements.loginError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    // Intento 1: flujo usuario (mecánico/despacho)
+    let result = await validateCredentials(usuario, 'user', password);
+
+    // Intento 2: flujo administrador (admin/super)
+    if (!result.success) {
+        result = await validateCredentials(usuario, 'administrador', password);
+    }
+
+    if (!result.success) {
+        if (elements.loginError) {
+            elements.loginError.textContent = result.message || 'Credenciales inválidas';
+            elements.loginError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    currentUsername = usuario;
+    currentUserPassword = password;
+    currentUserClient = result.cliente || '';
+    currentUserRole = result.role || 'user';
+    currentUserType = result.tipo || 'mecanico';
+
+    localStorage.setItem('userName', usuario);
+    localStorage.setItem('userClient', result.cliente || '');
+    localStorage.setItem('userRole', currentUserRole);
+    localStorage.setItem('userType', currentUserType);
+    sessionStorage.setItem('userPassword', password);
+
+    applyRolePermissions();
+    elements.loginModal.style.display = 'none';
+    clearUnifiedLoginForm();
+    showToast(`Bienvenido ${currentUsername || 'Usuario'}`, 'success');
+}
+
+// Compatibilidad: si quedan referencias viejas, redirigir al login unificado
 function showUserEmailForm() {
-    setLoginSelection('user');
-    
-    elements.adminLoginForm.classList.add('hidden');
-    elements.userLoginForm.classList.remove('hidden');
-    elements.userError.classList.add('hidden');
-    elements.userUsername.focus();
+    elements.loginModal.style.display = 'flex';
+    elements.loginUsername?.focus();
 }
 
-/**
- * Mostrar formulario de email para administrador
- */
 function showAdminEmailForm() {
-    setLoginSelection('admin');
-    
-    elements.userLoginForm.classList.add('hidden');
-    elements.adminLoginForm.classList.remove('hidden');
-    elements.adminError.classList.add('hidden');
-    elements.adminUsername.focus();
+    elements.loginModal.style.display = 'flex';
+    elements.loginUsername?.focus();
 }
 
-/**
- * Cancelar login de usuario
- */
 function cancelUserLogin() {
-    elements.userLoginForm.classList.add('hidden');
-    elements.userUsername.value = '';
-    elements.userPassword.value = '';
-    elements.userError.textContent = '';
-    elements.userError.classList.add('hidden');
+    clearUnifiedLoginForm();
 }
 
-/**
- * Cancelar login de admin por email
- */
 function cancelAdminEmailLogin() {
-    elements.adminLoginForm.classList.add('hidden');
-    elements.adminUsername.value = '';
-    elements.adminPassword.value = '';
-    elements.adminError.textContent = '';
-    elements.adminError.classList.add('hidden');
+    clearUnifiedLoginForm();
 }
 
-/**
- * Mantiene resaltado (azul) el botón seleccionado hasta que se toque el otro.
- */
 function setLoginSelection(type) {
     selectedLoginType = type;
-
-    const isUserSelected = selectedLoginType === 'user';
-    const isAdminSelected = selectedLoginType === 'admin';
-
-    elements.loginUserBtn.classList.toggle('btn-primary', isUserSelected);
-    elements.loginUserBtn.classList.toggle('btn-secondary', !isUserSelected);
-
-    elements.loginAdminBtn.classList.toggle('btn-primary', isAdminSelected);
-    elements.loginAdminBtn.classList.toggle('btn-secondary', !isAdminSelected);
 }
 
 /**
  * Validar email del usuario
  */
 async function validateUserLogin() {
-    const usuario = elements.userUsername.value.trim();
-    const password = elements.userPassword.value.trim();
-
-    if (!usuario || !password) {
-        elements.userError.textContent = 'Usuario y contraseña son requeridos';
-        elements.userError.classList.remove('hidden');
-        return;
-    }
-
-    const result = await validateCredentials(usuario, 'user', password);
-    if (!result.success) {
-        elements.userError.textContent = result.message || 'Credenciales inválidas';
-        elements.userError.classList.remove('hidden');
-        return;
-    }
-
-    currentUsername = usuario;
-    currentUserPassword = password;
-    currentUserClient = result.cliente || '';
-    currentUserRole = result.role || 'user'; // Guardar el rol retornado
-    currentUserType = result.tipo || 'mecanico'; // Guardar el tipo del usuario
-    localStorage.setItem('userName', usuario);
-    localStorage.setItem('userClient', result.cliente || '');
-    localStorage.setItem('userRole', currentUserRole);
-    localStorage.setItem('userType', currentUserType);
-    sessionStorage.setItem('userPassword', password);
-    
-    // Aplicar permisos según el tipo de usuario
-    applyRolePermissions();
-    
-    // Cerrar modal de login
-    elements.loginModal.style.display = 'none';
-    elements.userLoginForm.classList.add('hidden');
-    elements.userUsername.value = '';
-    elements.userPassword.value = '';
-    elements.userError.textContent = '';
-    elements.userError.classList.add('hidden');
-    showToast(`Bienvenido ${currentUsername || 'Usuario'}`, 'success');
+    // Redirigir a login unificado
+    return validateUnifiedLogin();
 }
 
 /**
  * Validar email del administrador
  */
 async function validateAdminLogin() {
-    const usuario = elements.adminUsername.value.trim();
-    const password = elements.adminPassword.value.trim();
-
-    if (!usuario || !password) {
-        elements.adminError.textContent = 'Usuario y contraseña son requeridos';
-        elements.adminError.classList.remove('hidden');
-        return;
-    }
-
-    const result = await validateCredentials(usuario, 'administrador', password);
-    if (!result.success) {
-        elements.adminError.textContent = result.message || 'Credenciales inválidas';
-        elements.adminError.classList.remove('hidden');
-        return;
-    }
-
-    currentUsername = usuario;
-    currentUserPassword = password;
-    currentUserClient = result.cliente || '';
-    localStorage.setItem('userName', usuario);
-    localStorage.setItem('userClient', result.cliente || '');
-    sessionStorage.setItem('userPassword', password);
-    if (result.role === 'superadmin') {
-        currentUserRole = 'superadmin';
-        currentUserType = result.tipo || 'super'; // Guardar tipo para superadmin
-        localStorage.setItem('userRole', 'superadmin');
-        localStorage.setItem('userType', currentUserType);
-        applyRolePermissions();
-        elements.loginModal.style.display = 'none';
-        elements.adminLoginForm.classList.add('hidden');
-        elements.adminUsername.value = '';
-        elements.adminPassword.value = '';
-        elements.adminError.textContent = '';
-        elements.adminError.classList.add('hidden');
-        showToast('Bienvenido Superadmin', 'success');
-        return;
-    }
-    loginAsAdmin();
+    // Redirigir a login unificado
+    return validateUnifiedLogin();
 }
 
 /**
@@ -399,21 +349,8 @@ function logout() {
     currentUserPassword = null;
     currentUserClient = null;
     
-    // Resetear modal al estado inicial
-    const modalBody = elements.loginUserBtn.parentElement;
-    modalBody.style.display = 'flex';
-    elements.adminLoginForm.classList.add('hidden');
-    elements.userLoginForm.classList.add('hidden');
-    elements.adminUsername.value = '';
-    elements.adminPassword.value = '';
-    elements.userUsername.value = '';
-    elements.userPassword.value = '';
-    elements.passwordError.classList.add('hidden');
-    elements.userError.textContent = '';
-    elements.userError.classList.add('hidden');
-    elements.adminError.textContent = '';
-    elements.adminError.classList.add('hidden');
-    setLoginSelection(null);
+    clearUnifiedLoginForm();
+    if (elements.passwordError) elements.passwordError.classList.add('hidden');
     
     // Mostrar modal
     elements.loginModal.style.display = 'flex';
@@ -780,63 +717,102 @@ function setupEventListeners() {
         setupClientSelectSearch(searchRewardsClient, elements.rewardsClientFilter);
     }
     
-    // Event listeners de autenticación
-    elements.loginUserBtn.addEventListener('click', showUserEmailForm);
-    elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
-    elements.submitUserBtn.addEventListener('click', validateUserLogin);
-    elements.cancelUserBtn.addEventListener('click', cancelUserLogin);
-    elements.submitAdminEmailBtn.addEventListener('click', validateAdminLogin);
-    elements.cancelAdminEmailBtn.addEventListener('click', cancelAdminEmailLogin);
+    // Event listeners de autenticación (login unificado)
+    if (elements.submitLoginBtn) {
+        elements.submitLoginBtn.addEventListener('click', validateUnifiedLogin);
+    }
+    if (elements.cancelLoginBtn) {
+        elements.cancelLoginBtn.addEventListener('click', clearUnifiedLoginForm);
+    }
+
+    // Compatibilidad: si existen botones antiguos (por cache), mantenerlos funcionando
+    if (elements.loginUserBtn) elements.loginUserBtn.addEventListener('click', showUserEmailForm);
+    if (elements.loginAdminBtn) elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
+    if (elements.submitUserBtn) elements.submitUserBtn.addEventListener('click', validateUserLogin);
+    if (elements.cancelUserBtn) elements.cancelUserBtn.addEventListener('click', cancelUserLogin);
+    if (elements.submitAdminEmailBtn) elements.submitAdminEmailBtn.addEventListener('click', validateAdminLogin);
+    if (elements.cancelAdminEmailBtn) elements.cancelAdminEmailBtn.addEventListener('click', cancelAdminEmailLogin);
+
     elements.logoutBtn.addEventListener('click', logout);
     elements.menuToggleBtn.addEventListener('click', () => toggleSideMenu(true));
     elements.menuCloseBtn.addEventListener('click', () => toggleSideMenu(false));
     elements.menuOverlay.addEventListener('click', () => toggleSideMenu(false));
     
-    // Enter en campo de usuario (mecánico)
-    elements.userUsername.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            validateUserLogin();
-        }
-    });
-
-    elements.userPassword.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            validateUserLogin();
-        }
-    });
-
-    // Limpiar error al escribir usuario/contraseña
-    elements.userUsername.addEventListener('input', () => {
-        elements.userError.textContent = '';
-        elements.userError.classList.add('hidden');
-    });
-    elements.userPassword.addEventListener('input', () => {
-        elements.userError.textContent = '';
-        elements.userError.classList.add('hidden');
-    });
+    // Enter en login unificado
+    if (elements.loginUsername) {
+        elements.loginUsername.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                validateUnifiedLogin();
+            }
+        });
+        elements.loginUsername.addEventListener('input', () => {
+            if (!elements.loginError) return;
+            elements.loginError.textContent = '';
+            elements.loginError.classList.add('hidden');
+        });
+    }
+    if (elements.loginPassword) {
+        elements.loginPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                validateUnifiedLogin();
+            }
+        });
+        elements.loginPassword.addEventListener('input', () => {
+            if (!elements.loginError) return;
+            elements.loginError.textContent = '';
+            elements.loginError.classList.add('hidden');
+        });
+    }
     
-    // Enter en campo de usuario admin
-    elements.adminUsername.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            validateAdminLogin();
-        }
-    });
-
-    elements.adminPassword.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            validateAdminLogin();
-        }
-    });
-
-    // Limpiar error al escribir admin
-    elements.adminUsername.addEventListener('input', () => {
-        elements.adminError.textContent = '';
-        elements.adminError.classList.add('hidden');
-    });
-    elements.adminPassword.addEventListener('input', () => {
-        elements.adminError.textContent = '';
-        elements.adminError.classList.add('hidden');
-    });
+    // Compatibilidad (si todavía existe el login antiguo en cache)
+    if (elements.userUsername) {
+        elements.userUsername.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                validateUserLogin();
+            }
+        });
+        elements.userUsername.addEventListener('input', () => {
+            if (!elements.userError) return;
+            elements.userError.textContent = '';
+            elements.userError.classList.add('hidden');
+        });
+    }
+    if (elements.userPassword) {
+        elements.userPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                validateUserLogin();
+            }
+        });
+        elements.userPassword.addEventListener('input', () => {
+            if (!elements.userError) return;
+            elements.userError.textContent = '';
+            elements.userError.classList.add('hidden');
+        });
+    }
+    if (elements.adminUsername) {
+        elements.adminUsername.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                validateAdminLogin();
+            }
+        });
+        elements.adminUsername.addEventListener('input', () => {
+            if (!elements.adminError) return;
+            elements.adminError.textContent = '';
+            elements.adminError.classList.add('hidden');
+        });
+    }
+    if (elements.adminPassword) {
+        elements.adminPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                validateAdminLogin();
+            }
+        });
+        elements.adminPassword.addEventListener('input', () => {
+            if (!elements.adminError) return;
+            elements.adminError.textContent = '';
+            elements.adminError.classList.add('hidden');
+        });
+    }
 
     // Event listeners de gestión de usuarios
     if (elements.createUserBtn) {

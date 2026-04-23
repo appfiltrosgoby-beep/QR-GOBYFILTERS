@@ -718,61 +718,27 @@
                 <div class="modal-header">
                     <img src="assets/images/GOBY MARCA REGISTRADA.png" alt="GOBY Logo" class="modal-logo">
                     <h2>GOBY FILTERS QR</h2>
-                    <p>Selecciona tu rol para continuar</p>
+                    <p>Inicia sesión para continuar</p>
                 </div>
                 <div class="modal-body">
-                    <button id="loginUserBtn" class="btn btn-large btn-secondary">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        Mecánico
-                    </button>
-                    <button id="loginAdminBtn" class="btn btn-large btn-secondary">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                            <polyline points="2 17 12 22 22 17"/>
-                            <polyline points="2 12 12 17 22 12"/>
-                        </svg>
-                        Administrador
-                    </button>
+                    <form id="loginForm" class="password-form" autocomplete="on">
+                        <input type="text" id="loginUsername" placeholder="Usuario" class="input-password" autocomplete="username">
+                        <div class="password-container">
+                            <input type="password" id="loginPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
+                            <button type="button" class="toggle-password-btn" data-target="loginPassword">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="password-actions">
+                            <button id="cancelLoginBtn" type="button" class="btn btn-secondary">Limpiar</button>
+                            <button id="submitLoginBtn" type="button" class="btn btn-primary">Continuar</button>
+                        </div>
+                        <div id="loginError" class="error-message hidden"></div>
+                    </form>
                 </div>
-                <!-- Formulario de login para mecánico (oculto por defecto) -->
-                <form id="userLoginForm" class="password-form hidden" autocomplete="on">
-                    <input type="text" id="userUsername" placeholder="Usuario mecánico" class="input-password" autocomplete="username">
-                    <div class="password-container">
-                        <input type="password" id="userPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
-                        <button type="button" class="toggle-password-btn" data-target="userPassword">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                <circle cx="12" cy="12" r="3"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="password-actions">
-                        <button id="cancelUserBtn" type="button" class="btn btn-secondary">Cancelar</button>
-                        <button id="submitUserBtn" type="button" class="btn btn-primary">Continuar</button>
-                    </div>
-                    <div id="userError" class="error-message hidden"></div>
-                </form>
-                <!-- Formulario de login para administrador (oculto por defecto) -->
-                <form id="adminLoginForm" class="password-form hidden" autocomplete="on">
-                    <input type="text" id="adminUsername" placeholder="Usuario administrador" class="input-password" autocomplete="username">
-                    <div class="password-container">
-                        <input type="password" id="adminPassword" placeholder="Contraseña" class="input-password" autocomplete="current-password">
-                        <button type="button" class="toggle-password-btn" data-target="adminPassword">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                <circle cx="12" cy="12" r="3"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="password-actions">
-                        <button id="cancelAdminEmailBtn" type="button" class="btn btn-secondary">Cancelar</button>
-                        <button id="submitAdminEmailBtn" type="button" class="btn btn-primary">Continuar</button>
-                    </div>
-                    <div id="adminError" class="error-message hidden"></div>
-                </form>
                 <div id="passwordError" class="error-message hidden"></div>
             </div>
         </div>
