@@ -84,6 +84,8 @@ const elements = {
     submitRegisterBtn: document.getElementById('submitRegisterBtn'),
     cancelRegisterBtn: document.getElementById('cancelRegisterBtn'),
     registerError: document.getElementById('registerError'),
+    forgotPasswordBtn: document.getElementById('forgotPasswordBtn'),
+    forgotPasswordInfo: document.getElementById('forgotPasswordInfo'),
     loginUserBtn: document.getElementById('loginUserBtn'),
     loginAdminBtn: document.getElementById('loginAdminBtn'),
     userLoginForm: document.getElementById('userLoginForm'),
@@ -219,6 +221,7 @@ function showLoginForm() {
     if (elements.registerForm) elements.registerForm.classList.add('hidden');
     if (elements.loginForm) elements.loginForm.classList.remove('hidden');
     if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'inline-flex';
+    if (elements.forgotPasswordInfo) elements.forgotPasswordInfo.classList.add('hidden');
     clearRegisterForm();
     if (elements.loginUsername) elements.loginUsername.focus();
 }
@@ -227,7 +230,16 @@ function showRegisterForm() {
     if (elements.loginForm) elements.loginForm.classList.add('hidden');
     if (elements.registerForm) elements.registerForm.classList.remove('hidden');
     if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'none';
+    if (elements.forgotPasswordInfo) elements.forgotPasswordInfo.classList.add('hidden');
     if (elements.registerEmail) elements.registerEmail.focus();
+}
+
+function showForgotPassword() {
+    if (elements.forgotPasswordInfo) {
+        elements.forgotPasswordInfo.classList.toggle('hidden');
+    } else {
+        showToast('Contacta al administrador/superadmin para restablecer tu contraseña', 'info');
+    }
 }
 
 function isValidEmail(email) {
@@ -749,6 +761,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/service-worker.js').then(registration => {
             console.log('✅ Service Worker registrado correctamente', registration);
+
+            // Intentar forzar la actualización para evitar quedar en versiones cacheadas
+            registration.update().catch(() => {});
+
+            const tryActivateWaitingWorker = () => {
+                if (registration.waiting) {
+                    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+            };
+
+            registration.addEventListener('updatefound', () => {
+                const installing = registration.installing;
+                if (!installing) return;
+                installing.addEventListener('statechange', () => {
+                    if (installing.state === 'installed') {
+                        tryActivateWaitingWorker();
+                    }
+                });
+            });
+
+            tryActivateWaitingWorker();
+
+            let reloaded = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (reloaded) return;
+                reloaded = true;
+                window.location.reload();
+            });
         }).catch(error => {
             console.warn('⚠️ Error al registrar Service Worker:', error);
         });
@@ -798,10 +838,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  */
 function setupEventListeners() {
     // Event listeners de escaneo
-    elements.startBtn.addEventListener('click', startScanning);
-    elements.stopBtn.addEventListener('click', stopScanning);
-    elements.clearResult.addEventListener('click', clearLastResult);
-    elements.refreshBtn.addEventListener('click', async () => {
+    if (elements.startBtn) elements.startBtn.addEventListener('click', startScanning);
+    if (elements.stopBtn) elements.stopBtn.addEventListener('click', stopScanning);
+    if (elements.clearResult) elements.clearResult.addEventListener('click', clearLastResult);
+    if (elements.refreshBtn) elements.refreshBtn.addEventListener('click', async () => {
         await loadRecentScans();
         // Pequeño delay para evitar rate limiting
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -810,7 +850,7 @@ function setupEventListeners() {
         }
         await loadRewards();
     });
-    elements.exportBtn.addEventListener('click', exportToCSV);
+    if (elements.exportBtn) elements.exportBtn.addEventListener('click', exportToCSV);
     if (elements.refreshRewardsBtn) {
         elements.refreshRewardsBtn.addEventListener('click', loadRewards);
     }
@@ -842,6 +882,10 @@ function setupEventListeners() {
         elements.submitRegisterBtn.addEventListener('click', registerUser);
     }
 
+    if (elements.forgotPasswordBtn) {
+        elements.forgotPasswordBtn.addEventListener('click', showForgotPassword);
+    }
+
     // Compatibilidad: si existen botones antiguos (por cache), mantenerlos funcionando
     if (elements.loginUserBtn) elements.loginUserBtn.addEventListener('click', showUserEmailForm);
     if (elements.loginAdminBtn) elements.loginAdminBtn.addEventListener('click', showAdminEmailForm);
@@ -850,10 +894,10 @@ function setupEventListeners() {
     if (elements.submitAdminEmailBtn) elements.submitAdminEmailBtn.addEventListener('click', validateAdminLogin);
     if (elements.cancelAdminEmailBtn) elements.cancelAdminEmailBtn.addEventListener('click', cancelAdminEmailLogin);
 
-    elements.logoutBtn.addEventListener('click', logout);
-    elements.menuToggleBtn.addEventListener('click', () => toggleSideMenu(true));
-    elements.menuCloseBtn.addEventListener('click', () => toggleSideMenu(false));
-    elements.menuOverlay.addEventListener('click', () => toggleSideMenu(false));
+    if (elements.logoutBtn) elements.logoutBtn.addEventListener('click', logout);
+    if (elements.menuToggleBtn) elements.menuToggleBtn.addEventListener('click', () => toggleSideMenu(true));
+    if (elements.menuCloseBtn) elements.menuCloseBtn.addEventListener('click', () => toggleSideMenu(false));
+    if (elements.menuOverlay) elements.menuOverlay.addEventListener('click', () => toggleSideMenu(false));
     
     // Enter en login unificado
     if (elements.loginUsername) {

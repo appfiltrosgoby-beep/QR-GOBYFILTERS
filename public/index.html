@@ -743,6 +743,10 @@
                         <button id="showRegisterBtn" type="button" class="btn btn-secondary">Registrar</button>
                     </div>
 
+                    <div class="password-actions" style="justify-content:center; margin-top: .5rem;">
+                        <button id="forgotPasswordBtn" type="button" class="btn btn-secondary">Olvidé mi contraseña</button>
+                    </div>
+
                     <form id="registerForm" class="password-form hidden" autocomplete="on">
                         <input type="email" id="registerEmail" placeholder="Correo" class="input-password" autocomplete="username">
                         <div class="password-container">
@@ -763,6 +767,10 @@
                         </div>
                         <div id="registerError" class="error-message hidden"></div>
                     </form>
+
+                    <div id="forgotPasswordInfo" class="error-message hidden" style="margin-top:.75rem;">
+                        Para restablecer tu contraseña, contacta al administrador/superadmin para que la actualice.
+                    </div>
                 </div>
                 <div id="passwordError" class="error-message hidden"></div>
             </div>
@@ -814,6 +822,6 @@
     <!-- Configuración del catálogo de recompensas -->
     <script src="assets/js/rewards-catalog.js?v=20260420b"></script>
     <!-- Script principal -->
-    <script src="assets/js/app.js?v=20260420d"></script>
+    <script src="assets/js/app.js?v=20260423a"></script>
 </body>
 </html>
