@@ -585,6 +585,9 @@ function applyRolePermissions() {
     const filterClienteRecords = document.getElementById('filterClienteRecords');
     const filterClienteUsers = document.getElementById('filterClienteUsers');
     const filterClienteStats = document.getElementById('filterClienteStats');
+    const searchClienteRecords = document.getElementById('searchClienteRecords');
+    const searchClienteUsers = document.getElementById('searchClienteUsers');
+    const searchClienteStats = document.getElementById('searchClienteStats');
     
     if (filterClienteRecords) {
         filterClienteRecords.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
@@ -594,6 +597,16 @@ function applyRolePermissions() {
     }
     if (filterClienteStats) {
         filterClienteStats.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+    }
+
+    if (searchClienteRecords) {
+        searchClienteRecords.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+    }
+    if (searchClienteUsers) {
+        searchClienteUsers.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
+    }
+    if (searchClienteStats) {
+        searchClienteStats.style.display = currentUserRole === 'superadmin' ? 'inline-block' : 'none';
     }
 }
 
@@ -761,6 +774,10 @@ function setupEventListeners() {
         elements.rewardsClientFilter.addEventListener('change', () => {
             renderAdminRewardsView(currentAdminRewardsUsersData);
         });
+    }
+    const searchRewardsClient = document.getElementById('searchRewardsClient');
+    if (searchRewardsClient && elements.rewardsClientFilter) {
+        setupClientSelectSearch(searchRewardsClient, elements.rewardsClientFilter);
     }
     
     // Event listeners de autenticación
@@ -962,6 +979,9 @@ function setupEventListeners() {
     const filterClienteRecords = document.getElementById('filterClienteRecords');
     const filterClienteUsers = document.getElementById('filterClienteUsers');
     const filterClienteStats = document.getElementById('filterClienteStats');
+    const searchClienteRecords = document.getElementById('searchClienteRecords');
+    const searchClienteUsers = document.getElementById('searchClienteUsers');
+    const searchClienteStats = document.getElementById('searchClienteStats');
     
     if (filterReferencia) {
         filterReferencia.addEventListener('change', (e) => {
@@ -986,6 +1006,16 @@ function setupEventListeners() {
             filterStats();
         });
     }
+
+    if (searchClienteRecords && filterClienteRecords) {
+        setupClientSelectSearch(searchClienteRecords, filterClienteRecords);
+    }
+    if (searchClienteUsers && filterClienteUsers) {
+        setupClientSelectSearch(searchClienteUsers, filterClienteUsers);
+    }
+    if (searchClienteStats && filterClienteStats) {
+        setupClientSelectSearch(searchClienteStats, filterClienteStats);
+    }
     
     if (exportStatsBtn) {
         exportStatsBtn.addEventListener('click', exportStatsToCSV);
@@ -995,6 +1025,7 @@ function setupEventListeners() {
     const refreshProjectionsBtn = document.getElementById('refreshProjectionsBtn');
     const filterClienteProjections = document.getElementById('filterClienteProjections');
     const filterReferenciaProjections = document.getElementById('filterReferenciaProjections');
+    const searchClienteProjections = document.getElementById('searchClienteProjections');
 
     if (refreshProjectionsBtn) {
         refreshProjectionsBtn.addEventListener('click', loadProjections);
@@ -1002,6 +1033,10 @@ function setupEventListeners() {
 
     if (filterClienteProjections) {
         filterClienteProjections.addEventListener('change', loadProjections);
+    }
+
+    if (searchClienteProjections && filterClienteProjections) {
+        setupClientSelectSearch(searchClienteProjections, filterClienteProjections);
     }
 
     if (filterReferenciaProjections) {
@@ -1027,6 +1062,41 @@ function setupEventListeners() {
             }
         }
     });
+}
+
+function applyClientSelectSearch(selectEl, rawQuery) {
+    if (!selectEl) return;
+
+    const query = (rawQuery || '').trim().toUpperCase();
+    const selectedValue = selectEl.value;
+
+    Array.from(selectEl.options).forEach(option => {
+        // Nunca ocultar la opción "Todos"
+        if (!query) {
+            option.hidden = false;
+            return;
+        }
+
+        if (!option.value) {
+            option.hidden = false;
+            return;
+        }
+
+        const optionText = (option.textContent || '').trim().toUpperCase();
+        const matches = optionText.includes(query) || option.value.trim().toUpperCase().includes(query);
+        option.hidden = !matches && option.value !== selectedValue;
+    });
+}
+
+function setupClientSelectSearch(inputEl, selectEl) {
+    if (!inputEl || !selectEl) return;
+
+    const apply = () => {
+        applyClientSelectSearch(selectEl, inputEl.value);
+    };
+
+    inputEl.addEventListener('input', apply);
+    apply();
 }
 
 // ============================================
@@ -1897,6 +1967,9 @@ function renderAdminRewardsView(usersData) {
                 elements.rewardsClientFilter.value = matchedClient || '';
             }
 
+            const searchInput = document.getElementById('searchRewardsClient');
+            applyClientSelectSearch(elements.rewardsClientFilter, searchInput ? searchInput.value : '');
+
             const selectedClient = (elements.rewardsClientFilter.value || '').trim().toUpperCase();
             if (selectedClient) {
                 filteredRows = rows.filter(row => (row.cliente || '').trim().toUpperCase() === selectedClient);
@@ -2654,6 +2727,9 @@ async function loadClientsForProjectionsFilter() {
                 option.textContent = client.nombre;
                 filterClienteProjections.appendChild(option);
             });
+
+            const searchInput = document.getElementById('searchClienteProjections');
+            applyClientSelectSearch(filterClienteProjections, searchInput ? searchInput.value : '');
         }
     } catch (error) {
         console.error('Error al cargar clientes para filtro de proyecciones:', error);
@@ -3067,6 +3143,9 @@ function populateClientesSelectRecords() {
     
     // Restaurar selección
     filterSelect.value = currentValue;
+
+    const searchInput = document.getElementById('searchClienteRecords');
+    applyClientSelectSearch(filterSelect, searchInput ? searchInput.value : '');
 }
 
 /**
@@ -3094,6 +3173,9 @@ function populateClientesSelectUsers() {
     
     // Restaurar selección
     filterSelect.value = currentValue;
+
+    const searchInput = document.getElementById('searchClienteUsers');
+    applyClientSelectSearch(filterSelect, searchInput ? searchInput.value : '');
 }
 
 /**
@@ -3121,6 +3203,9 @@ function populateClientesSelectStats() {
     
     // Restaurar selección
     filterSelect.value = currentValue;
+
+    const searchInput = document.getElementById('searchClienteStats');
+    applyClientSelectSearch(filterSelect, searchInput ? searchInput.value : '');
 }
 
 /**
