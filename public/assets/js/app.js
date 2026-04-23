@@ -433,7 +433,19 @@ async function validateCredentials(usuario, tipo, password) {
             body: JSON.stringify({ usuario, tipo, password })
         });
 
-        const data = await response.json();
+        let data = null;
+        try {
+            data = await response.json();
+        } catch {
+            // Respuesta no-JSON (por ejemplo, 500 con HTML)
+            data = null;
+        }
+
+        if (!response.ok) {
+            const message = (data && data.message) ? data.message : `Error HTTP ${response.status}`;
+            return { success: false, message };
+        }
+
         if (data && data.success) {
             return { 
                 success: true, 
@@ -445,8 +457,9 @@ async function validateCredentials(usuario, tipo, password) {
         return { success: false, message: data && data.message ? data.message : '' };
     } catch (error) {
         console.error('Error validando usuario:', error);
-        showToast('Error al validar usuario', 'error');
-        return { success: false };
+        const message = 'No se pudo conectar al servidor';
+        showToast(message, 'error');
+        return { success: false, message };
     }
 }
 
@@ -799,15 +812,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Inicializar sistema de autenticación
     initAuth();
-    
-    // Inicializar escáner
-    html5QrCode = new Html5Qrcode("reader");
-    
-    // Cargar cámaras disponibles
-    await loadCameras();
-    
-    // Configurar event listeners
+
+    // Configurar event listeners (incluye login). Debe ejecutarse aunque el escáner falle.
     setupEventListeners();
+    
+    // Inicializar escáner (no debe romper el flujo de login si Html5Qrcode no carga)
+    try {
+        if (typeof Html5Qrcode === 'undefined') {
+            console.warn('⚠️ Html5Qrcode no está disponible. Escáner deshabilitado.');
+            if (elements.startBtn) elements.startBtn.disabled = true;
+            if (elements.stopBtn) elements.stopBtn.disabled = true;
+        } else {
+            html5QrCode = new Html5Qrcode("reader");
+            await loadCameras();
+        }
+    } catch (error) {
+        console.warn('⚠️ Error inicializando escáner, se continuará sin escaneo:', error);
+        html5QrCode = null;
+        if (elements.startBtn) elements.startBtn.disabled = true;
+        if (elements.stopBtn) elements.stopBtn.disabled = true;
+    }
     
     // Cargar datos iniciales si está autenticado
     if (currentUserRole) {
@@ -1273,6 +1297,10 @@ function setupClientSelectSearch(inputEl, selectEl) {
  */
 async function loadCameras() {
     try {
+        if (typeof Html5Qrcode === 'undefined') {
+            console.warn('Html5Qrcode no disponible: no se pueden cargar cámaras');
+            return;
+        }
         const devices = await Html5Qrcode.getCameras();
         
         if (devices && devices.length > 0) {
@@ -1316,6 +1344,10 @@ function handleCameraChange(event) {
 async function startScanning() {
     if (currentUserRole === 'superadmin') {
         showToast('El superadmin no tiene permiso para escanear', 'warning');
+        return;
+    }
+    if (!html5QrCode) {
+        showToast('Escáner no disponible', 'warning');
         return;
     }
     if (!selectedCameraId) {
@@ -1377,6 +1409,13 @@ async function stopScanning() {
     try {
         if (!isScanning) {
             return; // Ya está detenido
+        }
+
+        if (!html5QrCode) {
+            isScanning = false;
+            updateScannerUI(false);
+            updateStatus('Escáner detenido', 'stopped');
+            return;
         }
         
         await html5QrCode.stop();
