@@ -178,21 +178,28 @@ function validateStrongPassword(password) {
   return '';
 }
 
+function normalizeName(name) {
+  return (name || '').toString().trim();
+}
+
 /**
  * Registro de usuario (público)
  * POST /api/register
- * Body: { usuario, password, tipo }
+ * Body: { nombre, correo, password, tipo }
  * Crea usuario como 'mecanico' o 'despacho' en hoja global USUARIOS.
  */
 app.post('/api/register', async (req, res) => {
   try {
-    const { usuario, password, tipo } = req.body;
+    const { nombre, correo, usuario, password, tipo } = req.body;
 
-    if (!usuario || !password) {
-      return res.status(400).json({ success: false, message: 'Correo y contraseña son requeridos' });
+    const normalizedName = normalizeName(nombre);
+    const normalizedEmail = normalizeUser(correo || usuario);
+
+    if (!normalizedName || !normalizedEmail || !password) {
+      return res.status(400).json({ success: false, message: 'Nombre, correo y contraseña son requeridos' });
     }
 
-    if (!isValidEmail(usuario)) {
+    if (!isValidEmail(normalizedEmail)) {
       return res.status(400).json({ success: false, message: 'El usuario debe ser un correo válido' });
     }
 
@@ -207,12 +214,11 @@ app.post('/api/register', async (req, res) => {
     }
 
     const doc = await getGoogleSheet();
-    const normalizedUser = normalizeUser(usuario);
     const globalSheet = await getOrCreateUsersSheet(doc);
 
     // Validar duplicado en hoja global
     const globalRows = await globalSheet.getRows();
-    const existsGlobal = globalRows.some(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+    const existsGlobal = globalRows.some(row => normalizeUser(row.get('USUARIO')) === normalizedEmail);
     if (existsGlobal) {
       return res.status(409).json({ success: false, message: 'El usuario ya existe' });
     }
@@ -222,14 +228,15 @@ app.post('/api/register', async (req, res) => {
     for (const sheet of doc.sheetsByIndex) {
       if (!sheet.title.endsWith('_USUARIOS')) continue;
       const rows = await sheet.getRows();
-      const exists = rows.some(row => normalizeUser(row.get('USUARIO')) === normalizedUser);
+      const exists = rows.some(row => normalizeUser(row.get('USUARIO')) === normalizedEmail);
       if (exists) {
         return res.status(409).json({ success: false, message: 'El usuario ya existe' });
       }
     }
 
     await globalSheet.addRow({
-      'USUARIO': normalizedUser,
+      'NOMBRE': normalizedName,
+      'USUARIO': normalizedEmail,
       'TIPO': normalizedTipo,
       'CONTRASEÑA': password,
       'CLIENTE': ''
@@ -239,6 +246,141 @@ app.post('/api/register', async (req, res) => {
   } catch (error) {
     console.error('Error al registrar usuario:', error);
     return res.status(500).json({ success: false, message: 'Error al registrar usuario' });
+  }
+});
+
+/**
+ * Perfil del usuario (no-superadmin)
+ * GET /api/profile
+ * Headers: x-auth-user, x-auth-password
+ */
+app.get('/api/profile', async (req, res) => {
+  try {
+    const authUser = req.headers['x-auth-user'] || '';
+    const authPassword = req.headers['x-auth-password'] || '';
+
+    if (!authUser || !authPassword) {
+      return res.status(400).json({ success: false, message: 'Credenciales requeridas' });
+    }
+
+    const doc = await getGoogleSheet();
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const tipo = normalizeType(auth.row.get('TIPO'));
+    if (tipo === 'super') {
+      return res.status(403).json({ success: false, message: 'Superadmin no usa este módulo' });
+    }
+
+    const role = tipo === 'administrador'
+      ? 'admin'
+      : (tipo === 'despacho' ? 'dispatch' : 'user');
+
+    return res.json({
+      success: true,
+      data: {
+        nombre: auth.row.get('NOMBRE') || '',
+        correo: normalizeUser(auth.row.get('USUARIO')),
+        tipo,
+        role,
+        cliente: auth.row.get('CLIENTE') || ''
+      }
+    });
+  } catch (error) {
+    console.error('Error al obtener perfil:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener perfil' });
+  }
+});
+
+/**
+ * Actualiza perfil del usuario (no-superadmin)
+ * PUT /api/profile
+ * Headers: x-auth-user, x-auth-password
+ * Body: { nombre?, correo?, password? }
+ */
+app.put('/api/profile', async (req, res) => {
+  try {
+    const authUser = req.headers['x-auth-user'] || '';
+    const authPassword = req.headers['x-auth-password'] || '';
+    const { nombre, correo, password } = req.body || {};
+
+    if (!authUser || !authPassword) {
+      return res.status(400).json({ success: false, message: 'Credenciales requeridas' });
+    }
+
+    const nextName = normalizeName(nombre);
+    const nextEmail = normalizeUser(correo);
+    const nextPassword = (password || '').toString().trim();
+
+    if (!nextName && !nextEmail && !nextPassword) {
+      return res.status(400).json({ success: false, message: 'No hay cambios para guardar' });
+    }
+
+    if (nextEmail && !isValidEmail(nextEmail)) {
+      return res.status(400).json({ success: false, message: 'El correo debe ser válido' });
+    }
+
+    if (nextPassword) {
+      const passwordError = validateStrongPassword(nextPassword);
+      if (passwordError) {
+        return res.status(400).json({ success: false, message: passwordError });
+      }
+    }
+
+    const doc = await getGoogleSheet();
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const tipo = normalizeType(auth.row.get('TIPO'));
+    if (tipo === 'super') {
+      return res.status(403).json({ success: false, message: 'Superadmin no usa este módulo' });
+    }
+
+    const currentEmail = normalizeUser(auth.row.get('USUARIO'));
+    const emailToSet = nextEmail || currentEmail;
+
+    if (emailToSet !== currentEmail) {
+      const exists = await userExistsAcrossSheets(doc, emailToSet);
+      if (exists) {
+        return res.status(409).json({ success: false, message: 'El correo ya está en uso' });
+      }
+    }
+
+    // Actualizar la fila encontrada
+    if (nextName) auth.row.set('NOMBRE', nextName);
+    auth.row.set('USUARIO', emailToSet);
+    if (nextPassword) auth.row.set('CONTRASEÑA', nextPassword);
+    await auth.row.save();
+
+    // Mantener sincronizada la hoja global USUARIOS si también existe
+    const globalSheet = await getOrCreateUsersSheet(doc);
+    if (auth.sheet.title !== globalSheet.title) {
+      const rows = await globalSheet.getRows();
+      const globalRow = rows.find(row => normalizeUser(row.get('USUARIO')) === currentEmail);
+      if (globalRow) {
+        if (nextName) globalRow.set('NOMBRE', nextName);
+        globalRow.set('USUARIO', emailToSet);
+        if (nextPassword) globalRow.set('CONTRASEÑA', nextPassword);
+        // Si cambiamos el correo, preservar el resto de datos
+        await globalRow.save();
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Perfil actualizado correctamente',
+      data: {
+        nombre: nextName || auth.row.get('NOMBRE') || '',
+        correo: emailToSet
+      }
+    });
+  } catch (error) {
+    console.error('Error al actualizar perfil:', error);
+    res.status(500).json({ success: false, message: 'Error al actualizar perfil' });
   }
 });
 
@@ -665,13 +807,23 @@ async function initializeRecordsSheet(sheet) {
 async function initializeUsersSheet(sheet) {
   await sheet.loadHeaderRow();
 
+  const requiredHeaders = [
+    'NOMBRE',
+    'USUARIO',
+    'TIPO',
+    'CONTRASEÑA',
+    'CLIENTE'
+  ];
+
   if (!sheet.headerValues || sheet.headerValues.length === 0) {
-    await sheet.setHeaderRow([
-      'USUARIO',
-      'TIPO',
-      'CONTRASEÑA',
-      'CLIENTE'
-    ]);
+    await sheet.setHeaderRow(requiredHeaders);
+    return;
+  }
+
+  const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+  if (missingHeaders.length > 0) {
+    await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
+    await sheet.loadHeaderRow();
   }
 }
 
@@ -1143,6 +1295,7 @@ async function getOrCreateClientUsersSheet(doc, cliente) {
     sheet = await doc.addSheet({
       title: sheetTitle,
       headerValues: [
+        'NOMBRE',
         'USUARIO',
         'TIPO',
         'CONTRASEÑA',
@@ -1152,8 +1305,52 @@ async function getOrCreateClientUsersSheet(doc, cliente) {
     console.log(`✅ Creada hoja de usuarios para cliente: ${sheetTitle}`);
   }
 
-  await sheet.loadHeaderRow();
+  await initializeUsersSheet(sheet);
   return sheet;
+}
+
+async function findUserRowByCredentials(doc, usuario, password) {
+  const normalizedUser = normalizeUser(usuario);
+  if (!normalizedUser || !password) return null;
+
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  let userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
+  if (userRow) {
+    return { sheet: globalSheet, row: userRow };
+  }
+
+  await doc.loadInfo();
+  for (const sheet of doc.sheetsByIndex) {
+    if (!sheet.title.endsWith('_USUARIOS')) continue;
+    userRow = await validateUserCredentials(sheet, normalizedUser, password);
+    if (userRow) {
+      return { sheet, row: userRow };
+    }
+  }
+
+  return null;
+}
+
+async function userExistsAcrossSheets(doc, usuario) {
+  const normalizedUser = normalizeUser(usuario);
+  if (!normalizedUser) return false;
+
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  const globalRows = await globalSheet.getRows();
+  if (globalRows.some(row => normalizeUser(row.get('USUARIO')) === normalizedUser)) {
+    return true;
+  }
+
+  await doc.loadInfo();
+  for (const sheet of doc.sheetsByIndex) {
+    if (!sheet.title.endsWith('_USUARIOS')) continue;
+    const rows = await sheet.getRows();
+    if (rows.some(row => normalizeUser(row.get('USUARIO')) === normalizedUser)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

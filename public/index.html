@@ -74,6 +74,7 @@
                 <button class="menu-item" data-view="recordsView">Registros</button>
                 <button class="menu-item" data-view="rewardsView">Recompensas</button>
                 <button class="menu-item" data-view="statsView">Estadísticas</button>
+                <button class="menu-item" data-view="profileView">Mi perfil</button>
                 <button class="menu-item" data-view="usersView">Usuarios</button>
                 <button class="menu-item" data-view="clientsView">Clientes</button>
                 <button class="menu-item" data-view="projectionsView">Proyecciones</button>
@@ -344,6 +345,38 @@
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vista: Mi perfil (no-superadmin) -->
+            <section id="profileView" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>👤 Mi perfil</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="password-form">
+                            <input type="text" id="profileName" placeholder="Nombre" class="input-password" autocomplete="name">
+                            <input type="email" id="profileEmail" placeholder="Correo" class="input-password" autocomplete="email" style="margin-top:.5rem;">
+                            <div class="password-container" style="margin-top:.5rem;">
+                                <input type="password" id="profilePassword" placeholder="Nueva contraseña (opcional)" class="input-password" autocomplete="new-password">
+                                <button type="button" class="toggle-password-btn" data-target="profilePassword">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <small style="display:block; margin-top:.25rem; opacity:.8;">
+                                Para cambiar contraseña: mínimo 9 caracteres, con mayúscula, minúscula y carácter especial.
+                            </small>
+                            <div class="password-actions" style="margin-top:.75rem;">
+                                <button id="refreshProfileBtn" type="button" class="btn btn-secondary">Recargar</button>
+                                <button id="saveProfileBtn" type="button" class="btn btn-primary">Guardar cambios</button>
+                            </div>
+                            <div id="profileError" class="error-message hidden"></div>
                         </div>
                     </div>
                 </div>
@@ -748,6 +781,7 @@
                     </div>
 
                     <form id="registerForm" class="password-form hidden" autocomplete="on">
+                        <input type="text" id="registerName" placeholder="Nombre" class="input-password" autocomplete="name">
                         <input type="email" id="registerEmail" placeholder="Correo" class="input-password" autocomplete="username">
                         <select id="registerType" class="input-filter" style="margin-top:.5rem;">
                             <option value="despacho">Despacho</option>

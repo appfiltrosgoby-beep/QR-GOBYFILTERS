@@ -79,6 +79,7 @@ const elements = {
     loginError: document.getElementById('loginError'),
     showRegisterBtn: document.getElementById('showRegisterBtn'),
     registerForm: document.getElementById('registerForm'),
+    registerName: document.getElementById('registerName'),
     registerEmail: document.getElementById('registerEmail'),
     registerType: document.getElementById('registerType'),
     registerPassword: document.getElementById('registerPassword'),
@@ -104,6 +105,12 @@ const elements = {
     passwordError: document.getElementById('passwordError'),
     logoutBtn: document.getElementById('logoutBtn'),
     currentRole: document.getElementById('currentRole'),
+    profileName: document.getElementById('profileName'),
+    profileEmail: document.getElementById('profileEmail'),
+    profilePassword: document.getElementById('profilePassword'),
+    saveProfileBtn: document.getElementById('saveProfileBtn'),
+    refreshProfileBtn: document.getElementById('refreshProfileBtn'),
+    profileError: document.getElementById('profileError'),
     newUserUsername: document.getElementById('newUserUsername'),
     newUserPassword: document.getElementById('newUserPassword'),
     newUserClient: document.getElementById('newUserClient'),
@@ -210,6 +217,7 @@ function clearUnifiedLoginForm() {
 }
 
 function clearRegisterForm() {
+    if (elements.registerName) elements.registerName.value = '';
     if (elements.registerEmail) elements.registerEmail.value = '';
     if (elements.registerType) elements.registerType.value = 'despacho';
     if (elements.registerPassword) elements.registerPassword.value = '';
@@ -233,7 +241,7 @@ function showRegisterForm() {
     if (elements.registerForm) elements.registerForm.classList.remove('hidden');
     if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'none';
     if (elements.forgotPasswordInfo) elements.forgotPasswordInfo.classList.add('hidden');
-    if (elements.registerEmail) elements.registerEmail.focus();
+    if (elements.registerName) elements.registerName.focus();
 }
 
 function showForgotPassword() {
@@ -259,13 +267,14 @@ function validateStrongPassword(password) {
 }
 
 async function registerUser() {
+    const nombre = (elements.registerName?.value || '').trim();
     const email = (elements.registerEmail?.value || '').trim();
     const tipo = (elements.registerType?.value || 'despacho').trim();
     const password = (elements.registerPassword?.value || '').trim();
 
-    if (!email || !password) {
+    if (!nombre || !email || !password) {
         if (elements.registerError) {
-            elements.registerError.textContent = 'Correo y contraseña son requeridos';
+            elements.registerError.textContent = 'Nombre, correo y contraseña son requeridos';
             elements.registerError.classList.remove('hidden');
         }
         return;
@@ -292,7 +301,7 @@ async function registerUser() {
         const response = await fetch(`${API_URL}/api/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuario: email, password, tipo })
+            body: JSON.stringify({ nombre, correo: email, password, tipo })
         });
         const data = await response.json();
 
@@ -315,6 +324,126 @@ async function registerUser() {
             elements.registerError.textContent = 'Error al registrar usuario';
             elements.registerError.classList.remove('hidden');
         }
+    }
+}
+
+function setProfileError(message) {
+    if (!elements.profileError) return;
+    elements.profileError.textContent = message || '';
+    if (message) {
+        elements.profileError.classList.remove('hidden');
+    } else {
+        elements.profileError.classList.add('hidden');
+    }
+}
+
+async function loadProfile() {
+    setProfileError('');
+    if (!currentUsername || !currentUserPassword) {
+        setProfileError('Debes iniciar sesión para ver tu perfil');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/profile`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data?.success) {
+            setProfileError(data?.message || 'No se pudo cargar el perfil');
+            return;
+        }
+
+        if (elements.profileName) {
+            elements.profileName.value = (data.data?.nombre || '').toString();
+        }
+        if (elements.profileEmail) {
+            elements.profileEmail.value = (data.data?.correo || currentUsername || '').toString();
+        }
+        if (elements.profilePassword) {
+            elements.profilePassword.value = '';
+        }
+    } catch (error) {
+        console.error('Error cargando perfil:', error);
+        setProfileError('Error al cargar el perfil');
+    }
+}
+
+async function saveProfile() {
+    setProfileError('');
+    if (!currentUsername || !currentUserPassword) {
+        setProfileError('Debes iniciar sesión para guardar cambios');
+        return;
+    }
+
+    const nombre = (elements.profileName?.value || '').trim();
+    const correo = (elements.profileEmail?.value || '').trim();
+    const password = (elements.profilePassword?.value || '').trim();
+
+    if (!nombre || !correo) {
+        setProfileError('Nombre y correo son requeridos');
+        return;
+    }
+
+    if (!isValidEmail(correo)) {
+        setProfileError('El correo debe ser válido');
+        return;
+    }
+
+    if (password) {
+        const passwordError = validateStrongPassword(password);
+        if (passwordError) {
+            setProfileError(passwordError);
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/profile`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            },
+            body: JSON.stringify({ nombre, correo, password })
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data?.success) {
+            setProfileError(data?.message || 'No se pudo actualizar el perfil');
+            return;
+        }
+
+        const updatedEmail = (data.data?.correo || correo).trim();
+        const updatedName = (data.data?.nombre || nombre).trim();
+
+        // Actualizar sesión local
+        if (updatedEmail && updatedEmail !== currentUsername) {
+            currentUsername = updatedEmail;
+            localStorage.setItem('userName', updatedEmail);
+        }
+        if (password) {
+            currentUserPassword = password;
+            sessionStorage.setItem('userPassword', password);
+        }
+
+        // Guardar nombre para uso futuro (sin romper el esquema actual)
+        localStorage.setItem('userDisplayName', updatedName);
+
+        if (elements.profilePassword) elements.profilePassword.value = '';
+
+        applyRolePermissions();
+        showToast('✅ Perfil actualizado', 'success');
+    } catch (error) {
+        console.error('Error guardando perfil:', error);
+        setProfileError('Error al actualizar el perfil');
     }
 }
 
@@ -515,6 +644,9 @@ function applyRolePermissions() {
         : roleText;
     elements.currentRole.textContent = displayText;
     elements.currentRole.className = `role-badge ${currentUserRole}`;
+
+    // Mi perfil: disponible para todos excepto superadmin
+    setViewButtonVisibility('profileView', currentUserRole !== 'superadmin');
     
     if (currentUserRole === 'user' && currentUserType === 'mecanico') {
         // Usuario mecánico: ocultar estadísticas, usuarios y clientes, mostrar escáner sin selector
@@ -642,6 +774,10 @@ function applyRolePermissions() {
             document.getElementById('recordsView').classList.contains('active')) {
             switchView('statsView');
         }
+
+        if (document.getElementById('profileView')?.classList.contains('active')) {
+            switchView('statsView');
+        }
         
         // Mostrar formulario de crear usuarios (solo superadmin)
         const userForm = document.querySelector('.user-form');
@@ -696,6 +832,7 @@ function switchView(viewId) {
     // Mecánicos y despacho solo pueden acceder a: scannerView
     const superadminOnlyViews = ['clientsView', 'statsView'];
     const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
+    const nonSuperadminViews = ['profileView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
     const isMecanico = currentUserType === 'mecanico';
@@ -707,6 +844,13 @@ function switchView(viewId) {
         showToast('No tienes permiso para acceder a esta sección', 'error');
         // Redirigir a la vista permitida por defecto
         viewId = (isMecanico || isDespacho) ? 'scannerView' : 'statsView';
+    }
+
+    // Bloquear acceso a vistas solo no-superadmin
+    if (nonSuperadminViews.includes(viewId) && isSuperadmin) {
+        console.warn(`⚠️ Acceso denegado: El superadmin ${currentUsername} intentó acceder a ${viewId}`);
+        showToast('No tienes permiso para acceder a esta sección', 'error');
+        viewId = 'statsView';
     }
     
     // Bloquear acceso a vistas de admin/superadmin
@@ -752,6 +896,8 @@ function switchView(viewId) {
         loadClients();
     } else if (viewId === 'projectionsView') {
         loadProjections();
+    } else if (viewId === 'profileView') {
+        loadProfile();
     }
 }
 
@@ -909,6 +1055,13 @@ function setupEventListeners() {
         elements.submitRegisterBtn.addEventListener('click', registerUser);
     }
 
+    if (elements.refreshProfileBtn) {
+        elements.refreshProfileBtn.addEventListener('click', loadProfile);
+    }
+    if (elements.saveProfileBtn) {
+        elements.saveProfileBtn.addEventListener('click', saveProfile);
+    }
+
     if (elements.forgotPasswordBtn) {
         elements.forgotPasswordBtn.addEventListener('click', showForgotPassword);
     }
@@ -959,6 +1112,19 @@ function setupEventListeners() {
             }
         });
         elements.registerEmail.addEventListener('input', () => {
+            if (!elements.registerError) return;
+            elements.registerError.textContent = '';
+            elements.registerError.classList.add('hidden');
+        });
+    }
+
+    if (elements.registerName) {
+        elements.registerName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                registerUser();
+            }
+        });
+        elements.registerName.addEventListener('input', () => {
             if (!elements.registerError) return;
             elements.registerError.textContent = '';
             elements.registerError.classList.add('hidden');
