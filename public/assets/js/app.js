@@ -107,6 +107,7 @@ const elements = {
     currentRole: document.getElementById('currentRole'),
     profileName: document.getElementById('profileName'),
     profileEmail: document.getElementById('profileEmail'),
+    profileCurrentPassword: document.getElementById('profileCurrentPassword'),
     profilePassword: document.getElementById('profilePassword'),
     saveProfileBtn: document.getElementById('saveProfileBtn'),
     refreshProfileBtn: document.getElementById('refreshProfileBtn'),
@@ -369,6 +370,9 @@ async function loadProfile() {
         if (elements.profilePassword) {
             elements.profilePassword.value = '';
         }
+        if (elements.profileCurrentPassword) {
+            elements.profileCurrentPassword.value = '';
+        }
     } catch (error) {
         console.error('Error cargando perfil:', error);
         setProfileError('Error al cargar el perfil');
@@ -384,6 +388,7 @@ async function saveProfile() {
 
     const nombre = (elements.profileName?.value || '').trim();
     const correo = (elements.profileEmail?.value || '').trim();
+    const currentPassword = (elements.profileCurrentPassword?.value || '').trim();
     const password = (elements.profilePassword?.value || '').trim();
 
     if (!nombre || !correo) {
@@ -397,6 +402,10 @@ async function saveProfile() {
     }
 
     if (password) {
+        if (!currentPassword) {
+            setProfileError('Para cambiar la contraseña, confirma la contraseña actual');
+            return;
+        }
         const passwordError = validateStrongPassword(password);
         if (passwordError) {
             setProfileError(passwordError);
@@ -412,7 +421,7 @@ async function saveProfile() {
                 'x-auth-user': currentUsername,
                 'x-auth-password': currentUserPassword
             },
-            body: JSON.stringify({ nombre, correo, password })
+            body: JSON.stringify({ nombre, correo, currentPassword, password })
         });
         const data = await response.json();
 
@@ -438,6 +447,7 @@ async function saveProfile() {
         localStorage.setItem('userDisplayName', updatedName);
 
         if (elements.profilePassword) elements.profilePassword.value = '';
+        if (elements.profileCurrentPassword) elements.profileCurrentPassword.value = '';
 
         applyRolePermissions();
         showToast('✅ Perfil actualizado', 'success');

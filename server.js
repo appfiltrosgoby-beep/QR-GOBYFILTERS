@@ -304,7 +304,7 @@ app.put('/api/profile', async (req, res) => {
   try {
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
-    const { nombre, correo, password } = req.body || {};
+    const { nombre, correo, currentPassword, password } = req.body || {};
 
     if (!authUser || !authPassword) {
       return res.status(400).json({ success: false, message: 'Credenciales requeridas' });
@@ -313,6 +313,7 @@ app.put('/api/profile', async (req, res) => {
     const nextName = normalizeName(nombre);
     const nextEmail = normalizeUser(correo);
     const nextPassword = (password || '').toString().trim();
+    const currentPasswordValue = (currentPassword || '').toString().trim();
 
     if (!nextName && !nextEmail && !nextPassword) {
       return res.status(400).json({ success: false, message: 'No hay cambios para guardar' });
@@ -323,6 +324,14 @@ app.put('/api/profile', async (req, res) => {
     }
 
     if (nextPassword) {
+      if (!currentPasswordValue) {
+        return res.status(400).json({ success: false, message: 'Para cambiar la contraseña, confirma la contraseña actual' });
+      }
+
+      if (currentPasswordValue !== authPassword) {
+        return res.status(400).json({ success: false, message: 'La contraseña actual no coincide' });
+      }
+
       const passwordError = validateStrongPassword(nextPassword);
       if (passwordError) {
         return res.status(400).json({ success: false, message: passwordError });

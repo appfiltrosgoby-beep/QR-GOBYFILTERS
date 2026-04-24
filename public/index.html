@@ -361,6 +361,15 @@
                             <input type="text" id="profileName" placeholder="Nombre" class="input-password" autocomplete="name">
                             <input type="email" id="profileEmail" placeholder="Correo" class="input-password" autocomplete="email" style="margin-top:.5rem;">
                             <div class="password-container" style="margin-top:.5rem;">
+                                <input type="password" id="profileCurrentPassword" placeholder="Contraseña actual (requerida para cambiar)" class="input-password" autocomplete="current-password">
+                                <button type="button" class="toggle-password-btn" data-target="profileCurrentPassword">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="password-container" style="margin-top:.5rem;">
                                 <input type="password" id="profilePassword" placeholder="Nueva contraseña (opcional)" class="input-password" autocomplete="new-password">
                                 <button type="button" class="toggle-password-btn" data-target="profilePassword">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
