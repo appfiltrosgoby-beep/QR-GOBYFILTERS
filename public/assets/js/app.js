@@ -81,7 +81,7 @@ const elements = {
     registerForm: document.getElementById('registerForm'),
     registerName: document.getElementById('registerName'),
     registerEmail: document.getElementById('registerEmail'),
-    registerType: document.getElementById('registerType'),
+    registerClient: document.getElementById('registerClient'),
     registerPassword: document.getElementById('registerPassword'),
     submitRegisterBtn: document.getElementById('submitRegisterBtn'),
     cancelRegisterBtn: document.getElementById('cancelRegisterBtn'),
@@ -220,12 +220,43 @@ function clearUnifiedLoginForm() {
 function clearRegisterForm() {
     if (elements.registerName) elements.registerName.value = '';
     if (elements.registerEmail) elements.registerEmail.value = '';
-    if (elements.registerType) elements.registerType.value = 'despacho';
+    if (elements.registerClient) elements.registerClient.value = '';
     if (elements.registerPassword) elements.registerPassword.value = '';
     if (elements.registerError) {
         elements.registerError.textContent = '';
         elements.registerError.classList.add('hidden');
     }
+}
+
+function normalizeClientValue(value) {
+    return (value || '')
+        .toString()
+        .trim()
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+async function resolveClientName(inputValue) {
+    const target = normalizeClientValue(inputValue);
+    if (!target) {
+        return { ok: false, message: 'La empresa/cliente es requerida' };
+    }
+
+    const response = await fetch(`${API_URL}/api/clients`);
+    const data = await response.json();
+    if (!response.ok || !data?.success) {
+        return { ok: false, message: data?.error || data?.message || 'No se pudo validar el cliente' };
+    }
+
+    const clients = Array.isArray(data.data) ? data.data : [];
+    const match = clients.find(client => normalizeClientValue(client?.nombre) === target);
+    if (!match || !match.nombre) {
+        return { ok: false, message: `Empresa/cliente no encontrado: ${target}` };
+    }
+
+    return { ok: true, clientName: match.nombre };
 }
 
 function showLoginForm() {
@@ -270,12 +301,37 @@ function validateStrongPassword(password) {
 async function registerUser() {
     const nombre = (elements.registerName?.value || '').trim();
     const email = (elements.registerEmail?.value || '').trim();
-    const tipo = (elements.registerType?.value || 'despacho').trim();
+    const clientInput = elements.registerClient?.value || '';
     const password = (elements.registerPassword?.value || '').trim();
 
     if (!nombre || !email || !password) {
         if (elements.registerError) {
             elements.registerError.textContent = 'Nombre, correo y contraseña son requeridos';
+            elements.registerError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    // Forzar mayúsculas visual y en valor
+    if (elements.registerClient) {
+        elements.registerClient.value = (elements.registerClient.value || '').toUpperCase();
+    }
+
+    let resolvedClient;
+    try {
+        resolvedClient = await resolveClientName(clientInput);
+    } catch (error) {
+        console.error('Error validando cliente para registro:', error);
+        if (elements.registerError) {
+            elements.registerError.textContent = 'No se pudo validar la empresa/cliente. Intenta de nuevo.';
+            elements.registerError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (!resolvedClient.ok) {
+        if (elements.registerError) {
+            elements.registerError.textContent = resolvedClient.message;
             elements.registerError.classList.remove('hidden');
         }
         return;
@@ -302,7 +358,7 @@ async function registerUser() {
         const response = await fetch(`${API_URL}/api/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre, correo: email, password, tipo })
+            body: JSON.stringify({ nombre, correo: email, password, cliente: resolvedClient.clientName })
         });
         const data = await response.json();
 
@@ -1135,6 +1191,21 @@ function setupEventListeners() {
             }
         });
         elements.registerName.addEventListener('input', () => {
+            if (!elements.registerError) return;
+            elements.registerError.textContent = '';
+            elements.registerError.classList.add('hidden');
+        });
+    }
+
+    if (elements.registerClient) {
+        elements.registerClient.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                registerUser();
+            }
+        });
+        elements.registerClient.addEventListener('input', () => {
+            // Forzar mayúsculas mientras escribe
+            elements.registerClient.value = (elements.registerClient.value || '').toUpperCase();
             if (!elements.registerError) return;
             elements.registerError.textContent = '';
             elements.registerError.classList.add('hidden');

@@ -185,18 +185,20 @@ function normalizeName(name) {
 /**
  * Registro de usuario (público)
  * POST /api/register
- * Body: { nombre, correo, password, tipo }
- * Crea usuario como 'mecanico' o 'despacho' en hoja global USUARIOS.
+ * Body: { nombre, correo, password, cliente }
+ * Crea usuario en hoja global USUARIOS con cliente asociado.
  */
 app.post('/api/register', async (req, res) => {
   try {
-    const { nombre, correo, usuario, password, tipo } = req.body;
+    const { nombre, correo, usuario, password, cliente } = req.body;
 
     const normalizedName = normalizeName(nombre);
     const normalizedEmail = normalizeUser(correo || usuario);
 
-    if (!normalizedName || !normalizedEmail || !password) {
-      return res.status(400).json({ success: false, message: 'Nombre, correo y contraseña son requeridos' });
+    const normalizedClientInput = normalizeClient(cliente || '');
+
+    if (!normalizedName || !normalizedEmail || !password || !normalizedClientInput) {
+      return res.status(400).json({ success: false, message: 'Nombre, correo, empresa y contraseña son requeridos' });
     }
 
     if (!isValidEmail(normalizedEmail)) {
@@ -208,12 +210,23 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, message: passwordError });
     }
 
-    const normalizedTipo = normalizeType(tipo || 'despacho');
-    if (!['mecanico', 'despacho'].includes(normalizedTipo)) {
-      return res.status(400).json({ success: false, message: 'Tipo inválido para registro' });
-    }
+    // Tipo por defecto para registros públicos (el rol despacho/admin se gestiona por administradores)
+    const normalizedTipo = 'mecanico';
 
     const doc = await getGoogleSheet();
+
+    // Validar que el cliente exista (los clientes se manejan en la hoja CLIENTES)
+    const clientsSheet = await getOrCreateClientsSheet(doc);
+    const clientsRows = await clientsSheet.getRows();
+    const matchedClientRow = clientsRows.find(row => normalizeClient(row.get('NOMBRE') || '') === normalizedClientInput);
+    if (!matchedClientRow) {
+      return res.status(400).json({
+        success: false,
+        message: `Empresa/cliente no encontrado: ${normalizedClientInput}`
+      });
+    }
+    const canonicalClientName = (matchedClientRow.get('NOMBRE') || '').toString().trim() || normalizedClientInput;
+
     const globalSheet = await getOrCreateUsersSheet(doc);
 
     // Validar duplicado en hoja global
@@ -239,7 +252,7 @@ app.post('/api/register', async (req, res) => {
       'USUARIO': normalizedEmail,
       'TIPO': normalizedTipo,
       'CONTRASEÑA': password,
-      'CLIENTE': ''
+      'CLIENTE': canonicalClientName
     });
 
     return res.json({ success: true, message: 'Usuario registrado correctamente' });
@@ -2170,7 +2183,7 @@ app.post('/api/save-qr', async (req, res) => {
         const rewardSummary = await creditRewardPoints(
           doc,
           userEmail || existingGlobalRecord.get('NOMBRE_INSTALADOR') || 'usuario',
-          existingGlobalRecord.get('NOMBRE_INSTALADOR') || userEmail || 'Usuario',
+          userEmail || existingGlobalRecord.get('NOMBRE_INSTALADOR') || 'Usuario',
           1,
           {
             referencia,
@@ -2944,7 +2957,9 @@ app.post('/api/rewards/redeem', async (req, res) => {
     }
 
     const doc = await getGoogleSheet();
-    const result = await redeemRewardPoints(doc, identifier, rewardName, parsedPoints, {
+    // Nota: el 3er parámetro es el nombre a mostrar del usuario en la hoja de recompensas.
+    // No debe ser el nombre del premio; dejamos vacío para conservar el nombre existente.
+    const result = await redeemRewardPoints(doc, identifier, '', parsedPoints, {
       referencia,
       serial,
       descripcion: `Canje de ${rewardName}`
