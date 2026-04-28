@@ -3398,6 +3398,8 @@ function displayStats(stats) {
     
     elements.totalScans.textContent = stats.total;
     elements.todayScans.textContent = stats.today;
+
+    const totalStatsCount = Number.isFinite(stats.total) ? stats.total : (parseInt(stats.total || '0', 10) || 0);
     
     // Mostrar el total de registros
     const totalCountElement = document.getElementById('totalCount');
@@ -3415,14 +3417,14 @@ function displayStats(stats) {
     console.log('📈 Estadísticas calculadas:', statsData);
     
     elements.statsContainer.innerHTML = statsData.map(stat => {
-        const percentage = stats.total > 0 ? ((stat.count / stats.total) * 100).toFixed(1) : 0;
+        const percentage = totalStatsCount > 0 ? ((stat.count / totalStatsCount) * 100).toFixed(1) : 0;
         
         return `
             <div class="stat-card">
                 <div class="stat-icon">${stat.emoji}</div>
                 <div class="stat-info">
                     <div class="stat-type">${stat.label}</div>
-                    <div class="stat-count">${stat.count}</div>
+                    <div class="stat-count">${stat.count} / ${totalStatsCount}</div>
                     <div class="stat-percentage">${percentage}%</div>
                 </div>
                 <div class="stat-bar">
