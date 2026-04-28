@@ -304,9 +304,9 @@ async function registerUser() {
     const clientInput = elements.registerClient?.value || '';
     const password = (elements.registerPassword?.value || '').trim();
 
-    if (!nombre || !email || !password) {
+    if (!nombre || !email || !password || !clientInput.trim()) {
         if (elements.registerError) {
-            elements.registerError.textContent = 'Nombre, correo y contraseña son requeridos';
+            elements.registerError.textContent = 'Nombre, correo, empresa y contraseña son requeridos';
             elements.registerError.classList.remove('hidden');
         }
         return;

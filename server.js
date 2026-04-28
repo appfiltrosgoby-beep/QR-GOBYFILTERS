@@ -195,7 +195,7 @@ app.post('/api/register', async (req, res) => {
     const normalizedName = normalizeName(nombre);
     const normalizedEmail = normalizeUser(correo || usuario);
 
-    const normalizedClientInput = normalizeClient(cliente || '');
+    const normalizedClientInput = normalizeClientForMatch(cliente || '');
 
     if (!normalizedName || !normalizedEmail || !password || !normalizedClientInput) {
       return res.status(400).json({ success: false, message: 'Nombre, correo, empresa y contraseña son requeridos' });
@@ -218,7 +218,7 @@ app.post('/api/register', async (req, res) => {
     // Validar que el cliente exista (los clientes se manejan en la hoja CLIENTES)
     const clientsSheet = await getOrCreateClientsSheet(doc);
     const clientsRows = await clientsSheet.getRows();
-    const matchedClientRow = clientsRows.find(row => normalizeClient(row.get('NOMBRE') || '') === normalizedClientInput);
+    const matchedClientRow = clientsRows.find(row => normalizeClientForMatch(row.get('NOMBRE') || '') === normalizedClientInput);
     if (!matchedClientRow) {
       return res.status(400).json({
         success: false,
@@ -441,10 +441,10 @@ app.get('/api/users', async (req, res) => {
       }
     } else {
       // Administrador: validar usuarios por columna CLIENTE en hoja global USUARIOS
-      const normalizedAuthClient = normalizeClient(authCliente || '');
+      const normalizedAuthClient = normalizeClientForMatch(authCliente || '');
       const globalRows = await globalSheet.getRows();
       const rows = globalRows.filter(row => {
-        const rowClient = normalizeClient(row.get('CLIENTE') || '');
+        const rowClient = normalizeClientForMatch(row.get('CLIENTE') || '');
         return !!rowClient && rowClient === normalizedAuthClient;
       });
       for (const row of rows) {
@@ -505,7 +505,7 @@ app.post('/api/users', async (req, res) => {
         return res.status(403).json({ success: false, message: 'Administrador no puede crear superadmins' });
       }
       // Admin solo puede crear usuarios de su propio cliente
-      if (normalizedClient !== authCliente) {
+      if (normalizeClientForMatch(normalizedClient) !== normalizeClientForMatch(authCliente)) {
         return res.status(403).json({ success: false, message: 'Solo puede crear usuarios de su cliente' });
       }
     }
@@ -682,7 +682,7 @@ app.post('/api/users', async (req, res) => {
           return res.status(403).json({ success: false, message: 'Administrador no puede crear/editar superadmins' });
         }
         // Admin solo puede editar usuarios de su propio cliente
-        if (normalizedClient !== authCliente) {
+        if (normalizeClientForMatch(normalizedClient) !== normalizeClientForMatch(authCliente)) {
           return res.status(403).json({ success: false, message: 'Solo puede editar usuarios de su cliente' });
         }
       }
@@ -1169,6 +1169,16 @@ function normalizeType(type) {
 
 function normalizeClient(client) {
   return (client || '').trim().toUpperCase();
+}
+
+function normalizeClientForMatch(client) {
+  return (client || '')
+    .toString()
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
 }
 
 function normalizeSheetTitleKey(title) {
