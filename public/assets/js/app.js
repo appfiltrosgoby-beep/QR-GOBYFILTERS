@@ -81,6 +81,7 @@ const elements = {
     registerForm: document.getElementById('registerForm'),
     registerName: document.getElementById('registerName'),
     registerEmail: document.getElementById('registerEmail'),
+    registerPhone: document.getElementById('registerPhone'),
     registerClient: document.getElementById('registerClient'),
     registerPassword: document.getElementById('registerPassword'),
     submitRegisterBtn: document.getElementById('submitRegisterBtn'),
@@ -107,6 +108,7 @@ const elements = {
     currentRole: document.getElementById('currentRole'),
     profileName: document.getElementById('profileName'),
     profileEmail: document.getElementById('profileEmail'),
+    profilePhone: document.getElementById('profilePhone'),
     profileCurrentPassword: document.getElementById('profileCurrentPassword'),
     profilePassword: document.getElementById('profilePassword'),
     saveProfileBtn: document.getElementById('saveProfileBtn'),
@@ -220,6 +222,7 @@ function clearUnifiedLoginForm() {
 function clearRegisterForm() {
     if (elements.registerName) elements.registerName.value = '';
     if (elements.registerEmail) elements.registerEmail.value = '';
+    if (elements.registerPhone) elements.registerPhone.value = '';
     if (elements.registerClient) elements.registerClient.value = '';
     if (elements.registerPassword) elements.registerPassword.value = '';
     if (elements.registerError) {
@@ -301,12 +304,13 @@ function validateStrongPassword(password) {
 async function registerUser() {
     const nombre = (elements.registerName?.value || '').trim();
     const email = (elements.registerEmail?.value || '').trim();
+    const telefono = (elements.registerPhone?.value || '').trim();
     const clientInput = elements.registerClient?.value || '';
     const password = (elements.registerPassword?.value || '').trim();
 
-    if (!nombre || !email || !password || !clientInput.trim()) {
+    if (!nombre || !email || !telefono || !password || !clientInput.trim()) {
         if (elements.registerError) {
-            elements.registerError.textContent = 'Nombre, correo, empresa y contraseña son requeridos';
+            elements.registerError.textContent = 'Nombre, correo, teléfono, empresa y contraseña son requeridos';
             elements.registerError.classList.remove('hidden');
         }
         return;
@@ -358,7 +362,7 @@ async function registerUser() {
         const response = await fetch(`${API_URL}/api/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre, correo: email, password, cliente: resolvedClient.clientName })
+            body: JSON.stringify({ nombre, correo: email, telefono, password, cliente: resolvedClient.clientName })
         });
         const data = await response.json();
 
@@ -423,6 +427,9 @@ async function loadProfile() {
         if (elements.profileEmail) {
             elements.profileEmail.value = (data.data?.correo || currentUsername || '').toString();
         }
+        if (elements.profilePhone) {
+            elements.profilePhone.value = (data.data?.telefono || '').toString();
+        }
         if (elements.profilePassword) {
             elements.profilePassword.value = '';
         }
@@ -444,6 +451,7 @@ async function saveProfile() {
 
     const nombre = (elements.profileName?.value || '').trim();
     const correo = (elements.profileEmail?.value || '').trim();
+    const telefono = (elements.profilePhone?.value || '').trim();
     const currentPassword = (elements.profileCurrentPassword?.value || '').trim();
     const password = (elements.profilePassword?.value || '').trim();
 
@@ -477,7 +485,7 @@ async function saveProfile() {
                 'x-auth-user': currentUsername,
                 'x-auth-password': currentUserPassword
             },
-            body: JSON.stringify({ nombre, correo, currentPassword, password })
+            body: JSON.stringify({ nombre, correo, telefono, currentPassword, password })
         });
         const data = await response.json();
 

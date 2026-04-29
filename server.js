@@ -190,15 +190,16 @@ function normalizeName(name) {
  */
 app.post('/api/register', async (req, res) => {
   try {
-    const { nombre, correo, usuario, password, cliente } = req.body;
+    const { nombre, correo, telefono, usuario, password, cliente } = req.body;
 
     const normalizedName = normalizeName(nombre);
     const normalizedEmail = normalizeUser(correo || usuario);
+    const normalizedPhone = (telefono || '').toString().trim();
 
     const normalizedClientInput = normalizeClientForMatch(cliente || '');
 
-    if (!normalizedName || !normalizedEmail || !password || !normalizedClientInput) {
-      return res.status(400).json({ success: false, message: 'Nombre, correo, empresa y contraseña son requeridos' });
+    if (!normalizedName || !normalizedEmail || !normalizedPhone || !password || !normalizedClientInput) {
+      return res.status(400).json({ success: false, message: 'Nombre, correo, teléfono, empresa y contraseña son requeridos' });
     }
 
     if (!isValidEmail(normalizedEmail)) {
@@ -249,6 +250,7 @@ app.post('/api/register', async (req, res) => {
 
     await globalSheet.addRow({
       'NOMBRE': normalizedName,
+      'TELEFONO': normalizedPhone,
       'USUARIO': normalizedEmail,
       'TIPO': normalizedTipo,
       'CONTRASEÑA': password,
@@ -295,6 +297,7 @@ app.get('/api/profile', async (req, res) => {
       success: true,
       data: {
         nombre: auth.row.get('NOMBRE') || '',
+        telefono: auth.row.get('TELEFONO') || '',
         correo: normalizeUser(auth.row.get('USUARIO')),
         tipo,
         role,
@@ -317,7 +320,7 @@ app.put('/api/profile', async (req, res) => {
   try {
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
-    const { nombre, correo, currentPassword, password } = req.body || {};
+    const { nombre, correo, telefono, currentPassword, password } = req.body || {};
 
     if (!authUser || !authPassword) {
       return res.status(400).json({ success: false, message: 'Credenciales requeridas' });
@@ -325,10 +328,11 @@ app.put('/api/profile', async (req, res) => {
 
     const nextName = normalizeName(nombre);
     const nextEmail = normalizeUser(correo);
+    const nextPhone = (telefono || '').toString().trim();
     const nextPassword = (password || '').toString().trim();
     const currentPasswordValue = (currentPassword || '').toString().trim();
 
-    if (!nextName && !nextEmail && !nextPassword) {
+    if (!nextName && !nextEmail && !nextPhone && !nextPassword) {
       return res.status(400).json({ success: false, message: 'No hay cambios para guardar' });
     }
 
@@ -374,6 +378,7 @@ app.put('/api/profile', async (req, res) => {
 
     // Actualizar la fila encontrada
     if (nextName) auth.row.set('NOMBRE', nextName);
+    if (nextPhone) auth.row.set('TELEFONO', nextPhone);
     auth.row.set('USUARIO', emailToSet);
     if (nextPassword) auth.row.set('CONTRASEÑA', nextPassword);
     await auth.row.save();
@@ -385,6 +390,7 @@ app.put('/api/profile', async (req, res) => {
       const globalRow = rows.find(row => normalizeUser(row.get('USUARIO')) === currentEmail);
       if (globalRow) {
         if (nextName) globalRow.set('NOMBRE', nextName);
+        if (nextPhone) globalRow.set('TELEFONO', nextPhone);
         globalRow.set('USUARIO', emailToSet);
         if (nextPassword) globalRow.set('CONTRASEÑA', nextPassword);
         // Si cambiamos el correo, preservar el resto de datos
@@ -397,6 +403,7 @@ app.put('/api/profile', async (req, res) => {
       message: 'Perfil actualizado correctamente',
       data: {
         nombre: nextName || auth.row.get('NOMBRE') || '',
+        telefono: nextPhone || auth.row.get('TELEFONO') || '',
         correo: emailToSet
       }
     });
@@ -831,6 +838,7 @@ async function initializeUsersSheet(sheet) {
 
   const requiredHeaders = [
     'NOMBRE',
+    'TELEFONO',
     'USUARIO',
     'TIPO',
     'CONTRASEÑA',
@@ -920,6 +928,8 @@ async function getOrCreateUsersSheet(doc) {
     sheet = await doc.addSheet({
       title: USERS_SHEET_TITLE,
       headerValues: [
+        'NOMBRE',
+        'TELEFONO',
         'USUARIO',
         'TIPO',
         'CONTRASEÑA',
