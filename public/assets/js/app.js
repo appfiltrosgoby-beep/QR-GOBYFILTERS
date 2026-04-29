@@ -30,6 +30,7 @@ let scannerRestartTimeout = null; // Timer para reiniciar scanner
 let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admin' | null)
 let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
 let currentAdminRewardsUsersData = []; // Datos de recompensas por usuario para admin/superadmin
+let isProfileEditUnlocked = false; // Controla si el perfil está habilitado para edición
 
 const rewardsCatalog = Array.isArray(window.REWARDS_CATALOG) ? window.REWARDS_CATALOG : [];
 
@@ -111,6 +112,7 @@ const elements = {
     profilePhone: document.getElementById('profilePhone'),
     profileCurrentPassword: document.getElementById('profileCurrentPassword'),
     profilePassword: document.getElementById('profilePassword'),
+    editProfileBtn: document.getElementById('editProfileBtn'),
     saveProfileBtn: document.getElementById('saveProfileBtn'),
     refreshProfileBtn: document.getElementById('refreshProfileBtn'),
     profileError: document.getElementById('profileError'),
@@ -398,8 +400,86 @@ function setProfileError(message) {
     }
 }
 
+function setProfileFieldsLocked(locked) {
+    const shouldLock = !!locked;
+    isProfileEditUnlocked = !shouldLock;
+
+    const fields = [
+        elements.profileName,
+        elements.profileEmail,
+        elements.profilePhone,
+        elements.profileCurrentPassword,
+        elements.profilePassword
+    ];
+
+    fields.forEach(field => {
+        if (!field) return;
+        field.disabled = shouldLock;
+    });
+
+    if (elements.saveProfileBtn) {
+        elements.saveProfileBtn.disabled = shouldLock;
+        elements.saveProfileBtn.style.opacity = shouldLock ? '0.6' : '';
+        elements.saveProfileBtn.style.cursor = shouldLock ? 'not-allowed' : '';
+    }
+
+    if (elements.editProfileBtn) {
+        elements.editProfileBtn.disabled = false;
+    }
+}
+
+async function requestProfileEditUnlock() {
+    setProfileError('');
+
+    if (!currentUsername) {
+        setProfileError('Debes iniciar sesión para editar tu perfil');
+        return;
+    }
+
+    // Si aún está bloqueado, habilitar SOLO el campo de contraseña actual para solicitarla.
+    if (elements.profileCurrentPassword && elements.profileCurrentPassword.disabled) {
+        elements.profileCurrentPassword.disabled = false;
+        elements.profileCurrentPassword.value = '';
+        elements.profileCurrentPassword.focus();
+        setProfileError('Ingresa tu contraseña actual y pulsa "Editar"');
+        return;
+    }
+
+    const passwordAttempt = (elements.profileCurrentPassword?.value || '').trim();
+    if (!passwordAttempt) {
+        setProfileError('Ingresa tu contraseña actual para habilitar edición');
+        elements.profileCurrentPassword?.focus();
+        return;
+    }
+
+    // Validar contraseña contra backend (acepta flujo user o administrador)
+    let result = await validateCredentials(currentUsername, 'user', passwordAttempt);
+    if (!result.success) {
+        result = await validateCredentials(currentUsername, 'administrador', passwordAttempt);
+    }
+
+    if (!result.success) {
+        setProfileError('Contraseña incorrecta');
+        if (elements.profileCurrentPassword) {
+            elements.profileCurrentPassword.value = '';
+            elements.profileCurrentPassword.focus();
+        }
+        return;
+    }
+
+    // Desbloquear todos los campos
+    setProfileFieldsLocked(false);
+    if (elements.editProfileBtn) {
+        elements.editProfileBtn.disabled = true;
+    }
+    showToast('Edición habilitada', 'success');
+}
+
 async function loadProfile() {
     setProfileError('');
+    // Siempre cargar en modo solo lectura
+    setProfileFieldsLocked(true);
+
     if (!currentUsername || !currentUserPassword) {
         setProfileError('Debes iniciar sesión para ver tu perfil');
         return;
@@ -446,6 +526,11 @@ async function saveProfile() {
     setProfileError('');
     if (!currentUsername || !currentUserPassword) {
         setProfileError('Debes iniciar sesión para guardar cambios');
+        return;
+    }
+
+    if (!isProfileEditUnlocked) {
+        setProfileError('Pulsa "Editar" y valida tu contraseña para modificar el perfil');
         return;
     }
 
@@ -515,6 +600,12 @@ async function saveProfile() {
 
         applyRolePermissions();
         showToast('✅ Perfil actualizado', 'success');
+
+        // Volver a modo solo lectura
+        setProfileFieldsLocked(true);
+        if (elements.editProfileBtn) {
+            elements.editProfileBtn.disabled = false;
+        }
     } catch (error) {
         console.error('Error guardando perfil:', error);
         setProfileError('Error al actualizar el perfil');
@@ -1132,6 +1223,9 @@ function setupEventListeners() {
     if (elements.refreshProfileBtn) {
         elements.refreshProfileBtn.addEventListener('click', loadProfile);
     }
+    if (elements.editProfileBtn) {
+        elements.editProfileBtn.addEventListener('click', requestProfileEditUnlock);
+    }
     if (elements.saveProfileBtn) {
         elements.saveProfileBtn.addEventListener('click', saveProfile);
     }
@@ -1176,6 +1270,14 @@ function setupEventListeners() {
             if (!elements.loginError) return;
             elements.loginError.textContent = '';
             elements.loginError.classList.add('hidden');
+        });
+    }
+
+    if (elements.profileCurrentPassword) {
+        elements.profileCurrentPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                requestProfileEditUnlock();
+            }
         });
     }
 
