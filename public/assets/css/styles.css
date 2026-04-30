@@ -433,6 +433,10 @@ body {
     justify-content: space-between;
     padding: 1rem 1.2rem;
     border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--bg-primary);
+    z-index: 1;
 }
 
 .side-menu-header h3 {
@@ -454,6 +458,8 @@ body {
     flex-direction: column;
     padding: 0.8rem;
     gap: 0.4rem;
+    overflow-y: auto;
+    flex: 1;
 }
 
 .menu-item {
