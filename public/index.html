@@ -871,11 +871,27 @@
                 </div>
             </div>
         </div>
+
+        <!-- Modal de Confirmación (Recompensas / Acciones críticas) -->
+        <div id="confirmModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="confirmModalTitle">Confirmar</h2>
+                    <p id="confirmModalMessage">¿Deseas continuar?</p>
+                </div>
+                <div class="modal-body">
+                    <div class="password-actions">
+                        <button id="confirmModalCancelBtn" type="button" class="btn btn-secondary">Cancelar</button>
+                        <button id="confirmModalOkBtn" type="button" class="btn btn-primary">Confirmar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Configuración del catálogo de recompensas -->
     <script src="assets/js/rewards-catalog.js?v=20260420b"></script>
     <!-- Script principal -->
-    <script src="assets/js/app.js?v=20260430a"></script>
+    <script src="assets/js/app.js?v=20260430b"></script>
 </body>
 </html>

@@ -150,8 +150,66 @@ const elements = {
     menuToggleBtn: document.getElementById('menuToggleBtn'),
     menuCloseBtn: document.getElementById('menuCloseBtn'),
     menuOverlay: document.getElementById('menuOverlay'),
-    sideMenu: document.getElementById('sideMenu')
+    sideMenu: document.getElementById('sideMenu'),
+    confirmModal: document.getElementById('confirmModal'),
+    confirmModalTitle: document.getElementById('confirmModalTitle'),
+    confirmModalMessage: document.getElementById('confirmModalMessage'),
+    confirmModalCancelBtn: document.getElementById('confirmModalCancelBtn'),
+    confirmModalOkBtn: document.getElementById('confirmModalOkBtn')
 };
+
+let confirmModalInFlight = false;
+let confirmModalResolve = null;
+
+function closeConfirmModal(result) {
+    if (!elements.confirmModal) {
+        return;
+    }
+
+    elements.confirmModal.style.display = 'none';
+    confirmModalInFlight = false;
+
+    const resolve = confirmModalResolve;
+    confirmModalResolve = null;
+    if (typeof resolve === 'function') {
+        resolve(Boolean(result));
+    }
+}
+
+function showStyledConfirm({ title, message, confirmText = 'Confirmar', cancelText = 'Cancelar' }) {
+    // Fallback si por alguna razón el modal no está en el DOM
+    if (!elements.confirmModal || !elements.confirmModalOkBtn || !elements.confirmModalCancelBtn) {
+        return Promise.resolve(window.confirm(message || '¿Deseas continuar?'));
+    }
+
+    if (confirmModalInFlight) {
+        return Promise.resolve(false);
+    }
+
+    confirmModalInFlight = true;
+
+    if (elements.confirmModalTitle) {
+        elements.confirmModalTitle.textContent = title || 'Confirmar';
+    }
+    if (elements.confirmModalMessage) {
+        elements.confirmModalMessage.textContent = message || '¿Deseas continuar?';
+    }
+    elements.confirmModalOkBtn.textContent = confirmText;
+    elements.confirmModalCancelBtn.textContent = cancelText;
+
+    elements.confirmModal.style.display = 'flex';
+
+    return new Promise(resolve => {
+        confirmModalResolve = resolve;
+
+        const onCancel = () => closeConfirmModal(false);
+        const onOk = () => closeConfirmModal(true);
+
+        // Asegurar handlers limpios por apertura
+        elements.confirmModalCancelBtn.onclick = onCancel;
+        elements.confirmModalOkBtn.onclick = onOk;
+    });
+}
 
 function setViewButtonVisibility(viewId, visible) {
     document.querySelectorAll(`[data-view="${viewId}"]`).forEach(button => {
@@ -2474,11 +2532,17 @@ function renderRewardsCatalog(pointsAvailable) {
     }).join('');
 
     elements.rewardsCatalog.querySelectorAll('.reward-redeem-btn').forEach(button => {
-        button.addEventListener('click', () => {
+        button.addEventListener('click', async () => {
             const rewardName = button.getAttribute('data-reward-name') || '';
             const cost = parseInt(button.getAttribute('data-reward-cost') || '0', 10);
 
-            const confirmed = window.confirm(`¿Confirmas canjear "${rewardName}" por ${cost} puntos?`);
+            const confirmed = await showStyledConfirm({
+                title: 'Confirmar canje',
+                message: `¿Confirmas canjear "${rewardName}" por ${cost} puntos?`,
+                confirmText: 'Canjear',
+                cancelText: 'Cancelar'
+            });
+
             if (!confirmed) {
                 showToast('Canje cancelado', 'info');
                 return;
