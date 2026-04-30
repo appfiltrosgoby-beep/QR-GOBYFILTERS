@@ -2477,6 +2477,13 @@ function renderRewardsCatalog(pointsAvailable) {
         button.addEventListener('click', () => {
             const rewardName = button.getAttribute('data-reward-name') || '';
             const cost = parseInt(button.getAttribute('data-reward-cost') || '0', 10);
+
+            const confirmed = window.confirm(`¿Confirmas canjear "${rewardName}" por ${cost} puntos?`);
+            if (!confirmed) {
+                showToast('Canje cancelado', 'info');
+                return;
+            }
+
             redeemReward({ name: rewardName, cost });
         });
     });
@@ -2708,12 +2715,6 @@ async function redeemReward(reward) {
         const balance = currentRewardsData?.reward?.puntos || 0;
         if (balance < reward.cost) {
             showToast('No tienes suficientes puntos para este premio', 'warning');
-            return;
-        }
-
-        const confirmed = window.confirm(`¿Confirmas canjear "${reward.name}" por ${reward.cost} puntos?`);
-        if (!confirmed) {
-            showToast('Canje cancelado', 'info');
             return;
         }
 
