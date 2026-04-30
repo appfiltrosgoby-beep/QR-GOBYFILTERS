@@ -334,6 +334,7 @@ function showLoginForm() {
     if (elements.registerForm) elements.registerForm.classList.add('hidden');
     if (elements.loginForm) elements.loginForm.classList.remove('hidden');
     if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'inline-flex';
+    if (elements.forgotPasswordBtn) elements.forgotPasswordBtn.style.display = 'inline-flex';
     if (elements.forgotPasswordInfo) elements.forgotPasswordInfo.classList.add('hidden');
     clearRegisterForm();
     if (elements.loginUsername) elements.loginUsername.focus();
@@ -343,6 +344,7 @@ function showRegisterForm() {
     if (elements.loginForm) elements.loginForm.classList.add('hidden');
     if (elements.registerForm) elements.registerForm.classList.remove('hidden');
     if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'none';
+    if (elements.forgotPasswordBtn) elements.forgotPasswordBtn.style.display = 'none';
     if (elements.forgotPasswordInfo) elements.forgotPasswordInfo.classList.add('hidden');
     if (elements.registerName) elements.registerName.focus();
 }
