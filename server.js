@@ -747,6 +747,7 @@ const RECORDS_SHEET_TITLE = 'REGISTROS';
 const USERS_SHEET_TITLE = 'USUARIOS';
 const REWARDS_SHEET_TITLE = 'RECOMPENSAS';
 const REWARDS_HISTORY_SHEET_TITLE = 'RECOMPENSAS_HISTORIAL';
+const ALERTS_SHEET_TITLE = 'ALERTAS';
 const SUPERADMIN_1_EMAIL = process.env.SUPERADMIN_1_EMAIL || '';
 const SUPERADMIN_2_EMAIL = process.env.SUPERADMIN_2_EMAIL || '';
 
@@ -992,6 +993,34 @@ async function initializeRewardsHistorySheet(sheet) {
   }
 }
 
+async function initializeAlertsSheet(sheet) {
+  await sheet.loadHeaderRow();
+
+  const requiredHeaders = [
+    'ID',
+    'DESTINATARIO',
+    'DESTINATARIO_TIPO',
+    'CLIENTE',
+    'EVENTO',
+    'MENSAJE',
+    'DETALLE',
+    'FECHA',
+    'LEIDO',
+    'LEIDO_EN'
+  ];
+
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    await sheet.setHeaderRow(requiredHeaders);
+    return;
+  }
+
+  const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+  if (missingHeaders.length > 0) {
+    await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
+    await sheet.loadHeaderRow();
+  }
+}
+
 async function getOrCreateRewardsSheet(doc) {
   let sheet = doc.sheetsByTitle[REWARDS_SHEET_TITLE];
 
@@ -1036,8 +1065,131 @@ async function getOrCreateRewardsHistorySheet(doc) {
   return sheet;
 }
 
+async function getOrCreateAlertsSheet(doc) {
+  let sheet = doc.sheetsByTitle[ALERTS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: ALERTS_SHEET_TITLE,
+      headerValues: [
+        'ID',
+        'DESTINATARIO',
+        'DESTINATARIO_TIPO',
+        'CLIENTE',
+        'EVENTO',
+        'MENSAJE',
+        'DETALLE',
+        'FECHA',
+        'LEIDO',
+        'LEIDO_EN'
+      ]
+    });
+  }
+
+  await initializeAlertsSheet(sheet);
+  return sheet;
+}
+
 function normalizeRewardIdentifier(identifier) {
   return (identifier || '').trim().toLowerCase();
+}
+
+function generateAlertId() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+async function getAllUsersRows(doc) {
+  const rows = [];
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  rows.push(...(await globalSheet.getRows()));
+
+  await doc.loadInfo();
+  for (const sheet of doc.sheetsByIndex) {
+    if (!sheet.title.endsWith('_USUARIOS')) continue;
+    try {
+      rows.push(...(await sheet.getRows()));
+    } catch (error) {
+      console.warn(`⚠️ No se pudo leer hoja ${sheet.title}:`, error.message);
+    }
+  }
+
+  return rows;
+}
+
+async function createRewardRedemptionAlerts(doc, { identifier, rewardName, points }) {
+  const alertsSheet = await getOrCreateAlertsSheet(doc);
+  const allUserRows = await getAllUsersRows(doc);
+
+  const normalizedIdentifier = normalizeUser(identifier);
+  const redeemerRow = allUserRows.find(row => normalizeUser(row.get('USUARIO')) === normalizedIdentifier) || null;
+  const client = redeemerRow ? (redeemerRow.get('CLIENTE') || '') : '';
+  const clientKey = normalizeClientForMatch(client);
+
+  const recipients = new Map();
+
+  // Admins del mismo cliente
+  if (clientKey) {
+    for (const row of allUserRows) {
+      const tipo = normalizeType(row.get('TIPO'));
+      if (tipo !== 'administrador') continue;
+      if (normalizeClientForMatch(row.get('CLIENTE') || '') !== clientKey) continue;
+      const email = normalizeUser(row.get('USUARIO'));
+      if (email) {
+        recipients.set(email, 'administrador');
+      }
+    }
+  }
+
+  // Superadmins
+  for (const row of allUserRows) {
+    const tipo = normalizeType(row.get('TIPO'));
+    if (tipo !== 'super') continue;
+    const email = normalizeUser(row.get('USUARIO'));
+    if (email) {
+      recipients.set(email, 'super');
+    }
+  }
+
+  // Fallback por variables de entorno
+  [SUPERADMIN_1_EMAIL, SUPERADMIN_2_EMAIL]
+    .map(normalizeUser)
+    .filter(Boolean)
+    .forEach(email => recipients.set(email, 'super'));
+
+  if (recipients.size === 0) {
+    return { created: 0 };
+  }
+
+  const now = new Date().toLocaleString('es-ES');
+  const safeRewardName = (rewardName || '').toString().trim();
+  const parsedPoints = Number.isFinite(points) ? points : parseInt(points, 10) || 0;
+
+  const message = `${identifier} canjeó "${safeRewardName}" por ${parsedPoints} puntos${client ? ` (Cliente: ${client})` : ''}.`;
+  const detail = JSON.stringify({
+    identifier: normalizedIdentifier,
+    rewardName: safeRewardName,
+    points: parsedPoints,
+    client: client || ''
+  });
+
+  let created = 0;
+  for (const [email, tipo] of recipients.entries()) {
+    await alertsSheet.addRow({
+      'ID': generateAlertId(),
+      'DESTINATARIO': email,
+      'DESTINATARIO_TIPO': tipo,
+      'CLIENTE': client || '',
+      'EVENTO': 'CANJE_PREMIO',
+      'MENSAJE': message,
+      'DETALLE': detail,
+      'FECHA': now,
+      'LEIDO': 'NO',
+      'LEIDO_EN': ''
+    });
+    created += 1;
+  }
+
+  return { created };
 }
 
 async function getRewardBalanceRow(rewardsSheet, identifier) {
@@ -2989,6 +3141,17 @@ app.post('/api/rewards/redeem', async (req, res) => {
       return res.status(400).json(result);
     }
 
+    // Crear alertas para admin del cliente y superadmin (no bloquear el canje si falla)
+    try {
+      await createRewardRedemptionAlerts(doc, {
+        identifier,
+        rewardName,
+        points: parsedPoints
+      });
+    } catch (error) {
+      console.warn('⚠️ No se pudieron crear alertas de canje:', error);
+    }
+
     return res.json({
       success: true,
       message: 'Premio redimido correctamente',
@@ -2999,6 +3162,67 @@ app.post('/api/rewards/redeem', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Error al redimir recompensas'
+    });
+  }
+});
+
+/**
+ * GET /api/alerts
+ * Retorna alertas no leídas para admin/superadmin y las marca como leídas.
+ * Requiere headers: x-auth-user, x-auth-password
+ */
+app.get('/api/alerts', async (req, res) => {
+  try {
+    const authUser = req.headers['x-auth-user'];
+    const authPassword = req.headers['x-auth-password'];
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({
+        success: false,
+        error: 'Credenciales requeridas'
+      });
+    }
+
+    const doc = await getGoogleSheet();
+    const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
+    if (!authData) {
+      return res.status(403).json({
+        success: false,
+        error: 'No autorizado'
+      });
+    }
+
+    const alertsSheet = await getOrCreateAlertsSheet(doc);
+    const rows = await alertsSheet.getRows();
+    const normalizedUser = normalizeUser(authUser);
+    const now = new Date().toLocaleString('es-ES');
+
+    const unreadRows = rows
+      .filter(row => normalizeUser(row.get('DESTINATARIO')) === normalizedUser)
+      .filter(row => ((row.get('LEIDO') || '').toString().trim().toUpperCase() !== 'SI'))
+      .slice(-50);
+
+    const alerts = unreadRows.map(row => ({
+      id: row.get('ID') || '',
+      message: row.get('MENSAJE') || '',
+      evento: row.get('EVENTO') || '',
+      cliente: row.get('CLIENTE') || '',
+      fecha: row.get('FECHA') || ''
+    }));
+
+    // Marcar como leídas
+    for (const row of unreadRows) {
+      row.set('LEIDO', 'SI');
+      row.set('LEIDO_EN', now);
+      await row.save();
+    }
+
+    return res.json({ success: true, data: alerts });
+  } catch (error) {
+    console.error('❌ Error al obtener alertas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener alertas'
     });
   }
 });

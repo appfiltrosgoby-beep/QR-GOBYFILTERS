@@ -206,6 +206,9 @@ function initAuth() {
         }
         applyRolePermissions();
         elements.loginModal.style.display = 'none';
+
+        // Alertas pendientes para administradores/superadmin al restaurar sesión
+        loadLoginAlerts().catch(err => console.error('Error cargando alertas de login:', err));
     } else {
         showLoginForm();
         elements.loginModal.style.display = 'flex';
@@ -657,6 +660,9 @@ async function validateUnifiedLogin() {
     clearUnifiedLoginForm();
     clearRegisterForm();
     showToast(`Bienvenido ${currentUsername || 'Usuario'}`, 'success');
+
+    // Alertas pendientes para administradores/superadmin
+    loadLoginAlerts().catch(err => console.error('Error cargando alertas de login:', err));
 }
 
 // Compatibilidad: si quedan referencias viejas, redirigir al login unificado
@@ -786,6 +792,60 @@ function logout() {
     
     // Regresar a vista de escáner
     switchView('scannerView');
+}
+
+async function loadLoginAlerts() {
+    // Solo admins y superadmin deben ver alertas al iniciar sesión
+    if (currentUserRole !== 'admin' && currentUserRole !== 'superadmin') {
+        return;
+    }
+
+    if (!currentUsername || !currentUserPassword) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/alerts`, {
+            headers: {
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
+
+        let result = null;
+        try {
+            result = await response.json();
+        } catch {
+            result = null;
+        }
+
+        if (!response.ok || !result?.success) {
+            return;
+        }
+
+        const alerts = Array.isArray(result.data) ? result.data : [];
+        if (!alerts.length) {
+            return;
+        }
+
+        const messages = alerts
+            .map(item => (item?.message || item?.mensaje || '').toString().trim())
+            .filter(Boolean);
+
+        if (!messages.length) {
+            return;
+        }
+
+        const title = messages.length === 1
+            ? 'Tienes 1 alerta nueva:'
+            : `Tienes ${messages.length} alertas nuevas:`;
+
+        // Mostrar de forma inequívoca al iniciar sesión
+        window.alert(`${title}\n\n- ${messages.join('\n- ')}`);
+        showToast(`${messages.length} alerta(s) nueva(s)`, 'info');
+    } catch (error) {
+        console.error('Error obteniendo alertas:', error);
+    }
 }
 
 /**
@@ -2648,6 +2708,12 @@ async function redeemReward(reward) {
         const balance = currentRewardsData?.reward?.puntos || 0;
         if (balance < reward.cost) {
             showToast('No tienes suficientes puntos para este premio', 'warning');
+            return;
+        }
+
+        const confirmed = window.confirm(`¿Confirmas canjear "${reward.name}" por ${reward.cost} puntos?`);
+        if (!confirmed) {
+            showToast('Canje cancelado', 'info');
             return;
         }
 
