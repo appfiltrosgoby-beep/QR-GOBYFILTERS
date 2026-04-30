@@ -1323,7 +1323,9 @@ input:checked + .slider:before {
     .header {
         border-radius: var(--border-radius);
         margin-bottom: var(--spacing-lg);
-        position: relative;
+        position: sticky;
+        top: var(--spacing-md);
+        z-index: 100;
     }
     
     .card {
