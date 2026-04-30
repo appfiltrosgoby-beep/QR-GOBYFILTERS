@@ -13,6 +13,7 @@ let isScanning = false;
 let selectedCameraId = null;
 let currentUserRole = null; // 'user', 'admin', 'superadmin', 'dispatch'
 let currentUsername = null; // Usuario logueado
+let currentUserDisplayName = null; // Nombre para UI (si existe)
 let currentUserPassword = null; // Contraseña del usuario logueado (admin/superadmin)
 let currentUserClient = null; // Cliente del usuario logueado
 let currentUserType = null; // Tipo de usuario: 'mecanico', 'despacho', 'administrador', 'super'
@@ -237,6 +238,7 @@ function initAuth() {
     const savedRole = localStorage.getItem('userRole');
     const savedUserType = localStorage.getItem('userType'); // Restaurar tipo de usuario
     const savedUserName = localStorage.getItem('userName') || localStorage.getItem('userEmail');
+    const savedDisplayName = localStorage.getItem('userDisplayName');
     const savedPassword = sessionStorage.getItem('userPassword');
     const savedClient = localStorage.getItem('userClient');
     
@@ -247,6 +249,7 @@ function initAuth() {
             localStorage.removeItem('userType');
             localStorage.removeItem('userName');
             localStorage.removeItem('userClient');
+            localStorage.removeItem('userDisplayName');
             elements.loginModal.style.display = 'flex';
             return;
         }
@@ -255,6 +258,9 @@ function initAuth() {
         currentUserType = savedUserType || 'mecanico'; // Restaurar tipo de usuario con default
         if (savedUserName) {
             currentUsername = savedUserName;
+        }
+        if (savedDisplayName) {
+            currentUserDisplayName = savedDisplayName;
         }
         if (savedPassword) {
             currentUserPassword = savedPassword;
@@ -701,13 +707,19 @@ async function validateUnifiedLogin() {
         return;
     }
 
-    currentUsername = usuario;
+    currentUsername = (result.usuario || usuario).trim();
+    currentUserDisplayName = (result.nombre || '').toString().trim();
     currentUserPassword = password;
     currentUserClient = result.cliente || '';
     currentUserRole = result.role || 'user';
     currentUserType = result.tipo || 'mecanico';
 
-    localStorage.setItem('userName', usuario);
+    localStorage.setItem('userName', currentUsername);
+    if (currentUserDisplayName) {
+        localStorage.setItem('userDisplayName', currentUserDisplayName);
+    } else {
+        localStorage.removeItem('userDisplayName');
+    }
     localStorage.setItem('userClient', result.cliente || '');
     localStorage.setItem('userRole', currentUserRole);
     localStorage.setItem('userType', currentUserType);
@@ -717,7 +729,7 @@ async function validateUnifiedLogin() {
     elements.loginModal.style.display = 'none';
     clearUnifiedLoginForm();
     clearRegisterForm();
-    showToast(`Bienvenido ${currentUsername || 'Usuario'}`, 'success');
+    showToast(`Bienvenido ${(currentUserDisplayName || currentUsername || 'Usuario')}`, 'success');
 
     // Alertas pendientes para administradores/superadmin
     loadLoginAlerts().catch(err => console.error('Error cargando alertas de login:', err));
@@ -807,6 +819,8 @@ async function validateCredentials(usuario, tipo, password) {
         if (data && data.success) {
             return { 
                 success: true, 
+                usuario: (data.usuario || '').toString().trim(),
+                nombre: (data.nombre || '').toString().trim(),
                 role: data.role || 'user',
                 tipo: data.tipo || 'mecanico',
                 cliente: data.cliente || ''
@@ -834,10 +848,12 @@ function logout() {
     localStorage.removeItem('userType');
     localStorage.removeItem('userName');
     localStorage.removeItem('userClient');
+    localStorage.removeItem('userDisplayName');
     sessionStorage.removeItem('userPassword');
     currentUserRole = null;
     currentUserType = null;
     currentUsername = null;
+    currentUserDisplayName = null;
     currentUserPassword = null;
     currentUserClient = null;
     
@@ -923,7 +939,7 @@ function applyRolePermissions() {
     }
     
     const displayText = (currentUserRole === 'user' || currentUserRole === 'dispatch')
-        ? (currentUsername || roleText)
+        ? (currentUserDisplayName || currentUsername || roleText)
         : roleText;
     elements.currentRole.textContent = displayText;
     elements.currentRole.className = `role-badge ${currentUserRole}`;

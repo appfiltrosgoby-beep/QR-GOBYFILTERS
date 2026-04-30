@@ -91,34 +91,21 @@ app.post('/api/validate-user', async (req, res) => {
     }
 
     const doc = await getGoogleSheet();
-    const normalizedUser = normalizeUser(usuario);
     const normalizedType = normalizeType(tipo);
 
-    // Buscar usuario en hoja global (para superadmins)
-    let userRow = null;
-    let userClient = '';
-    const globalSheet = await getOrCreateUsersSheet(doc);
-    userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
-    
-    if (userRow) {
-      userClient = userRow.get('CLIENTE') || '';
-    } else {
-      // Buscar en todas las hojas de clientes
-      await doc.loadInfo();
-      for (const sheet of doc.sheetsByIndex) {
-        if (sheet.title.endsWith('_USUARIOS')) {
-          userRow = await validateUserCredentials(sheet, normalizedUser, password);
-          if (userRow) {
-            userClient = userRow.get('CLIENTE') || '';
-            break;
-          }
-        }
-      }
+    const lookup = await findUserRowByLoginIdentifier(doc, usuario, password);
+    if (lookup.error === 'ambiguous') {
+      return res.json({ success: false, message: lookup.message || 'Usuario ambiguo. Usa tu correo.' });
     }
 
-    if (!userRow) {
+    const userRow = lookup.row;
+    if (!userRow || !doesPasswordMatchRow(userRow, password)) {
       return res.json({ success: false, message: 'Usuario no autorizado' });
     }
+
+    const userClient = userRow.get('CLIENTE') || '';
+    const canonicalUser = normalizeUser(userRow.get('USUARIO') || usuario);
+    const userDisplayName = (userRow.get('NOMBRE') || '').toString().trim();
 
     const storedType = normalizeType(userRow.get('TIPO'));
 
@@ -154,7 +141,8 @@ app.post('/api/validate-user', async (req, res) => {
     return res.json({ 
       success: true, 
       tipo: storedType, 
-      usuario: normalizedUser, 
+      usuario: canonicalUser,
+      nombre: userDisplayName,
       role,
       cliente: userClient 
     });
@@ -180,6 +168,99 @@ function validateStrongPassword(password) {
 
 function normalizeName(name) {
   return (name || '').toString().trim();
+}
+
+function normalizePersonNameForMatch(value) {
+  return (value || '')
+    .toString()
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function looksLikeEmail(value) {
+  return /@/.test((value || '').toString());
+}
+
+function doesPasswordMatchRow(userRow, password) {
+  const storedPassword = (userRow?.get?.('CONTRASEÑA') || '').toString().trim();
+  return storedPassword === (password || '').toString();
+}
+
+async function findUserRowByLoginIdentifier(doc, loginIdentifier, passwordHint = '') {
+  const input = (loginIdentifier || '').toString().trim();
+  if (!input) {
+    return { row: null, error: 'missing_identifier' };
+  }
+
+  const normalizedUser = normalizeUser(input);
+  const normalizedName = normalizePersonNameForMatch(input);
+
+  const emailMatches = [];
+  const nameMatches = [];
+
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  const globalRows = await globalSheet.getRows();
+  for (const row of globalRows) {
+    if (normalizeUser(row.get('USUARIO')) === normalizedUser) {
+      emailMatches.push({ sheet: globalSheet, row });
+    }
+    if (normalizePersonNameForMatch(row.get('NOMBRE') || '') === normalizedName) {
+      nameMatches.push({ sheet: globalSheet, row });
+    }
+  }
+
+  await doc.loadInfo();
+  for (const sheet of doc.sheetsByIndex) {
+    if (!sheet.title.endsWith('_USUARIOS')) continue;
+    const rows = await sheet.getRows();
+    for (const row of rows) {
+      if (normalizeUser(row.get('USUARIO')) === normalizedUser) {
+        emailMatches.push({ sheet, row });
+      }
+      if (normalizePersonNameForMatch(row.get('NOMBRE') || '') === normalizedName) {
+        nameMatches.push({ sheet, row });
+      }
+    }
+  }
+
+  // Si parece correo, solo buscar por USUARIO
+  if (looksLikeEmail(input)) {
+    if (emailMatches.length === 0) {
+      return { row: null, sheet: null, error: 'not_found' };
+    }
+
+    const passwordValue = (passwordHint || '').toString();
+    const preferred = passwordValue
+      ? (emailMatches.find(m => doesPasswordMatchRow(m.row, passwordValue)) || null)
+      : null;
+
+    const match = preferred || emailMatches[0];
+    return { row: match.row, sheet: match.sheet, error: null };
+  }
+
+  // Buscar por NOMBRE (si es único)
+  if (nameMatches.length > 1) {
+    return { row: null, error: 'ambiguous', message: 'Hay varios usuarios con ese nombre. Inicia sesión con tu correo.' };
+  }
+  if (nameMatches.length === 1) {
+    return { row: nameMatches[0].row, sheet: nameMatches[0].sheet, error: null };
+  }
+
+  // Fallback: buscar por USUARIO aunque no parezca correo (por compatibilidad)
+  if (emailMatches.length === 0) {
+    return { row: null, sheet: null, error: 'not_found' };
+  }
+
+  const passwordValue = (passwordHint || '').toString();
+  const preferred = passwordValue
+    ? (emailMatches.find(m => doesPasswordMatchRow(m.row, passwordValue)) || null)
+    : null;
+
+  const emailMatch = preferred || emailMatches[0];
+  return { row: emailMatch.row, sheet: emailMatch.sheet, error: null };
 }
 
 /**
@@ -1404,26 +1485,13 @@ function isUserInRecord(row, userEmail) {
  * @returns {Promise<{row: Object, tipo: string, cliente: string} | null>}
  */
 async function validateAdminOrSuperadminCredentials(doc, usuario, password) {
-  const globalSheet = await getOrCreateUsersSheet(doc);
-  const normalizedUser = normalizeUser(usuario);
-  
-  // Buscar primero en hoja global
-  let userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
-  
-  if (!userRow) {
-    // Buscar en hojas de clientes
-    await doc.loadInfo();
-    for (const sheet of doc.sheetsByIndex) {
-      if (sheet.title.endsWith('_USUARIOS')) {
-        userRow = await validateUserCredentials(sheet, normalizedUser, password);
-        if (userRow) {
-          break;
-        }
-      }
-    }
+  const lookup = await findUserRowByLoginIdentifier(doc, usuario, password);
+  if (lookup.error || !lookup.row) {
+    return null;
   }
-  
-  if (!userRow) {
+
+  const userRow = lookup.row;
+  if (!doesPasswordMatchRow(userRow, password)) {
     return null;
   }
   
@@ -1446,30 +1514,20 @@ async function validateAdminOrSuperadminCredentials(doc, usuario, password) {
  * @returns {Object|null} Fila del usuario si es válido y superadmin, null en caso contrario
  */
 async function validateSuperadminCredentials(doc, usuario, password) {
-  const globalSheet = await getOrCreateUsersSheet(doc);
-  const normalizedUser = normalizeUser(usuario);
-  
-  // Buscar primero en hoja global
-  let userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
-  
-  if (!userRow) {
-    // Buscar en hojas de clientes
-    await doc.loadInfo();
-    for (const sheet of doc.sheetsByIndex) {
-      if (sheet.title.endsWith('_USUARIOS')) {
-        userRow = await validateUserCredentials(sheet, normalizedUser, password);
-        if (userRow) {
-          break;
-        }
-      }
-    }
-  }
-  
-  // Verificar que sea superadmin
-  if (!userRow || !isSuperadminRow(userRow)) {
+  const lookup = await findUserRowByLoginIdentifier(doc, usuario, password);
+  if (lookup.error || !lookup.row) {
     return null;
   }
-  
+
+  const userRow = lookup.row;
+  if (!doesPasswordMatchRow(userRow, password)) {
+    return null;
+  }
+
+  if (!isSuperadminRow(userRow)) {
+    return null;
+  }
+
   return userRow;
 }
 
@@ -1504,25 +1562,19 @@ async function getOrCreateClientUsersSheet(doc, cliente) {
 }
 
 async function findUserRowByCredentials(doc, usuario, password) {
-  const normalizedUser = normalizeUser(usuario);
-  if (!normalizedUser || !password) return null;
+  const input = (usuario || '').toString().trim();
+  if (!input || !password) return null;
 
-  const globalSheet = await getOrCreateUsersSheet(doc);
-  let userRow = await validateUserCredentials(globalSheet, normalizedUser, password);
-  if (userRow) {
-    return { sheet: globalSheet, row: userRow };
+  const lookup = await findUserRowByLoginIdentifier(doc, input, password);
+  if (lookup.error || !lookup.row) {
+    return null;
   }
 
-  await doc.loadInfo();
-  for (const sheet of doc.sheetsByIndex) {
-    if (!sheet.title.endsWith('_USUARIOS')) continue;
-    userRow = await validateUserCredentials(sheet, normalizedUser, password);
-    if (userRow) {
-      return { sheet, row: userRow };
-    }
+  if (!doesPasswordMatchRow(lookup.row, password)) {
+    return null;
   }
 
-  return null;
+  return { sheet: lookup.sheet, row: lookup.row };
 }
 
 async function userExistsAcrossSheets(doc, usuario) {
