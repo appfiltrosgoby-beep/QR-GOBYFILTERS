@@ -1255,6 +1255,53 @@ input:checked + .slider:before {
 }
 
 /* ============================================
+   CONTACTO
+   ============================================ */
+
+.contact-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: var(--spacing-md);
+}
+
+.contact-hint {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.contact-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.contact-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.contact-link:hover {
+    text-decoration: underline;
+}
+
+.contact-value {
+    font-weight: 700;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.contact-note {
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* ============================================
    NOTIFICACIONES TOAST
    ============================================ */
 

@@ -1202,6 +1202,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Configurar event listeners (incluye login). Debe ejecutarse aunque el escáner falle.
     setupEventListeners();
+
+    // Renderizar módulo de contacto (vista estática)
+    try {
+        if (window.GOBY_CONTACT_MODULE && typeof window.GOBY_CONTACT_MODULE.render === 'function') {
+            window.GOBY_CONTACT_MODULE.render('contactInfoContainer');
+        }
+    } catch (error) {
+        console.warn('⚠️ Error inicializando módulo de contacto:', error);
+    }
     
     // Inicializar escáner (no debe romper el flujo de login si Html5Qrcode no carga)
     try {
