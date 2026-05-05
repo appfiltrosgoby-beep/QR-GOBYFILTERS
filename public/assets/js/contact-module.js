@@ -7,7 +7,7 @@
     'use strict';
 
     const DEFAULT_CONTACT_INFO = {
-        heading: '📞 Contacto',
+        heading: '📞 Contactanos',
         hint: 'Canales oficiales de INDUSTRIAS GOBY.',
         addressLabel: 'Dirección',
         addressValue: 'Dosquebradas, Risaralda, Colombia.',
