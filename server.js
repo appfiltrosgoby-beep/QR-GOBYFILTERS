@@ -11,6 +11,8 @@ const compression = require('compression');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // Validar variables de entorno críticas
 const requiredEnvVars = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SPREADSHEET_ID'];
@@ -77,6 +79,107 @@ app.get('/browserconfig.xml', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });
 });
+
+let mailTransport = null;
+
+function getSmtpConfig() {
+  const host = (process.env.SMTP_HOST || '').toString().trim();
+  const port = Number.parseInt((process.env.SMTP_PORT || '').toString().trim() || '587', 10);
+  const user = (process.env.SMTP_USER || '').toString().trim();
+  const pass = (process.env.SMTP_PASS || '').toString();
+  const from = (process.env.SMTP_FROM || user || '').toString().trim();
+
+  const secureRaw = (process.env.SMTP_SECURE || '').toString().trim().toLowerCase();
+  const secure = secureRaw ? secureRaw === 'true' : port === 465;
+
+  return { host, port, user, pass, from, secure };
+}
+
+function assertMailConfigured() {
+  const { host, port, user, pass, from } = getSmtpConfig();
+  const missing = [];
+  if (!host) missing.push('SMTP_HOST');
+  if (!Number.isFinite(port) || port <= 0) missing.push('SMTP_PORT');
+  if (!user) missing.push('SMTP_USER');
+  if (!pass) missing.push('SMTP_PASS');
+  if (!from) missing.push('SMTP_FROM');
+
+  if (missing.length > 0) {
+    const error = new Error(`Servicio de correo no configurado: falta ${missing.join(', ')}`);
+    error.code = 'MAIL_NOT_CONFIGURED';
+    throw error;
+  }
+}
+
+function getMailTransport() {
+  if (mailTransport) {
+    return mailTransport;
+  }
+
+  assertMailConfigured();
+  const { host, port, user, pass, secure } = getSmtpConfig();
+
+  mailTransport = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass }
+  });
+
+  return mailTransport;
+}
+
+async function sendForgotPasswordConfirmationEmail({ toEmail, displayName, requestId, requestIp, userAgent }) {
+  const transport = getMailTransport();
+  const { from } = getSmtpConfig();
+
+  const safeName = (displayName || '').toString().trim() || 'Usuario';
+  const now = new Date();
+
+  const subject = 'Confirmación de solicitud de restablecimiento de contraseña';
+  const text = [
+    `Hola ${safeName},`,
+    '',
+    'Recibimos una solicitud para restablecer tu contraseña en GOBY FILTERS QR.',
+    'Si no fuiste tú, ignora este correo o contacta a tu administrador.',
+    '',
+    `ID de solicitud: ${requestId}`,
+    `Fecha: ${now.toLocaleString('es-CO')}`,
+    requestIp ? `IP: ${requestIp}` : null,
+    userAgent ? `Navegador: ${userAgent}` : null
+  ].filter(Boolean).join('\n');
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.45;">
+      <p>Hola <strong>${escapeHtml(safeName)}</strong>,</p>
+      <p>Recibimos una solicitud para restablecer tu contraseña en <strong>GOBY FILTERS QR</strong>.</p>
+      <p>Si no fuiste tú, ignora este correo o contacta a tu administrador.</p>
+      <hr/>
+      <p style="margin: 0;"><strong>ID de solicitud:</strong> ${escapeHtml(requestId)}</p>
+      <p style="margin: 0;"><strong>Fecha:</strong> ${escapeHtml(now.toLocaleString('es-CO'))}</p>
+      ${requestIp ? `<p style="margin: 0;"><strong>IP:</strong> ${escapeHtml(requestIp)}</p>` : ''}
+      ${userAgent ? `<p style="margin: 0;"><strong>Navegador:</strong> ${escapeHtml(userAgent)}</p>` : ''}
+    </div>
+  `;
+
+  await transport.sendMail({
+    from,
+    to: toEmail,
+    subject,
+    text,
+    html
+  });
+}
+
+function escapeHtml(value) {
+  return (value || '')
+    .toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 /**
  * Recibe una solicitud de contacto del usuario.
@@ -223,6 +326,71 @@ app.post('/api/validate-user', async (req, res) => {
   } catch (error) {
     console.error('Error al validar usuario:', error);
     res.status(500).json({ success: false, error: 'Error al validar usuario' });
+  }
+});
+
+/**
+ * Solicitud de restablecimiento de contraseña (público)
+ * POST /api/forgot-password
+ * Body: { usuario }
+ * Envía un correo de confirmación al correo asociado al perfil.
+ */
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const usuario = (body.usuario || '').toString().trim();
+
+    if (!usuario) {
+      return res.status(400).json({ success: false, message: 'Usuario (correo o nombre) es requerido' });
+    }
+
+    // Si el servicio de correo no está configurado, reportarlo claramente.
+    assertMailConfigured();
+
+    const doc = await getGoogleSheet();
+    const lookup = await findUserRowByLoginIdentifier(doc, usuario);
+    if (lookup.error === 'ambiguous') {
+      return res.status(400).json({ success: false, message: lookup.message || 'Usuario ambiguo. Usa tu correo.' });
+    }
+
+    // Respuesta genérica para evitar enumeración de usuarios.
+    const genericResponse = { success: true, message: 'Si la cuenta existe, se enviará un correo de confirmación al email asociado.' };
+
+    if (!lookup.row) {
+      return res.json(genericResponse);
+    }
+
+    const profileEmail = (lookup.row.get('USUARIO') || '').toString().trim();
+    const displayName = (lookup.row.get('NOMBRE') || '').toString().trim();
+
+    if (!profileEmail || !isValidEmail(profileEmail)) {
+      return res.json(genericResponse);
+    }
+
+    const requestId = crypto.randomBytes(16).toString('hex');
+    const requestIp = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+    const userAgent = (req.get('user-agent') || '').toString();
+
+    try {
+      await sendForgotPasswordConfirmationEmail({
+        toEmail: profileEmail,
+        displayName,
+        requestId,
+        requestIp,
+        userAgent
+      });
+    } catch (mailError) {
+      console.error('Error enviando correo de forgot-password:', mailError);
+      return res.status(500).json({ success: false, message: 'No se pudo enviar el correo de confirmación. Intenta más tarde.' });
+    }
+
+    return res.json(genericResponse);
+  } catch (error) {
+    console.error('Error en /api/forgot-password:', error);
+    if (error?.code === 'MAIL_NOT_CONFIGURED') {
+      return res.status(500).json({ success: false, message: error.message || 'Servicio de correo no configurado' });
+    }
+    return res.status(500).json({ success: false, message: 'Error al procesar la solicitud' });
   }
 });
 

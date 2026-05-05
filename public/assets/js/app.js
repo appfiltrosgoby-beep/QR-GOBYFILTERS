@@ -360,11 +360,63 @@ function showRegisterForm() {
 }
 
 function showForgotPassword() {
-    if (elements.forgotPasswordInfo) {
-        elements.forgotPasswordInfo.classList.toggle('hidden');
-    } else {
-        showToast('Contacta al administrador/superadmin para restablecer tu contraseña', 'info');
+    // Enviar solicitud al backend para que envíe un correo de confirmación
+    // al correo asociado al perfil.
+    const identifier = (elements.loginUsername?.value || '').toString().trim();
+
+    if (!identifier) {
+        if (elements.forgotPasswordInfo) {
+            elements.forgotPasswordInfo.textContent = 'Escribe tu usuario (correo o nombre) y vuelve a presionar “Olvidé mi contraseña”.';
+            elements.forgotPasswordInfo.classList.remove('hidden');
+        } else {
+            showToast('Escribe tu usuario (correo o nombre) primero', 'info');
+        }
+        return;
     }
+
+    if (elements.forgotPasswordInfo) {
+        elements.forgotPasswordInfo.textContent = 'Enviando solicitud...';
+        elements.forgotPasswordInfo.classList.remove('hidden');
+    }
+
+    if (elements.forgotPasswordBtn) {
+        elements.forgotPasswordBtn.disabled = true;
+    }
+
+    fetch(`${API_URL}/api/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario: identifier })
+    })
+        .then(async response => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data?.success === false) {
+                const message = data?.message || 'No se pudo procesar la solicitud.';
+                throw new Error(message);
+            }
+
+            if (elements.forgotPasswordInfo) {
+                elements.forgotPasswordInfo.textContent = data?.message || 'Si la cuenta existe, se enviará un correo de confirmación al email asociado.';
+                elements.forgotPasswordInfo.classList.remove('hidden');
+            } else {
+                showToast('Solicitud enviada. Revisa tu correo.', 'success');
+            }
+        })
+        .catch(error => {
+            console.error('Forgot password error:', error);
+            const message = error?.message || 'No se pudo enviar la solicitud.';
+            if (elements.forgotPasswordInfo) {
+                elements.forgotPasswordInfo.textContent = message;
+                elements.forgotPasswordInfo.classList.remove('hidden');
+            } else {
+                showToast(message, 'error');
+            }
+        })
+        .finally(() => {
+            if (elements.forgotPasswordBtn) {
+                elements.forgotPasswordBtn.disabled = false;
+            }
+        });
 }
 
 function isValidEmail(email) {
