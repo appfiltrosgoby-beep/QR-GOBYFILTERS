@@ -10,6 +10,7 @@ const bodyParser = require('body-parser');
 const compression = require('compression');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+const fs = require('fs');
 
 // Validar variables de entorno críticas
 const requiredEnvVars = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SPREADSHEET_ID'];
@@ -75,6 +76,79 @@ app.get('/browserconfig.xml', (req, res) => {
 // Health check para Render
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });
+});
+
+/**
+ * Recibe una solicitud de contacto del usuario.
+ * POST /api/contact-request
+ * Body: { solicitud, nombre?, email?, telefono?, usuarioApp?, clienteApp?, rolApp? }
+ */
+app.post('/api/contact-request', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const solicitud = (body.solicitud || '').toString().trim();
+    const nombre = (body.nombre || '').toString().trim();
+    const email = (body.email || '').toString().trim();
+    const telefono = (body.telefono || '').toString().trim();
+    const usuarioApp = (body.usuarioApp || '').toString().trim();
+    const clienteApp = (body.clienteApp || '').toString().trim();
+    const rolApp = (body.rolApp || '').toString().trim();
+
+    if (!solicitud) {
+      return res.status(400).json({ success: false, message: 'La solicitud es requerida' });
+    }
+
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Correo inválido' });
+    }
+
+    const timestamp = new Date();
+    const formatted = formatDateTimeForSheet(timestamp);
+
+    const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+    const userAgent = (req.get('user-agent') || '').toString();
+
+    const rowData = {
+      FECHA: formatted.date,
+      HORA: formatted.time,
+      SOLICITUD: solicitud,
+      NOMBRE: nombre,
+      EMAIL: email,
+      TELEFONO: telefono,
+      USUARIO_APP: usuarioApp,
+      CLIENTE_APP: clienteApp,
+      ROL_APP: rolApp,
+      IP: ip,
+      USER_AGENT: userAgent,
+      TIMESTAMP_ISO: timestamp.toISOString()
+    };
+
+    let savedTo = 'local';
+
+    try {
+      const doc = await getGoogleSheet();
+      const sheet = await getOrCreateContactRequestsSheet(doc);
+      await sheet.addRow(rowData);
+      savedTo = 'sheets';
+    } catch (error) {
+      // Fallback: guardar localmente para no perder solicitudes si Sheets no está configurado.
+      try {
+        const outDir = path.join(__dirname, 'data');
+        await fs.promises.mkdir(outDir, { recursive: true });
+        const outPath = path.join(outDir, 'contact-requests.jsonl');
+        await fs.promises.appendFile(outPath, JSON.stringify(rowData) + '\n', 'utf8');
+      } catch (fallbackError) {
+        console.warn('⚠️ No se pudo guardar la solicitud localmente:', fallbackError);
+      }
+      console.warn('⚠️ Guardado en Google Sheets falló, usando fallback local:', error?.message || error);
+      savedTo = 'local';
+    }
+
+    return res.json({ success: true, message: 'Solicitud recibida', savedTo });
+  } catch (error) {
+    console.error('Error en /api/contact-request:', error);
+    res.status(500).json({ success: false, error: 'Error al procesar la solicitud' });
+  }
 });
 
 /**
@@ -829,8 +903,36 @@ const USERS_SHEET_TITLE = 'USUARIOS';
 const REWARDS_SHEET_TITLE = 'RECOMPENSAS';
 const REWARDS_HISTORY_SHEET_TITLE = 'RECOMPENSAS_HISTORIAL';
 const ALERTS_SHEET_TITLE = 'ALERTAS';
+const CONTACT_REQUESTS_SHEET_TITLE = 'SOLICITUDES';
 const SUPERADMIN_1_EMAIL = process.env.SUPERADMIN_1_EMAIL || '';
 const SUPERADMIN_2_EMAIL = process.env.SUPERADMIN_2_EMAIL || '';
+
+function formatDateTimeForSheet(date) {
+  const value = date instanceof Date ? date : new Date();
+  const formatter = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(value);
+  const map = Object.create(null);
+  for (const part of parts) {
+    if (part.type !== 'literal') {
+      map[part.type] = part.value;
+    }
+  }
+
+  return {
+    date: `${map.year || ''}-${map.month || ''}-${map.day || ''}`,
+    time: `${map.hour || ''}:${map.minute || ''}:${map.second || ''}`
+  };
+}
 
 /**
  * Inicializa y autentica la conexión con Google Sheets
@@ -937,6 +1039,63 @@ async function initializeUsersSheet(sheet) {
     await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
     await sheet.loadHeaderRow();
   }
+}
+
+async function initializeContactRequestsSheet(sheet) {
+  await sheet.loadHeaderRow();
+
+  const requiredHeaders = [
+    'FECHA',
+    'HORA',
+    'SOLICITUD',
+    'NOMBRE',
+    'EMAIL',
+    'TELEFONO',
+    'USUARIO_APP',
+    'CLIENTE_APP',
+    'ROL_APP',
+    'IP',
+    'USER_AGENT',
+    'TIMESTAMP_ISO'
+  ];
+
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    await sheet.setHeaderRow(requiredHeaders);
+    return;
+  }
+
+  const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+  if (missingHeaders.length > 0) {
+    await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
+    await sheet.loadHeaderRow();
+  }
+}
+
+async function getOrCreateContactRequestsSheet(doc) {
+  let sheet = doc.sheetsByTitle[CONTACT_REQUESTS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: CONTACT_REQUESTS_SHEET_TITLE,
+      headerValues: [
+        'FECHA',
+        'HORA',
+        'SOLICITUD',
+        'NOMBRE',
+        'EMAIL',
+        'TELEFONO',
+        'USUARIO_APP',
+        'CLIENTE_APP',
+        'ROL_APP',
+        'IP',
+        'USER_AGENT',
+        'TIMESTAMP_ISO'
+      ]
+    });
+  }
+
+  await initializeContactRequestsSheet(sheet);
+  return sheet;
 }
 
 /**

@@ -19,7 +19,7 @@
     <meta name="apple-mobile-web-app-title" content="GOBY">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     
-    <link rel="stylesheet" href="assets/css/styles.css?v=20260430c">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20260504a">
     <!-- Librería html5-qrcode para escaneo de QR -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <!-- Librería Chart.js para gráficas -->
@@ -702,6 +702,51 @@
                     </div>
                     <div class="card-body">
                         <div id="contactInfoContainer"></div>
+
+                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border-color);">
+
+                        <div class="contact-header">
+                            <h3>📝 Enviar solicitud</h3>
+                            <p class="contact-hint">Describe tu solicitud. Si deseas, deja tus datos para que el equipo de GOBY pueda contactarte.</p>
+                        </div>
+
+                        <form id="contactRequestForm" class="password-form" autocomplete="on">
+                            <textarea
+                                id="contactRequestMessage"
+                                class="input-password"
+                                placeholder="Escribe aquí tu solicitud..."
+                                required
+                            ></textarea>
+
+                            <input
+                                id="contactRequestName"
+                                type="text"
+                                class="input-password"
+                                placeholder="Nombre (opcional)"
+                                autocomplete="name"
+                            >
+                            <input
+                                id="contactRequestEmail"
+                                type="email"
+                                class="input-password"
+                                placeholder="Correo (opcional)"
+                                autocomplete="email"
+                            >
+                            <input
+                                id="contactRequestPhone"
+                                type="tel"
+                                class="input-password"
+                                placeholder="Teléfono (opcional)"
+                                autocomplete="tel"
+                            >
+
+                            <div class="password-actions">
+                                <button id="contactRequestSubmitBtn" type="submit" class="btn btn-primary">Enviar</button>
+                                <button id="contactRequestClearBtn" type="button" class="btn btn-secondary">Limpiar</button>
+                            </div>
+
+                            <div id="contactRequestError" class="error-message hidden"></div>
+                        </form>
                     </div>
                 </div>
             </section>
@@ -906,6 +951,6 @@
     <!-- Módulo de información de contacto -->
     <script src="assets/js/contact-module.js?v=20260502a"></script>
     <!-- Script principal -->
-    <script src="assets/js/app.js?v=20260430e"></script>
+    <script src="assets/js/app.js?v=20260504a"></script>
 </body>
 </html>

@@ -155,7 +155,17 @@ const elements = {
     confirmModalTitle: document.getElementById('confirmModalTitle'),
     confirmModalMessage: document.getElementById('confirmModalMessage'),
     confirmModalCancelBtn: document.getElementById('confirmModalCancelBtn'),
-    confirmModalOkBtn: document.getElementById('confirmModalOkBtn')
+    confirmModalOkBtn: document.getElementById('confirmModalOkBtn'),
+
+    // Contacto - Solicitudes
+    contactRequestForm: document.getElementById('contactRequestForm'),
+    contactRequestMessage: document.getElementById('contactRequestMessage'),
+    contactRequestName: document.getElementById('contactRequestName'),
+    contactRequestEmail: document.getElementById('contactRequestEmail'),
+    contactRequestPhone: document.getElementById('contactRequestPhone'),
+    contactRequestSubmitBtn: document.getElementById('contactRequestSubmitBtn'),
+    contactRequestClearBtn: document.getElementById('contactRequestClearBtn'),
+    contactRequestError: document.getElementById('contactRequestError')
 };
 
 let confirmModalInFlight = false;
@@ -1328,6 +1338,14 @@ function setupEventListeners() {
     if (elements.menuToggleBtn) elements.menuToggleBtn.addEventListener('click', () => toggleSideMenu(true));
     if (elements.menuCloseBtn) elements.menuCloseBtn.addEventListener('click', () => toggleSideMenu(false));
     if (elements.menuOverlay) elements.menuOverlay.addEventListener('click', () => toggleSideMenu(false));
+
+    // Formulario de solicitudes (Contacto)
+    if (elements.contactRequestClearBtn) {
+        elements.contactRequestClearBtn.addEventListener('click', clearContactRequestForm);
+    }
+    if (elements.contactRequestForm) {
+        elements.contactRequestForm.addEventListener('submit', submitContactRequest);
+    }
     
     // Enter en login unificado
     if (elements.loginUsername) {
@@ -1690,6 +1708,96 @@ function setupEventListeners() {
             }
         }
     });
+}
+
+function setContactRequestError(message) {
+    if (!elements.contactRequestError) {
+        return;
+    }
+
+    const value = (message || '').toString().trim();
+    elements.contactRequestError.textContent = value;
+    elements.contactRequestError.classList.toggle('hidden', !value);
+}
+
+function clearContactRequestForm() {
+    setContactRequestError('');
+    if (elements.contactRequestForm) {
+        elements.contactRequestForm.reset();
+    }
+    if (elements.contactRequestMessage) {
+        elements.contactRequestMessage.focus();
+    }
+}
+
+async function submitContactRequest(event) {
+    if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+    }
+
+    setContactRequestError('');
+
+    const solicitud = (elements.contactRequestMessage?.value || '').toString().trim();
+    const nombre = (elements.contactRequestName?.value || '').toString().trim();
+    const email = (elements.contactRequestEmail?.value || '').toString().trim();
+    const telefono = (elements.contactRequestPhone?.value || '').toString().trim();
+
+    if (!solicitud) {
+        setContactRequestError('Por favor escribe tu solicitud.');
+        if (elements.contactRequestMessage) elements.contactRequestMessage.focus();
+        return;
+    }
+
+    const submitBtn = elements.contactRequestSubmitBtn;
+    const prevText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Enviando...';
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/contact-request`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                solicitud,
+                nombre,
+                email,
+                telefono,
+                usuarioApp: currentUsername || '',
+                clienteApp: currentUserClient || '',
+                rolApp: currentUserRole || ''
+            })
+        });
+
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_) {
+            data = null;
+        }
+
+        if (!response.ok || !data || data.success !== true) {
+            const message = (data && (data.message || data.error))
+                ? (data.message || data.error)
+                : 'No fue posible enviar la solicitud. Intenta de nuevo.';
+            setContactRequestError(message);
+            return;
+        }
+
+        showToast('Solicitud enviada correctamente', 'success');
+        clearContactRequestForm();
+    } catch (error) {
+        console.warn('⚠️ Error enviando solicitud de contacto:', error);
+        setContactRequestError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = prevText || 'Enviar';
+        }
+    }
 }
 
 function applyClientSelectSearch(selectEl, rawQuery) {

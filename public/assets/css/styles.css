@@ -1656,6 +1656,11 @@ input:checked + .slider:before {
     transition: border-color var(--transition-fast);
 }
 
+textarea.input-password {
+    min-height: 120px;
+    resize: vertical;
+}
+
 .input-password:focus {
     outline: none;
     border-color: var(--primary-color);
