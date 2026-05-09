@@ -1296,9 +1296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadRecentScans();
         // Pequeño delay para evitar rate limiting
         await new Promise(resolve => setTimeout(resolve, 500));
-        if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
-            await loadStats();
-        }
+        await loadStats();
         await loadRewards();
     }
     
@@ -1308,9 +1306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await loadRecentScans();
             // Pequeño delay para evitar rate limiting
             await new Promise(resolve => setTimeout(resolve, 500));
-            if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
-                await loadStats();
-            }
+            await loadStats();
             await loadRewards();
         }
     }, 30000);
@@ -1330,9 +1326,7 @@ function setupEventListeners() {
         await loadRecentScans();
         // Pequeño delay para evitar rate limiting
         await new Promise(resolve => setTimeout(resolve, 500));
-        if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
-            await loadStats();
-        }
+        await loadStats();
         await loadRewards();
     });
     if (elements.exportBtn) elements.exportBtn.addEventListener('click', exportToCSV);
@@ -2586,7 +2580,14 @@ async function loadStats() {
         if (currentUserRole === 'admin' && currentUserClient) {
             queryParams = `?cliente=${encodeURIComponent(currentUserClient)}`;
             console.log('🔒 Admin detectado, filtrando por cliente:', currentUserClient);
-        } else if (currentUserRole !== 'superadmin' && currentUsername) {
+        } else if (currentUserRole === 'superadmin') {
+            queryParams = '';
+        } else {
+            // Usuarios mecánico/despacho: siempre filtrar por usuario para no exponer stats globales.
+            if (!currentUsername) {
+                console.warn('⚠️ loadStats: usuario no disponible para filtrar stats.');
+                return;
+            }
             queryParams = `?userEmail=${encodeURIComponent(currentUsername)}`;
         }
 
@@ -3761,8 +3762,12 @@ function displayRecords(records) {
 function displayStats(stats) {
     console.log('📊 displayStats recibido:', stats);
     
-    elements.totalScans.textContent = stats.total;
-    elements.todayScans.textContent = stats.today;
+    // Header: mostrar conteo de escaneos (eventos) si está disponible.
+    const totalScansValue = (stats && (stats.totalScans ?? stats.total)) ?? 0;
+    const todayScansValue = (stats && (stats.todayScans ?? stats.today)) ?? 0;
+
+    elements.totalScans.textContent = totalScansValue;
+    elements.todayScans.textContent = todayScansValue;
 
     const totalStatsCount = Number.isFinite(stats.total) ? stats.total : (parseInt(stats.total || '0', 10) || 0);
     

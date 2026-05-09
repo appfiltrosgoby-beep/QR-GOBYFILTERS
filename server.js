@@ -3013,6 +3013,7 @@ app.get('/api/stats', async (req, res) => {
   try {
     const cliente = req.query.cliente || '';
     const userEmail = req.query.userEmail || '';
+    const normalizedUser = normalizeUser(userEmail);
     
     const doc = await getGoogleSheet();
 
@@ -3042,8 +3043,20 @@ app.get('/api/stats', async (req, res) => {
       despachados: 0,
       instalados: 0,
       desinstalados: 0,
-      today: 0
+      today: 0,
+      // Conteos por eventos (escaneos) sin romper el significado actual de total/today.
+      // totalScans: número de transiciones registradas (almacén, despacho, instalación, desinstalación).
+      // todayScans: eventos registrados en el día.
+      totalScans: 0,
+      todayScans: 0
     };
+
+    const scanStages = [
+      { dateKey: 'FECHA_ALMACEN', userKey: 'USUARIO_PLANTA' },
+      { dateKey: 'FECHA_DESPACHO', userKey: 'USUARIO_DESPACHO' },
+      { dateKey: 'FECHA_INSTALACION', userKey: 'USUARIO_INSTALACION' },
+      { dateKey: 'FECHA_DESINSTALACION', userKey: 'USUARIO_DESINSTALACION' }
+    ];
 
     rows.forEach(row => {
       const estado = row.get('ESTADO');
@@ -3058,10 +3071,32 @@ app.get('/api/stats', async (req, res) => {
         stats.desinstalados++;
       }
       
-      if (row.get('FECHA_ALMACEN') === today || row.get('FECHA_DESPACHO') === today || 
+      // Conteo record-based (compatibilidad): si el registro tuvo algún evento hoy.
+      if (row.get('FECHA_ALMACEN') === today || row.get('FECHA_DESPACHO') === today ||
           row.get('FECHA_INSTALACION') === today || row.get('FECHA_DESINSTALACION') === today) {
         stats.today++;
       }
+
+      // Conteo event-based (escaneos): cada etapa con fecha cuenta como 1 escaneo.
+      scanStages.forEach(stage => {
+        const dateValue = (row.get(stage.dateKey) || '').toString().trim();
+        if (!dateValue) {
+          return;
+        }
+
+        // Si se pidió filtrado por usuario, contar solo eventos hechos por ese usuario.
+        if (normalizedUser) {
+          const stageUser = normalizeUser(row.get(stage.userKey));
+          if (stageUser !== normalizedUser) {
+            return;
+          }
+        }
+
+        stats.totalScans++;
+        if (dateValue === today) {
+          stats.todayScans++;
+        }
+      });
     });
 
     console.log(`📈 Estadísticas finales:`, stats);
