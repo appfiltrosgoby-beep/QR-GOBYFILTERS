@@ -441,6 +441,21 @@ function validateStrongPassword(password) {
     return '';
 }
 
+function normalizePhoneDigits(phone) {
+    return (phone || '').toString().replace(/\D/g, '');
+}
+
+function validatePhoneMinDigits(phone, minDigits = 10) {
+    const digits = normalizePhoneDigits(phone);
+    if (!digits) {
+        return 'El teléfono es requerido';
+    }
+    if (digits.length < minDigits) {
+        return `El teléfono debe tener mínimo ${minDigits} dígitos`;
+    }
+    return '';
+}
+
 async function registerUser() {
     const nombre = (elements.registerName?.value || '').trim();
     const email = (elements.registerEmail?.value || '').trim();
@@ -484,6 +499,15 @@ async function registerUser() {
     if (!isValidEmail(email)) {
         if (elements.registerError) {
             elements.registerError.textContent = 'El usuario debe ser un correo válido';
+            elements.registerError.classList.remove('hidden');
+        }
+        return;
+    }
+
+    const phoneError = validatePhoneMinDigits(telefono, 10);
+    if (phoneError) {
+        if (elements.registerError) {
+            elements.registerError.textContent = phoneError;
             elements.registerError.classList.remove('hidden');
         }
         return;
@@ -632,6 +656,12 @@ async function saveProfile() {
 
     if (!isValidEmail(correo)) {
         setProfileError('El correo debe ser válido');
+        return;
+    }
+
+    const phoneError = validatePhoneMinDigits(telefono, 10);
+    if (phoneError) {
+        setProfileError(phoneError);
         return;
     }
 
@@ -1816,6 +1846,15 @@ async function submitContactRequest(event) {
         setContactRequestError('Por favor escribe tu solicitud.');
         if (elements.contactRequestMessage) elements.contactRequestMessage.focus();
         return;
+    }
+
+    if (telefono) {
+        const phoneError = validatePhoneMinDigits(telefono, 10);
+        if (phoneError) {
+            setContactRequestError(phoneError);
+            if (elements.contactRequestPhone) elements.contactRequestPhone.focus();
+            return;
+        }
     }
 
     const submitBtn = elements.contactRequestSubmitBtn;

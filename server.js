@@ -205,6 +205,13 @@ app.post('/api/contact-request', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Correo inválido' });
     }
 
+    if (telefono) {
+      const phoneError = validatePhoneMinDigits(telefono, 10);
+      if (phoneError) {
+        return res.status(400).json({ success: false, message: phoneError });
+      }
+    }
+
     const timestamp = new Date();
     const formatted = formatDateTimeForSheet(timestamp);
 
@@ -408,6 +415,21 @@ function validateStrongPassword(password) {
   return '';
 }
 
+function normalizePhoneDigits(phone) {
+  return (phone || '').toString().replace(/\D/g, '');
+}
+
+function validatePhoneMinDigits(phone, minDigits = 10) {
+  const digits = normalizePhoneDigits(phone);
+  if (!digits) {
+    return 'El teléfono es requerido';
+  }
+  if (digits.length < minDigits) {
+    return `El teléfono debe tener mínimo ${minDigits} dígitos`;
+  }
+  return '';
+}
+
 function normalizeName(name) {
   return (name || '').toString().trim();
 }
@@ -529,6 +551,11 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'El usuario debe ser un correo válido' });
     }
 
+    const phoneError = validatePhoneMinDigits(normalizedPhone, 10);
+    if (phoneError) {
+      return res.status(400).json({ success: false, message: phoneError });
+    }
+
     const passwordError = validateStrongPassword(password);
     if (passwordError) {
       return res.status(400).json({ success: false, message: passwordError });
@@ -644,6 +671,7 @@ app.put('/api/profile', async (req, res) => {
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
     const { nombre, correo, telefono, currentPassword, password } = req.body || {};
+    const hasTelefonoField = Object.prototype.hasOwnProperty.call((req.body || {}), 'telefono');
 
     if (!authUser || !authPassword) {
       return res.status(400).json({ success: false, message: 'Credenciales requeridas' });
@@ -661,6 +689,13 @@ app.put('/api/profile', async (req, res) => {
 
     if (nextEmail && !isValidEmail(nextEmail)) {
       return res.status(400).json({ success: false, message: 'El correo debe ser válido' });
+    }
+
+    if (hasTelefonoField) {
+      const phoneError = validatePhoneMinDigits(nextPhone, 10);
+      if (phoneError) {
+        return res.status(400).json({ success: false, message: phoneError });
+      }
     }
 
     if (nextPassword) {
