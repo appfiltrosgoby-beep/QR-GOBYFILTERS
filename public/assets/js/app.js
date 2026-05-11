@@ -3211,7 +3211,7 @@ function displayUsers(users) {
     });
 
     if (!users || users.length === 0) {
-        const colspan = showActions ? 4 : 3;
+        const colspan = showActions ? 5 : 4;
         elements.usersBody.innerHTML = `
             <tr>
                 <td colspan="${colspan}" class="no-data">No hay usuarios para mostrar</td>
@@ -3245,6 +3245,7 @@ function displayUsers(users) {
                 <td class="content-cell"><strong>${user.usuario || 'N/A'}</strong></td>
                 <td>${(user.tipo || '').toUpperCase()}</td>
                 <td>${user.cliente || '-'}</td>
+                <td>${Number.isFinite(user.escaneos) ? user.escaneos : (parseInt(user.escaneos || '0', 10) || 0)}</td>
                 <td class="acciones-col" style="display: ${showActions ? 'table-cell' : 'none'};">${actionButtons}</td>
             </tr>
         `;

@@ -756,6 +756,19 @@ app.get('/api/users', async (req, res) => {
     const { tipo: authTipo, cliente: authCliente } = authData;
     const globalSheet = await getOrCreateUsersSheet(doc);
 
+    // Calcular escaneos por usuario desde la hoja REGISTROS global.
+    // Un "escaneo" cuenta por etapa con fecha (almacén, despacho, instalación, desinstalación).
+    const countsByUser = Object.create(null);
+    const recordsSheet = await getOrCreateRecordsSheet(doc);
+    let recordRows = await recordsSheet.getRows();
+    if (authTipo !== 'super' && authCliente) {
+      const normalizedAuthClient = normalizeClientForMatch(authCliente);
+      recordRows = recordRows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === normalizedAuthClient);
+    }
+    for (const row of recordRows) {
+      accumulateUserScanCountsFromRecordRow(row, countsByUser);
+    }
+
     await doc.loadInfo();
     const allUsers = [];
     
@@ -763,10 +776,12 @@ app.get('/api/users', async (req, res) => {
       // Superadmin solo ve usuarios de la hoja global USUARIOS
       const globalRows = await globalSheet.getRows();
       for (const row of globalRows) {
+        const userValue = normalizeUser(row.get('USUARIO'));
         allUsers.push({
-          usuario: normalizeUser(row.get('USUARIO')),
+          usuario: userValue,
           tipo: normalizeType(row.get('TIPO')),
-          cliente: row.get('CLIENTE') || ''
+          cliente: row.get('CLIENTE') || '',
+          escaneos: countsByUser[userValue] || 0
         });
       }
     } else {
@@ -778,10 +793,12 @@ app.get('/api/users', async (req, res) => {
         return !!rowClient && rowClient === normalizedAuthClient;
       });
       for (const row of rows) {
+        const userValue = normalizeUser(row.get('USUARIO'));
         allUsers.push({
-          usuario: normalizeUser(row.get('USUARIO')),
+          usuario: userValue,
           tipo: normalizeType(row.get('TIPO')),
-          cliente: row.get('CLIENTE') || ''
+          cliente: row.get('CLIENTE') || '',
+          escaneos: countsByUser[userValue] || 0
         });
       }
     }
@@ -1802,6 +1819,25 @@ function isUserInRecord(row, userEmail) {
     row.get('USUARIO_INSTALACION'),
     row.get('USUARIO_DESINSTALACION')
   ].some(value => normalizeUser(value) === normalizedUser);
+}
+
+function accumulateUserScanCountsFromRecordRow(row, countsByUser) {
+  const scanStages = [
+    { dateKey: 'FECHA_ALMACEN', userKey: 'USUARIO_PLANTA' },
+    { dateKey: 'FECHA_DESPACHO', userKey: 'USUARIO_DESPACHO' },
+    { dateKey: 'FECHA_INSTALACION', userKey: 'USUARIO_INSTALACION' },
+    { dateKey: 'FECHA_DESINSTALACION', userKey: 'USUARIO_DESINSTALACION' }
+  ];
+
+  for (const stage of scanStages) {
+    const dateValue = (row.get(stage.dateKey) || '').toString().trim();
+    if (!dateValue) continue;
+
+    const userValue = normalizeUser(row.get(stage.userKey));
+    if (!userValue) continue;
+
+    countsByUser[userValue] = (countsByUser[userValue] || 0) + 1;
+  }
 }
 
 /**
