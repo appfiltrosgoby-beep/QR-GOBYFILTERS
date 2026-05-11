@@ -963,19 +963,19 @@ function applyRolePermissions() {
     setViewButtonVisibility('profileView', currentUserRole !== 'superadmin');
     
     if (currentUserRole === 'user' && currentUserType === 'mecanico') {
-        // Usuario mecánico: ocultar estadísticas, usuarios y clientes, mostrar escáner sin selector
+        // Usuario mecánico: ocultar estadísticas, usuarios y clientes; mostrar escáner y registros propios
         setViewButtonVisibility('statsView', false);
         setViewButtonVisibility('usersView', false);
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
-        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('recordsView', true);
         setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
         // Ocultar selector de cliente para mecánicos
         if (elements.clientSelectorContainer) {
             elements.clientSelectorContainer.classList.add('hidden');
         }
-        // Si está en vista de estadísticas/usuarios/clientes/registros, redirigir a escáner
+        // Si está en vista de estadísticas/usuarios/clientes, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
@@ -985,19 +985,16 @@ function applyRolePermissions() {
         if (document.getElementById('clientsView').classList.contains('active')) {
             switchView('scannerView');
         }
-        if (document.getElementById('recordsView').classList.contains('active')) {
-            switchView('scannerView');
-        }
         if (document.getElementById('projectionsView').classList.contains('active')) {
             switchView('scannerView');
         }
     } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
-        // Usuario despacho: ocultar estadísticas, usuarios y clientes, mostrar selector de cliente
+        // Usuario despacho: ocultar estadísticas, usuarios y clientes; mostrar escáner, registros propios y selector de cliente
         setViewButtonVisibility('statsView', false);
         setViewButtonVisibility('usersView', false);
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
-        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('recordsView', true);
         setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
         // Mostrar selector de cliente para usuarios despacho
@@ -1005,7 +1002,7 @@ function applyRolePermissions() {
             elements.clientSelectorContainer.classList.remove('hidden');
             loadClientsSelect();
         }
-        // Si está en vista de estadísticas/usuarios/clientes/registros/proyecciones, redirigir a escáner
+        // Si está en vista de estadísticas/usuarios/clientes/proyecciones, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
@@ -1013,9 +1010,6 @@ function applyRolePermissions() {
             switchView('scannerView');
         }
         if (document.getElementById('clientsView').classList.contains('active')) {
-            switchView('scannerView');
-        }
-        if (document.getElementById('recordsView').classList.contains('active')) {
             switchView('scannerView');
         }
         if (document.getElementById('projectionsView').classList.contains('active')) {
@@ -1069,7 +1063,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('clientsView', true);
         setViewButtonVisibility('projectionsView', true);
         setViewButtonVisibility('scannerView', false);
-        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('recordsView', true);
         setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
@@ -1084,8 +1078,7 @@ function applyRolePermissions() {
         // Cargar clientes para filtros
         loadClientsForProjectionsFilter();
         
-        if (document.getElementById('scannerView').classList.contains('active') ||
-            document.getElementById('recordsView').classList.contains('active')) {
+        if (document.getElementById('scannerView').classList.contains('active')) {
             switchView('statsView');
         }
 
@@ -1142,10 +1135,10 @@ function applyRolePermissions() {
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
     // Solo superadmin puede acceder a: clientsView, statsView
-    // Admin y superadmin pueden acceder a: usersView, projectionsView, recordsView
-    // Mecánicos y despacho solo pueden acceder a: scannerView
+    // Admin y superadmin pueden acceder a: usersView, projectionsView
+    // Mecánicos y despacho pueden acceder a: scannerView, recordsView
     const superadminOnlyViews = ['clientsView', 'statsView'];
-    const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
+    const adminSuperadminViews = ['usersView', 'projectionsView'];
     const nonSuperadminViews = ['profileView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
