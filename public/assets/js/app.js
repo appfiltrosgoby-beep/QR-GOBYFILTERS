@@ -47,6 +47,8 @@ const elements = {
     recordsBody: document.getElementById('recordsBody'),
     refreshBtn: document.getElementById('refreshBtn'),
     exportBtn: document.getElementById('exportBtn'),
+    myRecordsBody: document.getElementById('myRecordsBody'),
+    refreshMyRecordsBtn: document.getElementById('refreshMyRecordsBtn'),
     refreshRewardsBtn: document.getElementById('refreshRewardsBtn'),
     totalScans: document.getElementById('totalScans'),
     todayScans: document.getElementById('todayScans'),
@@ -968,7 +970,8 @@ function applyRolePermissions() {
         setViewButtonVisibility('usersView', false);
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
-        setViewButtonVisibility('recordsView', true);
+        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('myRecordsView', true);
         setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
         // Ocultar selector de cliente para mecánicos
@@ -988,13 +991,17 @@ function applyRolePermissions() {
         if (document.getElementById('projectionsView').classList.contains('active')) {
             switchView('scannerView');
         }
+        if (document.getElementById('recordsView').classList.contains('active')) {
+            switchView('myRecordsView');
+        }
     } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
         // Usuario despacho: ocultar estadísticas, usuarios y clientes; mostrar escáner, registros propios y selector de cliente
         setViewButtonVisibility('statsView', false);
         setViewButtonVisibility('usersView', false);
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
-        setViewButtonVisibility('recordsView', true);
+        setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('myRecordsView', true);
         setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
         // Mostrar selector de cliente para usuarios despacho
@@ -1015,6 +1022,9 @@ function applyRolePermissions() {
         if (document.getElementById('projectionsView').classList.contains('active')) {
             switchView('scannerView');
         }
+        if (document.getElementById('recordsView').classList.contains('active')) {
+            switchView('myRecordsView');
+        }
     } else if (currentUserRole === 'admin') {
         // Admin: mostrar escáner, usuarios, proyecciones, registros; ocultar estadísticas y clientes
         setViewButtonVisibility('statsView', false);
@@ -1023,6 +1033,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('projectionsView', true);
         setViewButtonVisibility('scannerView', true);
         setViewButtonVisibility('recordsView', true);
+        setViewButtonVisibility('myRecordsView', false);
         setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
@@ -1050,6 +1061,9 @@ function applyRolePermissions() {
         if (document.getElementById('clientsView').classList.contains('active')) {
             switchView('scannerView');
         }
+        if (document.getElementById('myRecordsView')?.classList.contains('active')) {
+            switchView('recordsView');
+        }
         
         // Ocultar formulario de crear usuarios (solo pueden ver)
         const userForm = document.querySelector('.user-form');
@@ -1064,6 +1078,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('projectionsView', true);
         setViewButtonVisibility('scannerView', false);
         setViewButtonVisibility('recordsView', true);
+        setViewButtonVisibility('myRecordsView', false);
         setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
@@ -1135,10 +1150,10 @@ function applyRolePermissions() {
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
     // Solo superadmin puede acceder a: clientsView, statsView
-    // Admin y superadmin pueden acceder a: usersView, projectionsView
-    // Mecánicos y despacho pueden acceder a: scannerView, recordsView
+    // Admin y superadmin pueden acceder a: usersView, projectionsView, recordsView
+    // Mecánicos y despacho pueden acceder a: scannerView, myRecordsView
     const superadminOnlyViews = ['clientsView', 'statsView'];
-    const adminSuperadminViews = ['usersView', 'projectionsView'];
+    const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
     const nonSuperadminViews = ['profileView'];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
@@ -1193,6 +1208,8 @@ function switchView(viewId) {
     // Cargar datos según la vista
     if (viewId === 'recordsView') {
         loadRecentScans();
+    } else if (viewId === 'myRecordsView') {
+        loadMyRecentScans();
     } else if (viewId === 'statsView') {
         loadStats();
     } else if (viewId === 'rewardsView') {
@@ -1334,6 +1351,9 @@ function setupEventListeners() {
         await loadRewards();
     });
     if (elements.exportBtn) elements.exportBtn.addEventListener('click', exportToCSV);
+    if (elements.refreshMyRecordsBtn) {
+        elements.refreshMyRecordsBtn.addEventListener('click', loadMyRecentScans);
+    }
     if (elements.refreshRewardsBtn) {
         elements.refreshRewardsBtn.addEventListener('click', loadRewards);
     }
@@ -2558,16 +2578,40 @@ async function loadRecentScans() {
             filterRecordsByCliente(''); // Mostrar todos inicialmente
         } else {
             allRecordsData = [];
-            const colspan = getRecordsColspan();
-            elements.recordsBody.innerHTML = `
-                <tr>
-                    <td colspan="${colspan}" class="no-data">No hay registros para mostrar</td>
-                </tr>
-            `;
+            renderNoRecordsRow(elements.recordsBody);
         }
     } catch (error) {
         console.error('Error al cargar registros:', error);
         showToast('Error al cargar registros', 'error');
+    }
+}
+
+/**
+ * Carga los registros recientes del usuario actual (vista "Mis registros")
+ */
+async function loadMyRecentScans() {
+    try {
+        if (!elements.myRecordsBody) {
+            return;
+        }
+
+        if (!currentUsername) {
+            renderNoRecordsRow(elements.myRecordsBody);
+            return;
+        }
+
+        const queryParams = `limit=20&userEmail=${encodeURIComponent(currentUsername)}`;
+        const response = await fetch(`${API_URL}/api/recent-scans?${queryParams}`);
+        const result = await response.json();
+
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+            displayRecordsIntoBody(result.data, elements.myRecordsBody);
+        } else {
+            renderNoRecordsRow(elements.myRecordsBody);
+        }
+    } catch (error) {
+        console.error('Error al cargar mis registros:', error);
+        showToast('Error al cargar mis registros', 'error');
     }
 }
 
@@ -3678,24 +3722,41 @@ function getRecordsColspan() {
     return currentUserRole === 'superadmin' ? 5 : 4;
 }
 
-/**
- * Muestra los registros en la tabla
- */
-function displayRecords(records) {
-    // Mostrar/ocultar columna CLIENTE según el rol
-    const clienteHeaders = document.querySelectorAll('thead .cliente-col');
+function renderNoRecordsRow(targetTbody) {
+    if (!targetTbody) {
+        return;
+    }
+
+    const colspan = getRecordsColspan();
+    targetTbody.innerHTML = `
+        <tr>
+            <td colspan="${colspan}" class="no-data">No hay registros para mostrar</td>
+        </tr>
+    `;
+}
+
+function displayRecordsIntoBody(records, targetTbody) {
+    if (!targetTbody) {
+        return;
+    }
+
+    const tableRoot = targetTbody.closest('table') || document;
+
+    // Mostrar/ocultar columna CLIENTE según el rol (solo dentro de esta tabla)
+    const clienteHeaders = tableRoot.querySelectorAll('thead .cliente-col');
     clienteHeaders.forEach(th => {
         th.style.display = currentUserRole === 'superadmin' ? 'table-cell' : 'none';
     });
 
-    const usuarioInstHeaders = document.querySelectorAll('thead .usuario-inst-col');
-    const usuarioDesinstHeaders = document.querySelectorAll('thead .usuario-desinst-col');
-    const usuarioHeaders = document.querySelectorAll('thead .usuario-col');
-    const fechaAlmacenHeaders = document.querySelectorAll('thead .fecha-almacen-col');
-    const fechaDespachoHeaders = document.querySelectorAll('thead .fecha-despacho-col');
-    const fechaInstHeaders = document.querySelectorAll('thead .fecha-inst-col');
-    const fechaDesinstHeaders = document.querySelectorAll('thead .fecha-desinst-col');
+    const usuarioInstHeaders = tableRoot.querySelectorAll('thead .usuario-inst-col');
+    const usuarioDesinstHeaders = tableRoot.querySelectorAll('thead .usuario-desinst-col');
+    const usuarioHeaders = tableRoot.querySelectorAll('thead .usuario-col');
+    const fechaAlmacenHeaders = tableRoot.querySelectorAll('thead .fecha-almacen-col');
+    const fechaDespachoHeaders = tableRoot.querySelectorAll('thead .fecha-despacho-col');
+    const fechaInstHeaders = tableRoot.querySelectorAll('thead .fecha-inst-col');
+    const fechaDesinstHeaders = tableRoot.querySelectorAll('thead .fecha-desinst-col');
     const showInstallColumns = currentUserRole === 'admin';
+
     usuarioInstHeaders.forEach(th => {
         th.style.display = showInstallColumns ? 'table-cell' : 'none';
     });
@@ -3717,11 +3778,11 @@ function displayRecords(records) {
     fechaDesinstHeaders.forEach(th => {
         th.style.display = showInstallColumns ? 'table-cell' : 'none';
     });
-    
-    elements.recordsBody.innerHTML = records.map(record => {
+
+    targetTbody.innerHTML = records.map(record => {
         let estadoClass = 'almacen';
         let estadoEmoji = '📦';
-        
+
         if (record.estado === 'EN ALMACEN') {
             estadoClass = 'almacen';
             estadoEmoji = '📦';
@@ -3735,7 +3796,7 @@ function displayRecords(records) {
             estadoClass = 'desinstalado';
             estadoEmoji = '📤';
         }
-        
+
         const usuarioDisplay = currentUserRole === 'superadmin'
             ? (record.usuarioDespacho || '-')
             : (record.usuarioPlanta || '-');
@@ -3759,6 +3820,13 @@ function displayRecords(records) {
             </tr>
         `;
     }).join('');
+}
+
+/**
+ * Muestra los registros en la tabla
+ */
+function displayRecords(records) {
+    displayRecordsIntoBody(records, elements.recordsBody);
 }
 
 /**

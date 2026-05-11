@@ -72,6 +72,7 @@
             <nav class="side-menu-nav">
                 <button class="menu-item active" data-view="scannerView">Escanear</button>
                 <button class="menu-item" data-view="recordsView">Registros</button>
+                <button class="menu-item" data-view="myRecordsView">Mis registros</button>
                 <button class="menu-item" data-view="rewardsView">Recompensas</button>
                 <button class="menu-item" data-view="statsView">Estadísticas</button>
                 <button class="menu-item" data-view="profileView">Mi perfil</button>
@@ -194,6 +195,49 @@
                                 <tbody id="recordsBody">
                                     <tr>
                                         <td colspan="5" class="no-data">
+                                            No hay registros para mostrar
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vista: Mis registros -->
+            <section id="myRecordsView" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📋 Mis registros</h2>
+                        <div class="header-actions">
+                            <button id="refreshMyRecordsBtn" class="btn btn-icon-text">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                                </svg>
+                                Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table id="myRecordsTable" class="records-table">
+                                <thead>
+                                    <tr>
+                                        <th>Estado</th>
+                                        <th class="cliente-col" style="display:none;">Cliente</th>
+                                        <th class="usuario-col">Usuario</th>
+                                        <th class="usuario-inst-col" style="display:none;">Usuario Instalación</th>
+                                        <th class="usuario-desinst-col" style="display:none;">Usuario Desinstalación</th>
+                                        <th class="fecha-almacen-col">Fecha Almacén</th>
+                                        <th class="fecha-despacho-col">Fecha Despacho</th>
+                                        <th class="fecha-inst-col" style="display:none;">Fecha Instalación</th>
+                                        <th class="fecha-desinst-col" style="display:none;">Fecha Desinstalación</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="myRecordsBody">
+                                    <tr>
+                                        <td colspan="4" class="no-data">
                                             No hay registros para mostrar
                                         </td>
                                     </tr>
@@ -787,6 +831,15 @@
                     <line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
                 <span>Registros</span>
+            </button>
+            <button class="nav-item" data-view="myRecordsView">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span>Mis registros</span>
             </button>
             <button class="nav-item" data-view="rewardsView">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
