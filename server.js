@@ -401,7 +401,7 @@ function isValidEmail(email) {
 
 function validateStrongPassword(password) {
   const value = (password || '').toString();
-  if (value.length < 9) return 'La contraseña debe tener mínimo 9 caracteres';
+  if (value.length < 8) return 'La contraseña debe tener mínimo 8 caracteres';
   if (!/[a-z]/.test(value)) return 'La contraseña debe tener al menos una minúscula';
   if (!/[A-Z]/.test(value)) return 'La contraseña debe tener al menos una mayúscula';
   if (!/[^A-Za-z0-9]/.test(value)) return 'La contraseña debe tener al menos un carácter especial';

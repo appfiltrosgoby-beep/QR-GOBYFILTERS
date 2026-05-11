@@ -280,6 +280,12 @@ function initAuth() {
         applyRolePermissions();
         elements.loginModal.style.display = 'none';
 
+        // Actualizar contadores (Total Escaneos / Hoy) al restaurar sesión.
+        // Se ejecuta en background para no bloquear la UI.
+        if (!document.getElementById('statsView')?.classList.contains('active')) {
+            loadStats().catch(err => console.error('Error cargando stats al restaurar sesión:', err));
+        }
+
         // Alertas pendientes para administradores/superadmin al restaurar sesión
         loadLoginAlerts().catch(err => console.error('Error cargando alertas de login:', err));
     } else {
@@ -426,7 +432,7 @@ function isValidEmail(email) {
 
 function validateStrongPassword(password) {
     const value = (password || '').toString();
-    if (value.length < 9) return 'La contraseña debe tener mínimo 9 caracteres';
+    if (value.length < 8) return 'La contraseña debe tener mínimo 8 caracteres';
     if (!/[a-z]/.test(value)) return 'La contraseña debe tener al menos una minúscula';
     if (!/[A-Z]/.test(value)) return 'La contraseña debe tener al menos una mayúscula';
     if (!/[^A-Za-z0-9]/.test(value)) return 'La contraseña debe tener al menos un carácter especial';
@@ -734,6 +740,11 @@ async function validateUnifiedLogin() {
     clearUnifiedLoginForm();
     clearRegisterForm();
     showToast(`Bienvenido ${(currentUserDisplayName || currentUsername || 'Usuario')}`, 'success');
+
+    // Actualizar contadores apenas inicia sesión (sin esperar escaneo o cambio de vista).
+    if (!document.getElementById('statsView')?.classList.contains('active')) {
+        loadStats().catch(err => console.error('Error cargando stats post-login:', err));
+    }
 
     // Alertas pendientes para administradores/superadmin
     loadLoginAlerts().catch(err => console.error('Error cargando alertas de login:', err));
