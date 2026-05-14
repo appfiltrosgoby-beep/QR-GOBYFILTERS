@@ -327,6 +327,17 @@ function normalizeClientValue(value) {
         .replace(/\s+/g, ' ');
 }
 
+function compareClientNames(a, b) {
+    const left = (a ?? '').toString().trim();
+    const right = (b ?? '').toString().trim();
+    return left.localeCompare(right, 'es', { sensitivity: 'base', numeric: true });
+}
+
+function sortClientsByNombre(clients) {
+    const list = Array.isArray(clients) ? clients : [];
+    return list.slice().sort((a, b) => compareClientNames(a?.nombre, b?.nombre));
+}
+
 async function resolveClientName(inputValue) {
     const target = normalizeClientValue(inputValue);
     if (!target) {
@@ -2425,7 +2436,7 @@ async function loadClientsSelect() {
             elements.selectedClient.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
             
             // Agregar opciones de clientes
-            result.data.forEach(client => {
+            sortClientsByNombre(result.data).forEach(client => {
                 const option = document.createElement('option');
                 option.value = client.nombre;
                 option.textContent = client.nombre;
@@ -3598,7 +3609,7 @@ async function loadClientsForUserForm() {
             elements.newUserClient.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
             
             // Agregar opciones de clientes
-            result.data.forEach(client => {
+            sortClientsByNombre(result.data).forEach(client => {
                 const option = document.createElement('option');
                 option.value = client.nombre;
                 option.textContent = client.nombre;
@@ -3626,7 +3637,7 @@ async function loadClientsForProjectionsFilter() {
             filterClienteProjections.innerHTML = '<option value="">Todos los clientes</option>';
             
             // Agregar opciones de clientes
-            result.data.forEach(client => {
+            sortClientsByNombre(result.data).forEach(client => {
                 const option = document.createElement('option');
                 option.value = client.nombre;
                 option.textContent = client.nombre;
@@ -4062,7 +4073,8 @@ function populateClientesSelectRecords() {
     if (!filterSelect || !allRecordsData.length) return;
     
     // Obtener clientes únicos
-    const clientes = [...new Set(allRecordsData.map(row => row.cliente).filter(Boolean))].sort();
+    const clientes = [...new Set(allRecordsData.map(row => row.cliente).filter(Boolean))]
+        .sort(compareClientNames);
     
     // Guardar la opción actual
     const currentValue = filterSelect.value;
@@ -4092,7 +4104,8 @@ function populateClientesSelectUsers() {
     if (!filterSelect || !allUsersData.length) return;
     
     // Obtener clientes únicos
-    const clientes = [...new Set(allUsersData.map(user => user.cliente).filter(Boolean))].sort();
+    const clientes = [...new Set(allUsersData.map(user => user.cliente).filter(Boolean))]
+        .sort(compareClientNames);
     
     // Guardar la opción actual
     const currentValue = filterSelect.value;
@@ -4122,7 +4135,8 @@ function populateClientesSelectStats() {
     if (!filterSelect || !allStatsData.length) return;
     
     // Obtener clientes únicos
-    const clientes = [...new Set(allStatsData.map(row => row.cliente).filter(Boolean))].sort();
+    const clientes = [...new Set(allStatsData.map(row => row.cliente).filter(Boolean))]
+        .sort(compareClientNames);
     
     // Guardar la opción actual
     const currentValue = filterSelect.value;
