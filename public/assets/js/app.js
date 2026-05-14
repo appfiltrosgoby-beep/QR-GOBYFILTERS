@@ -1002,8 +1002,8 @@ function applyRolePermissions() {
     elements.currentRole.textContent = displayText;
     elements.currentRole.className = `role-badge ${currentUserRole}`;
 
-    // Mi perfil: disponible para todos excepto superadmin
-    setViewButtonVisibility('profileView', currentUserRole !== 'superadmin');
+    // Mi perfil: disponible para todos los roles (incluye superadmin)
+    setViewButtonVisibility('profileView', true);
     
     if (currentUserRole === 'user' && currentUserType === 'mecanico') {
         // Usuario mecánico: ocultar estadísticas, usuarios y clientes; mostrar escáner y registros propios
@@ -1117,7 +1117,8 @@ function applyRolePermissions() {
         setViewButtonVisibility('usersView', true);
         setViewButtonVisibility('clientsView', true);
         setViewButtonVisibility('projectionsView', true);
-        setViewButtonVisibility('scannerView', false);
+        // Escanear también disponible para superadmin
+        setViewButtonVisibility('scannerView', true);
         setViewButtonVisibility('recordsView', true);
         setViewButtonVisibility('myRecordsView', false);
         setViewButtonVisibility('rewardsView', true);
@@ -1134,13 +1135,8 @@ function applyRolePermissions() {
         // Cargar clientes para filtros
         loadClientsForProjectionsFilter();
         
-        if (document.getElementById('scannerView').classList.contains('active')) {
-            switchView('statsView');
-        }
-
-        if (document.getElementById('profileView')?.classList.contains('active')) {
-            switchView('statsView');
-        }
+        // Nota: no forzar redirección desde Escanear/Mi perfil para superadmin;
+        // el usuario puede navegar libremente.
         
         // Mostrar formulario de crear usuarios (solo superadmin)
         const userForm = document.querySelector('.user-form');
@@ -1195,7 +1191,7 @@ function switchView(viewId) {
     // Mecánicos y despacho pueden acceder a: scannerView, myRecordsView
     const superadminOnlyViews = ['clientsView', 'statsView'];
     const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
-    const nonSuperadminViews = ['profileView'];
+    const nonSuperadminViews = [];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
     const isMecanico = currentUserType === 'mecanico';
@@ -1209,12 +1205,7 @@ function switchView(viewId) {
         viewId = (isMecanico || isDespacho) ? 'scannerView' : 'statsView';
     }
 
-    // Bloquear acceso a vistas solo no-superadmin
-    if (nonSuperadminViews.includes(viewId) && isSuperadmin) {
-        console.warn(`⚠️ Acceso denegado: El superadmin ${currentUsername} intentó acceder a ${viewId}`);
-        showToast('No tienes permiso para acceder a esta sección', 'error');
-        viewId = 'statsView';
-    }
+    // (Sin bloqueos especiales para superadmin en Mi perfil)
     
     // Bloquear acceso a vistas de admin/superadmin
     if (adminSuperadminViews.includes(viewId) && !isSuperadmin && !isAdmin) {
@@ -3538,7 +3529,7 @@ async function loadClients() {
         const result = await response.json();
 
         if (result.success) {
-            allClientsData = result.data;
+            allClientsData = sortClientsByNombre(result.data);
             displayClients(allClientsData);
         } else {
             allClientsData = [];
