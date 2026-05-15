@@ -2869,7 +2869,7 @@ function renderRewardsCatalog(pointsAvailable) {
             const confirmed = await showStyledConfirm({
                 title: 'Confirmar canje',
                 message: `¿Confirmas canjear "${rewardName}" por ${cost} puntos?`,
-                confirmText: 'Canjear',
+                confirmText: 'Confirmar',
                 cancelText: 'Cancelar',
                 imageSrc: rewardImage,
                 imageAlt: rewardName
