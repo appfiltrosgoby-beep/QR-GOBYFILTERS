@@ -1438,7 +1438,14 @@ async function initializeRewardsHistorySheet(sheet) {
     'REFERENCIA',
     'SERIAL',
     'DESCRIPCION',
-    'FECHA'
+    'FECHA',
+
+    // Datos de entrega (solo aplica para canjes)
+    'ENTREGA_NOMBRE',
+    'ENTREGA_TELEFONO',
+    'ENTREGA_DIRECCION',
+    'ENTREGA_CIUDAD',
+    'ENTREGA_NOTAS'
   ];
 
   if (!sheet.headerValues || sheet.headerValues.length === 0) {
@@ -1516,7 +1523,12 @@ async function getOrCreateRewardsHistorySheet(doc) {
         'REFERENCIA',
         'SERIAL',
         'DESCRIPCION',
-        'FECHA'
+        'FECHA',
+        'ENTREGA_NOMBRE',
+        'ENTREGA_TELEFONO',
+        'ENTREGA_DIRECCION',
+        'ENTREGA_CIUDAD',
+        'ENTREGA_NOTAS'
       ]
     });
   }
@@ -1764,7 +1776,12 @@ async function redeemRewardPoints(doc, identifier, displayName, points, metadata
     'REFERENCIA': metadata.referencia || '',
     'SERIAL': metadata.serial || '',
     'DESCRIPCION': metadata.descripcion || 'Canje de premio',
-    'FECHA': now
+    'FECHA': now,
+    'ENTREGA_NOMBRE': metadata.entregaNombre || '',
+    'ENTREGA_TELEFONO': metadata.entregaTelefono || '',
+    'ENTREGA_DIRECCION': metadata.entregaDireccion || '',
+    'ENTREGA_CIUDAD': metadata.entregaCiudad || '',
+    'ENTREGA_NOTAS': metadata.entregaNotas || ''
   });
 
   return {
@@ -3603,7 +3620,7 @@ app.get('/api/rewards', async (req, res) => {
  */
 app.post('/api/rewards/redeem', async (req, res) => {
   try {
-    const { identifier, points, rewardName, referencia, serial } = req.body;
+    const { identifier, points, rewardName, referencia, serial, delivery } = req.body;
     const parsedPoints = parseInt(points, 10);
 
     if (!identifier || !rewardName || !Number.isFinite(parsedPoints) || parsedPoints <= 0) {
@@ -3613,13 +3630,32 @@ app.post('/api/rewards/redeem', async (req, res) => {
       });
     }
 
+    const deliveryObj = delivery && typeof delivery === 'object' ? delivery : null;
+    const entregaNombre = deliveryObj ? (deliveryObj.fullName || '').toString().trim() : '';
+    const entregaTelefono = deliveryObj ? (deliveryObj.phone || '').toString().trim() : '';
+    const entregaDireccion = deliveryObj ? (deliveryObj.address || '').toString().trim() : '';
+    const entregaCiudad = deliveryObj ? (deliveryObj.city || '').toString().trim() : '';
+    const entregaNotas = deliveryObj ? (deliveryObj.notes || '').toString().trim() : '';
+
+    if (!entregaNombre || !entregaTelefono || !entregaDireccion || !entregaCiudad) {
+      return res.status(400).json({
+        success: false,
+        error: 'Los datos de entrega son requeridos para confirmar el canje'
+      });
+    }
+
     const doc = await getGoogleSheet();
     // Nota: el 3er parámetro es el nombre a mostrar del usuario en la hoja de recompensas.
     // No debe ser el nombre del premio; dejamos vacío para conservar el nombre existente.
     const result = await redeemRewardPoints(doc, identifier, '', parsedPoints, {
       referencia,
       serial,
-      descripcion: `Canje de ${rewardName}`
+      descripcion: `Canje de ${rewardName}`,
+      entregaNombre,
+      entregaTelefono,
+      entregaDireccion,
+      entregaCiudad,
+      entregaNotas
     });
 
     if (!result.success) {

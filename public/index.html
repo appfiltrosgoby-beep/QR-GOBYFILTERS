@@ -998,6 +998,65 @@
                 </div>
             </div>
         </div>
+
+        <!-- Modal: Datos de entrega para canje de premios -->
+        <div id="rewardDeliveryModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📦 Datos de entrega</h2>
+                    <p id="rewardDeliverySubtitle">Completa la información para coordinar la entrega del premio.</p>
+                </div>
+                <div class="modal-body">
+                    <form id="rewardDeliveryForm" class="password-form" autocomplete="on">
+                        <input
+                            type="text"
+                            id="deliveryFullName"
+                            placeholder="Nombre completo de quien recibe"
+                            class="input-password"
+                            autocomplete="name"
+                            required
+                        >
+                        <input
+                            type="tel"
+                            id="deliveryPhone"
+                            placeholder="Teléfono de contacto"
+                            class="input-password"
+                            autocomplete="tel"
+                            required
+                        >
+                        <input
+                            type="text"
+                            id="deliveryAddress"
+                            placeholder="Dirección de entrega"
+                            class="input-password"
+                            autocomplete="street-address"
+                            required
+                        >
+                        <input
+                            type="text"
+                            id="deliveryCity"
+                            placeholder="Ciudad"
+                            class="input-password"
+                            autocomplete="address-level2"
+                            required
+                        >
+                        <textarea
+                            id="deliveryNotes"
+                            class="input-password"
+                            placeholder="Observaciones (opcional)"
+                            rows="3"
+                        ></textarea>
+
+                        <div class="password-actions">
+                            <button id="rewardDeliveryCancelBtn" type="button" class="btn btn-secondary">Cancelar</button>
+                            <button id="rewardDeliverySubmitBtn" type="submit" class="btn btn-primary">Confirmar canje</button>
+                        </div>
+
+                        <div id="rewardDeliveryError" class="error-message hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Configuración del catálogo de recompensas -->

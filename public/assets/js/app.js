@@ -159,6 +159,19 @@ const elements = {
     confirmModalCancelBtn: document.getElementById('confirmModalCancelBtn'),
     confirmModalOkBtn: document.getElementById('confirmModalOkBtn'),
 
+    // Recompensas - Canje / Datos de entrega
+    rewardDeliveryModal: document.getElementById('rewardDeliveryModal'),
+    rewardDeliveryForm: document.getElementById('rewardDeliveryForm'),
+    rewardDeliverySubtitle: document.getElementById('rewardDeliverySubtitle'),
+    deliveryFullName: document.getElementById('deliveryFullName'),
+    deliveryPhone: document.getElementById('deliveryPhone'),
+    deliveryAddress: document.getElementById('deliveryAddress'),
+    deliveryCity: document.getElementById('deliveryCity'),
+    deliveryNotes: document.getElementById('deliveryNotes'),
+    rewardDeliveryCancelBtn: document.getElementById('rewardDeliveryCancelBtn'),
+    rewardDeliverySubmitBtn: document.getElementById('rewardDeliverySubmitBtn'),
+    rewardDeliveryError: document.getElementById('rewardDeliveryError'),
+
     // Contacto - Solicitudes
     contactRequestForm: document.getElementById('contactRequestForm'),
     contactRequestMessage: document.getElementById('contactRequestMessage'),
@@ -220,6 +233,92 @@ function showStyledConfirm({ title, message, confirmText = 'Confirmar', cancelTe
         // Asegurar handlers limpios por apertura
         elements.confirmModalCancelBtn.onclick = onCancel;
         elements.confirmModalOkBtn.onclick = onOk;
+    });
+}
+
+let rewardDeliveryInFlight = false;
+let rewardDeliveryResolve = null;
+
+function closeRewardDeliveryModal(result) {
+    if (!elements.rewardDeliveryModal) {
+        return;
+    }
+
+    elements.rewardDeliveryModal.style.display = 'none';
+    rewardDeliveryInFlight = false;
+
+    if (elements.rewardDeliveryError) {
+        elements.rewardDeliveryError.textContent = '';
+        elements.rewardDeliveryError.classList.add('hidden');
+    }
+
+    const resolve = rewardDeliveryResolve;
+    rewardDeliveryResolve = null;
+    if (typeof resolve === 'function') {
+        resolve(result);
+    }
+}
+
+function showRewardDeliveryForm({ rewardName, cost }) {
+    if (!elements.rewardDeliveryModal || !elements.rewardDeliveryForm) {
+        return Promise.resolve(null);
+    }
+
+    if (rewardDeliveryInFlight) {
+        return Promise.resolve(null);
+    }
+
+    rewardDeliveryInFlight = true;
+
+    if (elements.rewardDeliverySubtitle) {
+        const safeName = (rewardName || '').toString().trim();
+        const safeCost = Number.isFinite(cost) ? cost : parseInt(cost, 10) || 0;
+        elements.rewardDeliverySubtitle.textContent = safeName
+            ? `Vas a canjear "${safeName}" por ${safeCost} puntos. Completa los datos de entrega.`
+            : 'Completa la información para coordinar la entrega del premio.';
+    }
+
+    if (elements.deliveryFullName) elements.deliveryFullName.value = '';
+    if (elements.deliveryPhone) elements.deliveryPhone.value = '';
+    if (elements.deliveryAddress) elements.deliveryAddress.value = '';
+    if (elements.deliveryCity) elements.deliveryCity.value = '';
+    if (elements.deliveryNotes) elements.deliveryNotes.value = '';
+
+    if (elements.rewardDeliveryError) {
+        elements.rewardDeliveryError.textContent = '';
+        elements.rewardDeliveryError.classList.add('hidden');
+    }
+
+    elements.rewardDeliveryModal.style.display = 'flex';
+
+    return new Promise(resolve => {
+        rewardDeliveryResolve = resolve;
+
+        const onCancel = () => closeRewardDeliveryModal(null);
+
+        if (elements.rewardDeliveryCancelBtn) {
+            elements.rewardDeliveryCancelBtn.onclick = onCancel;
+        }
+
+        elements.rewardDeliveryForm.onsubmit = (event) => {
+            event.preventDefault();
+
+            const fullName = (elements.deliveryFullName?.value || '').trim();
+            const phone = (elements.deliveryPhone?.value || '').trim();
+            const address = (elements.deliveryAddress?.value || '').trim();
+            const city = (elements.deliveryCity?.value || '').trim();
+            const notes = (elements.deliveryNotes?.value || '').trim();
+
+            if (!fullName || !phone || !address || !city) {
+                if (elements.rewardDeliveryError) {
+                    elements.rewardDeliveryError.textContent = 'Nombre, teléfono, dirección y ciudad son requeridos.';
+                    elements.rewardDeliveryError.classList.remove('hidden');
+                }
+                return;
+            }
+
+            closeRewardDeliveryModal({ fullName, phone, address, city, notes });
+        };
     });
 }
 
@@ -2762,7 +2861,13 @@ function renderRewardsCatalog(pointsAvailable) {
                 return;
             }
 
-            redeemReward({ name: rewardName, cost });
+            const delivery = await showRewardDeliveryForm({ rewardName, cost });
+            if (!delivery) {
+                showToast('Canje cancelado', 'info');
+                return;
+            }
+
+            redeemReward({ name: rewardName, cost, delivery });
         });
     });
 }
@@ -2990,6 +3095,12 @@ async function redeemReward(reward) {
             return;
         }
 
+        const delivery = reward.delivery || null;
+        if (!delivery || !delivery.fullName || !delivery.phone || !delivery.address || !delivery.city) {
+            showToast('Faltan datos de entrega para confirmar el canje', 'warning');
+            return;
+        }
+
         const balance = currentRewardsData?.reward?.puntos || 0;
         if (balance < reward.cost) {
             showToast('No tienes suficientes puntos para este premio', 'warning');
@@ -3002,7 +3113,14 @@ async function redeemReward(reward) {
             body: JSON.stringify({
                 identifier,
                 points: reward.cost,
-                rewardName: reward.name
+                rewardName: reward.name,
+                delivery: {
+                    fullName: delivery.fullName,
+                    phone: delivery.phone,
+                    address: delivery.address,
+                    city: delivery.city,
+                    notes: delivery.notes || ''
+                }
             })
         });
 
