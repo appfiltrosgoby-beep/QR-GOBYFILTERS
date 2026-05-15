@@ -1563,6 +1563,22 @@ input:checked + .slider:before {
     gap: var(--spacing-md);
 }
 
+.confirm-modal-media {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.confirm-modal-media img {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    border-radius: var(--border-radius);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    object-fit: cover;
+}
+
 .btn-large {
     padding: var(--spacing-lg);
     font-size: 1.1rem;

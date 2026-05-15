@@ -156,6 +156,7 @@ const elements = {
     confirmModal: document.getElementById('confirmModal'),
     confirmModalTitle: document.getElementById('confirmModalTitle'),
     confirmModalMessage: document.getElementById('confirmModalMessage'),
+    confirmModalMedia: document.getElementById('confirmModalMedia'),
     confirmModalCancelBtn: document.getElementById('confirmModalCancelBtn'),
     confirmModalOkBtn: document.getElementById('confirmModalOkBtn'),
 
@@ -201,7 +202,7 @@ function closeConfirmModal(result) {
     }
 }
 
-function showStyledConfirm({ title, message, confirmText = 'Confirmar', cancelText = 'Cancelar' }) {
+function showStyledConfirm({ title, message, confirmText = 'Confirmar', cancelText = 'Cancelar', imageSrc = '', imageAlt = '' }) {
     // Fallback si por alguna razón el modal no está en el DOM
     if (!elements.confirmModal || !elements.confirmModalOkBtn || !elements.confirmModalCancelBtn) {
         return Promise.resolve(window.confirm(message || '¿Deseas continuar?'));
@@ -218,6 +219,18 @@ function showStyledConfirm({ title, message, confirmText = 'Confirmar', cancelTe
     }
     if (elements.confirmModalMessage) {
         elements.confirmModalMessage.textContent = message || '¿Deseas continuar?';
+    }
+
+    if (elements.confirmModalMedia) {
+        const src = (imageSrc || '').toString().trim();
+        if (src) {
+            const safeAlt = (imageAlt || '').toString().trim() || 'Producto';
+            elements.confirmModalMedia.innerHTML = `<img src="${src}" alt="${safeAlt}" loading="lazy">`;
+            elements.confirmModalMedia.classList.remove('hidden');
+        } else {
+            elements.confirmModalMedia.innerHTML = '';
+            elements.confirmModalMedia.classList.add('hidden');
+        }
     }
     elements.confirmModalOkBtn.textContent = confirmText;
     elements.confirmModalCancelBtn.textContent = cancelText;
@@ -2846,14 +2859,20 @@ function renderRewardsCatalog(pointsAvailable) {
 
     elements.rewardsCatalog.querySelectorAll('.reward-redeem-btn').forEach(button => {
         button.addEventListener('click', async () => {
+            const rewardId = button.getAttribute('data-reward-id') || '';
             const rewardName = button.getAttribute('data-reward-name') || '';
             const cost = parseInt(button.getAttribute('data-reward-cost') || '0', 10);
+
+            const rewardConfig = rewardsCatalog.find(item => (item?.id || '') === rewardId) || null;
+            const rewardImage = rewardConfig && typeof rewardConfig.image === 'string' ? rewardConfig.image.trim() : '';
 
             const confirmed = await showStyledConfirm({
                 title: 'Confirmar canje',
                 message: `¿Confirmas canjear "${rewardName}" por ${cost} puntos?`,
                 confirmText: 'Canjear',
-                cancelText: 'Cancelar'
+                cancelText: 'Cancelar',
+                imageSrc: rewardImage,
+                imageAlt: rewardName
             });
 
             if (!confirmed) {
