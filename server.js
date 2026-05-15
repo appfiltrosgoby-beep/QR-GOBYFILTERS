@@ -3238,13 +3238,16 @@ app.get('/api/projections', async (req, res) => {
       });
     }
 
-    // PASO 1: Calcular duración promedio por (cliente, referencia) usando registros desinstalados
+    // PASO 1: Calcular duración promedio por (cliente, referencia) y por (cliente, placa, referencia)
+    // usando registros DESINSTALADO (histórico real).
     const durationsByClientRef = {}; // Key: "cliente|referencia", Value: array de duraciones en días
+    const durationsByVehicleRef = {}; // Key: "cliente|placa|referencia", Value: array de duraciones en días
     
     allRows.forEach(row => {
       const estado = row.get('ESTADO');
       const cliente = row.get('CLIENTE') || 'Sin Cliente';
       const referencia = row.get('REFERENCIA');
+      const placa = row.get('PLACA') || '';
       const fechaInst = row.get('FECHA_INSTALACION');
       const fechaDesinst = row.get('FECHA_DESINSTALACION');
 
@@ -3263,6 +3266,15 @@ app.get('/api/projections', async (req, res) => {
               durationsByClientRef[key] = [];
             }
             durationsByClientRef[key].push(diasInstalado);
+
+            const placaValue = (placa || '').toString().trim();
+            if (placaValue) {
+              const vehicleKey = `${cliente}|${placaValue}|${referencia}`;
+              if (!durationsByVehicleRef[vehicleKey]) {
+                durationsByVehicleRef[vehicleKey] = [];
+              }
+              durationsByVehicleRef[vehicleKey].push(diasInstalado);
+            }
           }
         }
       }
@@ -3276,7 +3288,16 @@ app.get('/api/projections', async (req, res) => {
       avgDurationByClientRef[key] = Math.round(avg);
     }
 
-    // PASO 2: Para cada filtro instalado, calcular fecha estimada de reemplazo
+    // Calcular promedios por (cliente, placa, referencia)
+    const avgDurationByVehicleRef = {};
+    for (const key in durationsByVehicleRef) {
+      const durations = durationsByVehicleRef[key];
+      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+      avgDurationByVehicleRef[key] = Math.round(avg);
+    }
+
+    // PASO 2: Para cada filtro instalado, calcular fecha estimada de reemplazo.
+    // Importante: primero intentamos usar promedio individual por VEHÍCULO (placa+referencia).
     const nextReplacements = [];
     
     allRows.forEach(row => {
@@ -3290,10 +3311,15 @@ app.get('/api/projections', async (req, res) => {
       if (estado === 'INSTALADO' && fechaInst && (cliente || referencia)) {
         const dateInst = parseSpanishDate(fechaInst);
         if (dateInst) {
-          const key = `${cliente}|${referencia}`;
-          
-          // Obtener duración promedio para esta (cliente, referencia), default 90 días si no hay histórico
-          const avgDuration = avgDurationByClientRef[key] || 90;
+          const keyClientRef = `${cliente}|${referencia}`;
+
+          const placaValue = (placa || '').toString().trim();
+          const vehicleKey = placaValue ? `${cliente}|${placaValue}|${referencia}` : '';
+
+          // Obtener duración promedio individual por vehículo (si existe), si no por (cliente, referencia), si no default.
+          const avgDuration = (vehicleKey && avgDurationByVehicleRef[vehicleKey])
+            ? avgDurationByVehicleRef[vehicleKey]
+            : (avgDurationByClientRef[keyClientRef] || 90);
 
           // Calcular fecha estimada de reemplazo
           const estimatedDate = new Date(dateInst);
