@@ -2133,7 +2133,7 @@ async function startScanning() {
         }
         
         const config = {
-            fps: 15, // Aumentado de 10 a 15 para escaneo más rápido
+            fps: 10, // Aumentado de 10 a 15 para escaneo más rápido
             qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0,
             disableFlip: false // Permite detectar QRs invertidos
