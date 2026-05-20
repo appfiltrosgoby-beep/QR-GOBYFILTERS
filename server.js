@@ -3091,38 +3091,63 @@ app.post('/api/save-qr', async (req, res) => {
 
 /**
  * Obtiene los últimos registros de QR escaneados
- * GET /api/recent-scans?limit=10&superadmin=true
+ * GET /api/recent-scans?limit=10&cliente=ACME
+ * Requiere headers: x-auth-user, x-auth-password
  */
 app.get('/api/recent-scans', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const cliente = req.query.cliente || '';
-    const isSuperadminRequest = req.query.superadmin === 'true';
-    const userEmail = req.query.userEmail || '';
+    const requestedClient = (req.query.cliente || '').toString().trim();
+
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, message: 'Credenciales requeridas' });
+    }
     
     const doc = await getGoogleSheet();
-    let rows = [];
-
-    if (cliente) {
-      // Filtrar por cliente específico
-      const sheet = await getOrCreateClientRecordsSheet(doc, cliente);
-      rows = await sheet.getRows();
-    } else if (isSuperadminRequest) {
-      // Superadmin: obtener registros de la hoja global REGISTROS (no cargar todos los clientes)
-      // Esto evita exceder límites de API al no iterar por todas las hojas
-      const globalSheet = await getOrCreateRecordsSheet(doc);
-      rows = await globalSheet.getRows();
-    } else {
-      // Usuario regular: obtener registros globales
-      const sheet = await getOrCreateRecordsSheet(doc);
-      rows = await sheet.getRows();
+    const authRow = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!authRow) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
-    if (userEmail && !isSuperadminRequest && !cliente) {
-      rows = rows.filter(row => isUserInRecord(row, userEmail));
+    const authTipo = normalizeType(authRow.get('TIPO'));
+    const authCliente = (authRow.get('CLIENTE') || '').toString().trim();
+    const isSuper = authTipo === 'super';
+    const isAdmin = authTipo === 'administrador';
+    const authEmail = normalizeUser(authRow.get('USUARIO') || authUser);
+
+    // Fuente única: hoja global REGISTROS (contiene todos los clientes)
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    let rows = await globalSheet.getRows();
+
+    if (requestedClient) {
+      // Filtro por cliente: permitido para superadmin, y para admin solo si es su cliente
+      if (!isSuper && !isAdmin) {
+        return res.status(403).json({ success: false, message: 'No autorizado para filtrar por cliente' });
+      }
+
+      const requestedKey = normalizeClientForMatch(requestedClient);
+      if (isAdmin) {
+        const adminKey = normalizeClientForMatch(authCliente);
+        if (!adminKey || requestedKey !== adminKey) {
+          return res.status(403).json({ success: false, message: 'Solo puede ver registros de su cliente' });
+        }
+      }
+
+      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === requestedKey);
+    } else if (isAdmin) {
+      // Admin: siempre restringido a su cliente
+      const adminKey = normalizeClientForMatch(authCliente);
+      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === adminKey);
+    } else if (!isSuper) {
+      // Usuarios normales: solo sus registros
+      rows = rows.filter(row => isUserInRecord(row, authEmail));
     }
 
-    const recentRows = rows.slice(-limit).reverse();
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 2000)) : 10;
+    const recentRows = rows.slice(-safeLimit).reverse();
 
     const data = recentRows.map(row => ({
       id: row.get('ID'),
@@ -3162,32 +3187,56 @@ app.get('/api/recent-scans', async (req, res) => {
 /**
  * Obtiene estadísticas de escaneos
  * GET /api/stats
+ * Requiere headers: x-auth-user, x-auth-password
  */
 app.get('/api/stats', async (req, res) => {
   try {
-    const cliente = req.query.cliente || '';
-    const userEmail = req.query.userEmail || '';
-    const normalizedUser = normalizeUser(userEmail);
+    const cliente = (req.query.cliente || '').toString().trim();
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, message: 'Credenciales requeridas' });
+    }
     
     const doc = await getGoogleSheet();
 
-    let rows = [];
+    const authRow = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!authRow) {
+      return res.status(401).json({ success: false, message: 'No autorizado' });
+    }
+
+    const authTipo = normalizeType(authRow.get('TIPO'));
+    const authCliente = (authRow.get('CLIENTE') || '').toString().trim();
+    const isSuper = authTipo === 'super';
+    const isAdmin = authTipo === 'administrador';
+    const normalizedUser = normalizeUser(authRow.get('USUARIO') || authUser);
+
+    // Fuente única: hoja global REGISTROS
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    let rows = await globalSheet.getRows();
+    console.log(`📊 Stats API: Total de registros en REGISTROS: ${rows.length}`);
 
     if (cliente) {
-      // Para stats filtradas por cliente, usar la hoja del cliente (fuente por-cliente)
-      const clientSheet = await getOrCreateClientRecordsSheet(doc, cliente);
-      rows = await clientSheet.getRows();
-      console.log(`📊 Stats API: Registros en hoja cliente "${cliente}": ${rows.length}`);
-    } else {
-      // Default: hoja REGISTROS global
-      const globalSheet = await getOrCreateRecordsSheet(doc);
-      rows = await globalSheet.getRows();
-      console.log(`📊 Stats API: Total de registros en REGISTROS: ${rows.length}`);
-
-      if (userEmail) {
-        rows = rows.filter(row => isUserInRecord(row, userEmail));
-        console.log(`👤 Filtrado por usuario "${userEmail}": ${rows.length} registros`);
+      if (!isSuper && !isAdmin) {
+        return res.status(403).json({ success: false, message: 'No autorizado para filtrar por cliente' });
       }
+
+      const requestedKey = normalizeClientForMatch(cliente);
+      if (isAdmin) {
+        const adminKey = normalizeClientForMatch(authCliente);
+        if (!adminKey || requestedKey !== adminKey) {
+          return res.status(403).json({ success: false, message: 'Solo puede ver estadísticas de su cliente' });
+        }
+      }
+
+      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === requestedKey);
+    } else if (isAdmin) {
+      const adminKey = normalizeClientForMatch(authCliente);
+      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === adminKey);
+    } else if (!isSuper) {
+      rows = rows.filter(row => isUserInRecord(row, normalizedUser));
+      console.log(`👤 Stats filtradas por usuario "${normalizedUser}": ${rows.length} registros`);
     }
     const today = new Date().toLocaleDateString('es-ES');
 

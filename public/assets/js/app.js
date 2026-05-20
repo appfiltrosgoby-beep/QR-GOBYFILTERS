@@ -2714,15 +2714,20 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
 async function loadRecentScans() {
     try {
         let queryParams = 'limit=20';
-        if (currentUserRole === 'superadmin') {
-            queryParams += '&superadmin=true';
-        } else if (currentUserRole === 'admin' && currentUserClient) {
+        if (currentUserRole === 'admin' && currentUserClient) {
             queryParams += `&cliente=${encodeURIComponent(currentUserClient)}`;
-        } else if (currentUsername) {
-            queryParams += `&userEmail=${encodeURIComponent(currentUsername)}`;
         }
 
-        const response = await fetch(`${API_URL}/api/recent-scans?${queryParams}`);
+        if (!currentUsername || !currentUserPassword) {
+            throw new Error('Sesión no válida. Inicia sesión de nuevo.');
+        }
+
+        const response = await fetch(`${API_URL}/api/recent-scans?${queryParams}`, {
+            headers: {
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
         const result = await response.json();
         
         if (result.success && result.data.length > 0) {
@@ -2753,8 +2758,18 @@ async function loadMyRecentScans() {
             return;
         }
 
-        const queryParams = `limit=20&userEmail=${encodeURIComponent(currentUsername)}`;
-        const response = await fetch(`${API_URL}/api/recent-scans?${queryParams}`);
+        if (!currentUserPassword) {
+            renderNoRecordsRow(elements.myRecordsBody);
+            return;
+        }
+
+        const queryParams = 'limit=20';
+        const response = await fetch(`${API_URL}/api/recent-scans?${queryParams}`, {
+            headers: {
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
         const result = await response.json();
 
         if (result.success && Array.isArray(result.data) && result.data.length > 0) {
@@ -2776,24 +2791,25 @@ async function loadStats() {
         console.log('📊 loadStats: Iniciando carga de estadísticas');
         console.log('Rol:', currentUserRole, 'Cliente:', currentUserClient);
         
-        // Obtener estadísticas según rol
+        // Obtener estadísticas según rol (backend filtra por rol según credenciales)
         let queryParams = '';
         if (currentUserRole === 'admin' && currentUserClient) {
             queryParams = `?cliente=${encodeURIComponent(currentUserClient)}`;
             console.log('🔒 Admin detectado, filtrando por cliente:', currentUserClient);
-        } else if (currentUserRole === 'superadmin') {
-            queryParams = '';
-        } else {
-            // Usuarios mecánico/despacho: siempre filtrar por usuario para no exponer stats globales.
-            if (!currentUsername) {
-                console.warn('⚠️ loadStats: usuario no disponible para filtrar stats.');
-                return;
-            }
-            queryParams = `?userEmail=${encodeURIComponent(currentUsername)}`;
+        }
+
+        if (!currentUsername || !currentUserPassword) {
+            console.warn('⚠️ loadStats: sesión no válida (sin credenciales).');
+            return;
         }
 
         console.log('📡 Llamando API:', `${API_URL}/api/stats${queryParams}`);
-        const response = await fetch(`${API_URL}/api/stats${queryParams}`);
+        const response = await fetch(`${API_URL}/api/stats${queryParams}`, {
+            headers: {
+                'x-auth-user': currentUsername,
+                'x-auth-password': currentUserPassword
+            }
+        });
         const result = await response.json();
         
         console.log('✅ Respuesta stats API:', result);
