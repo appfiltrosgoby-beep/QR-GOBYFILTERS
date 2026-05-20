@@ -1939,6 +1939,133 @@ function isUserInRecord(row, userEmail) {
   ].some(value => normalizeUser(value) === normalizedUser);
 }
 
+function parseRecordStageDateTime(dateValue, timeValue) {
+  const dateText = (dateValue || '').toString().trim();
+  if (!dateText) return null;
+
+  let date = null;
+  // Soportar yyyy-mm-dd y dd/mm/yyyy
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+    const parsed = new Date(`${dateText}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      date = parsed;
+    }
+  } else {
+    date = parseSpanishDate(dateText);
+  }
+
+  if (!date) return null;
+
+  const timeText = (timeValue || '').toString().trim();
+  if (timeText) {
+    const parts = timeText.split(':').map(v => parseInt(v, 10));
+    const [hh, mm, ss] = [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+    date.setHours(hh, mm, ss, 0);
+  }
+
+  return date;
+}
+
+function recordLatestEventTimestampMs(record) {
+  const stages = [
+    { d: 'fechaDesinstalacion', t: 'horaDesinstalacion' },
+    { d: 'fechaInstalacion', t: 'horaInstalacion' },
+    { d: 'fechaDespacho', t: 'horaDespacho' },
+    { d: 'fechaAlmacen', t: 'horaAlmacen' }
+  ];
+
+  for (const stage of stages) {
+    const date = parseRecordStageDateTime(record?.[stage.d], record?.[stage.t]);
+    if (date) return date.getTime();
+  }
+
+  return 0;
+}
+
+function recordDedupKey(record) {
+  const ref = (record?.referencia || '').toString().trim();
+  const serial = (record?.serial || '').toString().trim();
+  return `${ref}|${serial}`;
+}
+
+function mapRecordRowToObject(row) {
+  return {
+    id: row.get('ID'),
+    referencia: row.get('REFERENCIA'),
+    serial: row.get('SERIAL'),
+    estado: row.get('ESTADO'),
+    cliente: row.get('CLIENTE'),
+    usuarioDespacho: row.get('USUARIO_DESPACHO'),
+    usuarioPlanta: row.get('USUARIO_PLANTA'),
+    usuarioInstalacion: row.get('USUARIO_INSTALACION'),
+    usuarioDesinstalacion: row.get('USUARIO_DESINSTALACION'),
+    placa: row.get('PLACA'),
+    kilometrajeInstalacion: row.get('KILOMETRAJE_INSTALACION'),
+    kilometrajeDesinstalacion: row.get('KILOMETRAJE_DESINSTALACION'),
+    fechaAlmacen: row.get('FECHA_ALMACEN'),
+    fechaDespacho: row.get('FECHA_DESPACHO'),
+    fechaInstalacion: row.get('FECHA_INSTALACION'),
+    fechaDesinstalacion: row.get('FECHA_DESINSTALACION'),
+    horaAlmacen: row.get('HORA_ALMACEN'),
+    horaDespacho: row.get('HORA_DESPACHO'),
+    horaInstalacion: row.get('HORA_INSTALACION'),
+    horaDesinstalacion: row.get('HORA_DESINSTALACION')
+  };
+}
+
+async function getAllRecordsForSuperadmin(doc, { requestedClient = '', maxRecords = 0 } = {}) {
+  const records = [];
+  const requestedKey = requestedClient ? normalizeClientForMatch(requestedClient) : '';
+
+  const globalSheet = await getOrCreateRecordsSheet(doc);
+  const globalRows = await globalSheet.getRows();
+  records.push(...globalRows.map(mapRecordRowToObject));
+
+  await doc.loadInfo();
+  for (const sheet of doc.sheetsByIndex) {
+    if (!sheet.title || sheet.title === RECORDS_SHEET_TITLE) continue;
+    if (!sheet.title.endsWith('_REGISTROS')) continue;
+
+    try {
+      const rows = await sheet.getRows();
+      const mapped = rows.map(mapRecordRowToObject);
+      records.push(...mapped);
+    } catch (error) {
+      console.warn(`⚠️ No se pudo leer hoja ${sheet.title}:`, error?.message || error);
+    }
+  }
+
+  // Filtrar por cliente si aplica
+  const filtered = requestedKey
+    ? records.filter(r => normalizeClientForMatch(r.cliente || '') === requestedKey)
+    : records;
+
+  // Deduplicar por REFERENCIA|SERIAL, preservando la versión más reciente
+  const byKey = new Map();
+  for (const record of filtered) {
+    const key = recordDedupKey(record);
+    if (!key || key === '|') continue;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, record);
+      continue;
+    }
+    const next = recordLatestEventTimestampMs(record) >= recordLatestEventTimestampMs(existing)
+      ? record
+      : existing;
+    byKey.set(key, next);
+  }
+
+  const deduped = Array.from(byKey.values());
+  deduped.sort((a, b) => recordLatestEventTimestampMs(b) - recordLatestEventTimestampMs(a));
+
+  if (Number.isFinite(maxRecords) && maxRecords > 0) {
+    return deduped.slice(0, Math.max(1, Math.min(maxRecords, deduped.length)));
+  }
+
+  return deduped;
+}
+
 function accumulateUserScanCountsFromRecordRow(row, countsByUser) {
   const scanStages = [
     { dateKey: 'FECHA_ALMACEN', userKey: 'USUARIO_PLANTA' },
@@ -3107,20 +3234,29 @@ app.get('/api/recent-scans', async (req, res) => {
     }
     
     const doc = await getGoogleSheet();
-    const authRow = await findUserRowByCredentials(doc, authUser, authPassword);
-    if (!authRow) {
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
-    const authTipo = normalizeType(authRow.get('TIPO'));
-    const authCliente = (authRow.get('CLIENTE') || '').toString().trim();
+    const authTipo = normalizeType(auth.row.get('TIPO'));
+    const authCliente = (auth.row.get('CLIENTE') || '').toString().trim();
     const isSuper = authTipo === 'super';
     const isAdmin = authTipo === 'administrador';
-    const authEmail = normalizeUser(authRow.get('USUARIO') || authUser);
+    const authEmail = normalizeUser(auth.row.get('USUARIO') || authUser);
 
-    // Fuente única: hoja global REGISTROS (contiene todos los clientes)
-    const globalSheet = await getOrCreateRecordsSheet(doc);
-    let rows = await globalSheet.getRows();
+    let records = [];
+
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 2000)) : 10;
+
+    if (isSuper) {
+      // Superadmin: agregar global + hojas por cliente
+      records = await getAllRecordsForSuperadmin(doc, { requestedClient: requestedClient || '', maxRecords: Math.max(2000, safeLimit) });
+    } else {
+      // Otros roles: usar hoja global (y filtrar)
+      const globalSheet = await getOrCreateRecordsSheet(doc);
+      records = (await globalSheet.getRows()).map(mapRecordRowToObject);
+    }
 
     if (requestedClient) {
       // Filtro por cliente: permitido para superadmin, y para admin solo si es su cliente
@@ -3136,41 +3272,26 @@ app.get('/api/recent-scans', async (req, res) => {
         }
       }
 
-      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === requestedKey);
+      records = records.filter(r => normalizeClientForMatch(r.cliente || '') === requestedKey);
     } else if (isAdmin) {
       // Admin: siempre restringido a su cliente
       const adminKey = normalizeClientForMatch(authCliente);
-      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === adminKey);
+      records = records.filter(r => normalizeClientForMatch(r.cliente || '') === adminKey);
     } else if (!isSuper) {
       // Usuarios normales: solo sus registros
-      rows = rows.filter(row => isUserInRecord(row, authEmail));
+      records = records.filter(r => {
+        const normalized = normalizeUser(authEmail);
+        if (!normalized) return false;
+        return [
+          r.usuarioDespacho,
+          r.usuarioPlanta,
+          r.usuarioInstalacion,
+          r.usuarioDesinstalacion
+        ].some(value => normalizeUser(value) === normalized);
+      });
     }
 
-    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 2000)) : 10;
-    const recentRows = rows.slice(-safeLimit).reverse();
-
-    const data = recentRows.map(row => ({
-      id: row.get('ID'),
-      referencia: row.get('REFERENCIA'),
-      serial: row.get('SERIAL'),
-      estado: row.get('ESTADO'),
-      cliente: row.get('CLIENTE'),
-      usuarioDespacho: row.get('USUARIO_DESPACHO'),
-      usuarioPlanta: row.get('USUARIO_PLANTA'),
-      usuarioInstalacion: row.get('USUARIO_INSTALACION'),
-      usuarioDesinstalacion: row.get('USUARIO_DESINSTALACION'),
-      placa: row.get('PLACA'),
-      kilometrajeInstalacion: row.get('KILOMETRAJE_INSTALACION'),
-      kilometrajeDesinstalacion: row.get('KILOMETRAJE_DESINSTALACION'),
-      fechaAlmacen: row.get('FECHA_ALMACEN'),
-      fechaDespacho: row.get('FECHA_DESPACHO'),
-      fechaInstalacion: row.get('FECHA_INSTALACION'),
-      fechaDesinstalacion: row.get('FECHA_DESINSTALACION'),
-      horaAlmacen: row.get('HORA_ALMACEN'),
-      horaDespacho: row.get('HORA_DESPACHO'),
-      horaInstalacion: row.get('HORA_INSTALACION'),
-      horaDesinstalacion: row.get('HORA_DESINSTALACION')
-    }));
+    const data = records.slice(0, safeLimit);
 
     res.json({ success: true, data });
 
@@ -3201,21 +3322,25 @@ app.get('/api/stats', async (req, res) => {
     
     const doc = await getGoogleSheet();
 
-    const authRow = await findUserRowByCredentials(doc, authUser, authPassword);
-    if (!authRow) {
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
       return res.status(401).json({ success: false, message: 'No autorizado' });
     }
 
-    const authTipo = normalizeType(authRow.get('TIPO'));
-    const authCliente = (authRow.get('CLIENTE') || '').toString().trim();
+    const authTipo = normalizeType(auth.row.get('TIPO'));
+    const authCliente = (auth.row.get('CLIENTE') || '').toString().trim();
     const isSuper = authTipo === 'super';
     const isAdmin = authTipo === 'administrador';
-    const normalizedUser = normalizeUser(authRow.get('USUARIO') || authUser);
+    const normalizedUser = normalizeUser(auth.row.get('USUARIO') || authUser);
 
-    // Fuente única: hoja global REGISTROS
-    const globalSheet = await getOrCreateRecordsSheet(doc);
-    let rows = await globalSheet.getRows();
-    console.log(`📊 Stats API: Total de registros en REGISTROS: ${rows.length}`);
+    let records = [];
+    if (isSuper) {
+      records = await getAllRecordsForSuperadmin(doc, { requestedClient: '' });
+    } else {
+      const globalSheet = await getOrCreateRecordsSheet(doc);
+      records = (await globalSheet.getRows()).map(mapRecordRowToObject);
+    }
+    console.log(`📊 Stats API: Total de registros disponibles: ${records.length}`);
 
     if (cliente) {
       if (!isSuper && !isAdmin) {
@@ -3230,14 +3355,52 @@ app.get('/api/stats', async (req, res) => {
         }
       }
 
-      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === requestedKey);
+      records = records.filter(r => normalizeClientForMatch(r.cliente || '') === requestedKey);
     } else if (isAdmin) {
       const adminKey = normalizeClientForMatch(authCliente);
-      rows = rows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === adminKey);
+      records = records.filter(r => normalizeClientForMatch(r.cliente || '') === adminKey);
     } else if (!isSuper) {
-      rows = rows.filter(row => isUserInRecord(row, normalizedUser));
-      console.log(`👤 Stats filtradas por usuario "${normalizedUser}": ${rows.length} registros`);
+      records = records.filter(r => {
+        const normalized = normalizeUser(normalizedUser);
+        if (!normalized) return false;
+        return [
+          r.usuarioDespacho,
+          r.usuarioPlanta,
+          r.usuarioInstalacion,
+          r.usuarioDesinstalacion
+        ].some(value => normalizeUser(value) === normalized);
+      });
+      console.log(`👤 Stats filtradas por usuario "${normalizedUser}": ${records.length} registros`);
     }
+
+    // Adaptar records (objetos) a una forma compatible con el bloque existente
+    const rows = records.map(record => ({
+      get: (key) => {
+        const map = {
+          ID: record.id,
+          REFERENCIA: record.referencia,
+          SERIAL: record.serial,
+          ESTADO: record.estado,
+          CLIENTE: record.cliente,
+          USUARIO_DESPACHO: record.usuarioDespacho,
+          USUARIO_PLANTA: record.usuarioPlanta,
+          USUARIO_INSTALACION: record.usuarioInstalacion,
+          USUARIO_DESINSTALACION: record.usuarioDesinstalacion,
+          PLACA: record.placa,
+          KILOMETRAJE_INSTALACION: record.kilometrajeInstalacion,
+          KILOMETRAJE_DESINSTALACION: record.kilometrajeDesinstalacion,
+          FECHA_ALMACEN: record.fechaAlmacen,
+          FECHA_DESPACHO: record.fechaDespacho,
+          FECHA_INSTALACION: record.fechaInstalacion,
+          FECHA_DESINSTALACION: record.fechaDesinstalacion,
+          HORA_ALMACEN: record.horaAlmacen,
+          HORA_DESPACHO: record.horaDespacho,
+          HORA_INSTALACION: record.horaInstalacion,
+          HORA_DESINSTALACION: record.horaDesinstalacion
+        };
+        return map[key];
+      }
+    }));
     const today = new Date().toLocaleDateString('es-ES');
 
     const stats = {
