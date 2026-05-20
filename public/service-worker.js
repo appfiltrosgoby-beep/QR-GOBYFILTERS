@@ -3,25 +3,23 @@
  * Maneja caching, offline mode y actualización en segundo plano
  */
 
-const CACHE_NAME = 'goby-v23';
+const CACHE_NAME = 'goby-v24';
 const urlsToCache = [
     '/',
     '/index.html',
     '/manifest.json',
     '/browserconfig.xml',
     '/service-worker.js',
-    '/assets/css/styles.css?v=20260504a',
+    '/assets/css/styles.css?v=20260515a',
     '/assets/js/rewards-catalog.js?v=20260420b',
     '/assets/js/contact-module.js?v=20260502a',
-    '/assets/js/app.js?v=20260514c',
+    '/assets/js/app.js?v=20260515a',
     '/assets/images/favicon-32.png',
     '/assets/images/favicon.svg',
     '/assets/images/icon-180.png',
     '/assets/images/icon-192.png',
     '/assets/images/icon-512.png',
-    '/assets/images/GOBY MARCA REGISTRADA.png',
-    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
-    'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
+    '/assets/images/GOBY MARCA REGISTRADA.png'
 ];
 
 // Instalar Service Worker y cachear archivos
@@ -31,11 +29,13 @@ self.addEventListener('install', event => {
         caches.open(CACHE_NAME)
             .then(cache => {
                 console.log('✅ Cache abierto');
-                return cache.addAll(urlsToCache).catch(err => {
-                    console.warn('⚠️ Algunos archivos no pudieron ser cacheados:', err);
-                    // Continuar incluso si algunos archivos fallan
-                    return Promise.resolve();
-                });
+                const tasks = urlsToCache.map(url =>
+                    cache.add(url).catch(err => {
+                        console.warn('⚠️ No se pudo cachear:', url, err);
+                        return null;
+                    })
+                );
+                return Promise.allSettled(tasks);
             })
             .then(() => self.skipWaiting())
     );

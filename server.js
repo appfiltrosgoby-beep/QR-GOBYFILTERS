@@ -28,10 +28,81 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const path = require('path');
 
+function getRequestIp(req) {
+  const forwarded = (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim();
+  return forwarded || req.ip || '';
+}
+
+function createInMemoryRateLimiter({ windowMs, maxRequests, keyFn }) {
+  const hits = new Map();
+  const cleanupIntervalMs = Math.max(windowMs, 60_000);
+
+  const timer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of hits.entries()) {
+      if (now >= entry.resetAt) {
+        hits.delete(key);
+      }
+    }
+  }, cleanupIntervalMs);
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+
+  return function rateLimiter(req, res, next) {
+    try {
+      const now = Date.now();
+      const key = (keyFn ? keyFn(req) : getRequestIp(req)) || 'unknown';
+      const entry = hits.get(key);
+
+      if (!entry || now >= entry.resetAt) {
+        hits.set(key, { count: 1, resetAt: now + windowMs });
+        return next();
+      }
+
+      entry.count += 1;
+      const remaining = Math.max(0, maxRequests - entry.count);
+      res.set('X-RateLimit-Limit', String(maxRequests));
+      res.set('X-RateLimit-Remaining', String(remaining));
+      res.set('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
+
+      if (entry.count > maxRequests) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+        res.set('Retry-After', String(retryAfterSeconds));
+        return res.status(429).json({
+          success: false,
+          message: 'Demasiadas solicitudes. Intenta de nuevo en unos segundos.'
+        });
+      }
+
+      return next();
+    } catch (error) {
+      // Si el rate limiter falla, no bloquear el request.
+      return next();
+    }
+  };
+}
+
+const RATE_LIMIT_WINDOW_MS = Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
+const RATE_LIMIT_AUTH_MAX = Number.parseInt(process.env.RATE_LIMIT_AUTH_MAX || '25', 10);
+const RATE_LIMIT_PUBLIC_MAX = Number.parseInt(process.env.RATE_LIMIT_PUBLIC_MAX || '40', 10);
+const RATE_LIMIT_SCAN_MAX = Number.parseInt(process.env.RATE_LIMIT_SCAN_MAX || '600', 10);
+
+const authLimiter = createInMemoryRateLimiter({ windowMs: RATE_LIMIT_WINDOW_MS, maxRequests: RATE_LIMIT_AUTH_MAX });
+const publicLimiter = createInMemoryRateLimiter({ windowMs: RATE_LIMIT_WINDOW_MS, maxRequests: RATE_LIMIT_PUBLIC_MAX });
+const scanLimiter = createInMemoryRateLimiter({ windowMs: RATE_LIMIT_WINDOW_MS, maxRequests: RATE_LIMIT_SCAN_MAX });
+
 // Middlewares
 app.use(cors());
 app.use(compression()); // Comprimir respuestas
 app.use(bodyParser.json());
+
+// Rate limiting (según especificación: proteger auth y endpoints públicos)
+app.use('/api/validate-user', authLimiter);
+app.use('/api/forgot-password', authLimiter);
+app.use('/api/register', authLimiter);
+app.use('/api/contact-request', publicLimiter);
+app.use('/api/save-qr', scanLimiter);
 
 // Debug: Log de rutas
 const publicPath = path.join(__dirname, 'public');
@@ -73,11 +144,6 @@ app.get('/browserconfig.xml', (req, res) => {
   res.type('application/xml');
   res.set('Cache-Control', 'public, max-age=86400');
   res.sendFile(path.join(publicPath, 'browserconfig.xml'));
-});
-
-// Health check para Render
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Servidor funcionando correctamente' });
 });
 
 let mailTransport = null;

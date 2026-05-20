@@ -1,6 +1,5 @@
 # Dependencias
 node_modules/
-package-lock.json
 yarn.lock
 
 # Variables de entorno
@@ -26,7 +25,8 @@ Thumbs.db
 # Credenciales de Google
 credentials.json
 service-account.json
-*.json
+qr-goby-*.json
+GOOGLE_PRIVATE_KEY_PARA_RENDER.txt
 
 # Build y cache
 dist/
