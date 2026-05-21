@@ -14,6 +14,78 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getRetryAfterMs(error) {
+  const retryAfter = error?.response?.headers?.['retry-after'];
+  if (!retryAfter) return 0;
+  const seconds = Number.parseInt(retryAfter, 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+}
+
+function isRetryableSheetsError(error) {
+  const status = error?.response?.status || error?.status;
+  if (status === 429) return true;
+  if (status >= 500 && status <= 599) return true;
+
+  const code = (error?.code || '').toString();
+  return ['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND', 'ECONNABORTED'].includes(code);
+}
+
+function formatErrorForLogging(error) {
+  if (!error) return { message: 'Unknown error' };
+  if (typeof error === 'string') return { message: error };
+
+  const status = error?.response?.status || error?.status;
+  const googleError = error?.response?.data?.error || null;
+  const retryAfterMs = getRetryAfterMs(error);
+
+  const safe = {
+    message: error?.message || String(error),
+    code: error?.code || undefined,
+    status: status || undefined,
+    googleStatus: googleError?.status || undefined,
+    googleMessage: googleError?.message || undefined,
+    retryAfterMs: retryAfterMs || undefined
+  };
+
+  if ((process.env.NODE_ENV || '').toLowerCase() !== 'production' && error?.stack) {
+    safe.stack = error.stack;
+  }
+
+  return safe;
+}
+
+async function withSheetsRetry(fn, label = 'sheets') {
+  const maxAttempts = Number.parseInt(process.env.SHEETS_RETRY_MAX_ATTEMPTS || '3', 10);
+  const baseDelayMs = Number.parseInt(process.env.SHEETS_RETRY_BASE_DELAY_MS || '250', 10);
+  const maxDelayMs = Number.parseInt(process.env.SHEETS_RETRY_MAX_DELAY_MS || '5000', 10);
+
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempt += 1;
+    try {
+      return await fn();
+    } catch (error) {
+      const retryable = isRetryableSheetsError(error);
+      if (!retryable || attempt >= maxAttempts) {
+        throw error;
+      }
+
+      const retryAfterMs = getRetryAfterMs(error);
+      const exponential = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
+      const jitter = Math.floor(Math.random() * 150);
+      const delayMs = Math.min(maxDelayMs, Math.max(retryAfterMs, exponential) + jitter);
+
+      console.warn(`⚠️ Sheets retry (${label}) intento ${attempt}/${maxAttempts} en ${delayMs}ms:`, formatErrorForLogging(error));
+      await sleep(delayMs);
+    }
+  }
+}
+
 // Validar variables de entorno críticas
 const requiredEnvVars = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SPREADSHEET_ID'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
@@ -322,7 +394,7 @@ app.post('/api/contact-request', async (req, res) => {
 
     return res.json({ success: true, message: 'Solicitud recibida', savedTo });
   } catch (error) {
-    console.error('Error en /api/contact-request:', error);
+    console.error('Error en /api/contact-request:', formatErrorForLogging(error));
     res.status(500).json({ success: false, error: 'Error al procesar la solicitud' });
   }
 });
@@ -397,7 +469,7 @@ app.post('/api/validate-user', async (req, res) => {
       cliente: userClient 
     });
   } catch (error) {
-    console.error('Error al validar usuario:', error);
+    console.error('Error al validar usuario:', formatErrorForLogging(error));
     res.status(500).json({ success: false, error: 'Error al validar usuario' });
   }
 });
@@ -453,13 +525,13 @@ app.post('/api/forgot-password', async (req, res) => {
         userAgent
       });
     } catch (mailError) {
-      console.error('Error enviando correo de forgot-password:', mailError);
+      console.error('Error enviando correo de forgot-password:', formatErrorForLogging(mailError));
       return res.status(500).json({ success: false, message: 'No se pudo enviar el correo de confirmación. Intenta más tarde.' });
     }
 
     return res.json(genericResponse);
   } catch (error) {
-    console.error('Error en /api/forgot-password:', error);
+    console.error('Error en /api/forgot-password:', formatErrorForLogging(error));
     if (error?.code === 'MAIL_NOT_CONFIGURED') {
       return res.status(500).json({ success: false, message: error.message || 'Servicio de correo no configurado' });
     }
@@ -542,7 +614,7 @@ async function findUserRowByLoginIdentifier(doc, loginIdentifier, passwordHint =
     }
   }
 
-  await doc.loadInfo();
+  await ensureDocInfoLoaded(doc);
   for (const sheet of doc.sheetsByIndex) {
     if (!sheet.title.endsWith('_USUARIOS')) continue;
     const rows = await sheet.getRows();
@@ -654,7 +726,7 @@ app.post('/api/register', async (req, res) => {
     }
 
     // Validar duplicado en hojas por cliente (si existen)
-    await doc.loadInfo();
+    await ensureDocInfoLoaded(doc);
     for (const sheet of doc.sheetsByIndex) {
       if (!sheet.title.endsWith('_USUARIOS')) continue;
       const rows = await sheet.getRows();
@@ -675,7 +747,7 @@ app.post('/api/register', async (req, res) => {
 
     return res.json({ success: true, message: 'Usuario registrado correctamente' });
   } catch (error) {
-    console.error('Error al registrar usuario:', error);
+    console.error('Error al registrar usuario:', formatErrorForLogging(error));
     return res.status(500).json({ success: false, message: 'Error al registrar usuario' });
   }
 });
@@ -721,7 +793,7 @@ app.get('/api/profile', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error al obtener perfil:', error);
+    console.error('Error al obtener perfil:', formatErrorForLogging(error));
     res.status(500).json({ success: false, message: 'Error al obtener perfil' });
   }
 });
@@ -832,7 +904,7 @@ app.put('/api/profile', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error al actualizar perfil:', error);
+    console.error('Error al actualizar perfil:', formatErrorForLogging(error));
     res.status(500).json({ success: false, message: 'Error al actualizar perfil' });
   }
 });
@@ -870,7 +942,7 @@ app.get('/api/users', async (req, res) => {
       accumulateUserScanCountsFromRecordRow(row, countsByUser);
     }
 
-    await doc.loadInfo();
+    await ensureDocInfoLoaded(doc);
     const allUsers = [];
     
     if (authTipo === 'super') {
@@ -906,7 +978,7 @@ app.get('/api/users', async (req, res) => {
 
     res.json({ success: true, data: allUsers });
   } catch (error) {
-    console.error('Error al listar usuarios:', error);
+    console.error('Error al listar usuarios:', formatErrorForLogging(error));
     res.status(500).json({ success: false, error: 'Error al listar usuarios' });
   }
 });
@@ -1007,7 +1079,7 @@ app.post('/api/users', async (req, res) => {
 
     res.json({ success: true, message: 'Usuario creado' });
   } catch (error) {
-    console.error('Error al crear usuario:', error);
+    console.error('Error al crear usuario:', formatErrorForLogging(error));
     res.status(500).json({ success: false, error: 'Error al crear usuario' });
   }
 });
@@ -1048,7 +1120,7 @@ app.post('/api/users', async (req, res) => {
       
       if (!userRow) {
         // Buscar en hojas de clientes
-        await doc.loadInfo();
+        await ensureDocInfoLoaded(doc);
         for (const sheet of doc.sheetsByIndex) {
           if (sheet.title.endsWith('_USUARIOS')) {
             rows = await sheet.getRows();
@@ -1087,7 +1159,7 @@ app.post('/api/users', async (req, res) => {
 
       return res.json({ success: true, message: 'Usuario eliminado correctamente' });
     } catch (error) {
-      console.error('Error al eliminar usuario:', error);
+      console.error('Error al eliminar usuario:', formatErrorForLogging(error));
       res.status(500).json({ success: false, error: 'Error al eliminar usuario' });
     }
   });
@@ -1150,7 +1222,7 @@ app.post('/api/users', async (req, res) => {
       }
 
       // Buscar en hojas de clientes
-      await doc.loadInfo();
+      await ensureDocInfoLoaded(doc);
       for (const sheet of doc.sheetsByIndex) {
         if (sheet.title.endsWith('_USUARIOS')) {
           rows = await sheet.getRows();
@@ -1167,7 +1239,7 @@ app.post('/api/users', async (req, res) => {
 
       return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     } catch (error) {
-      console.error('Error al actualizar usuario:', error);
+      console.error('Error al actualizar usuario:', formatErrorForLogging(error));
       res.status(500).json({ success: false, error: 'Error al actualizar usuario' });
     }
   });
@@ -1183,6 +1255,51 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file',
 ];
+
+const SHEETS_DOC_CACHE_TTL_MS = Number.parseInt(process.env.SHEETS_DOC_CACHE_TTL_MS || '20000', 10);
+const SHEETS_LOADINFO_TTL_MS = Number.parseInt(process.env.SHEETS_LOADINFO_TTL_MS || '20000', 10);
+
+// Cache corto para agregación superadmin (evita leer N hojas en cada request).
+const SUPERADMIN_RECORDS_CACHE_TTL_MS = Number.parseInt(process.env.SUPERADMIN_RECORDS_CACHE_TTL_MS || '5000', 10);
+const SUPERADMIN_RECORDS_CACHE_MAX_KEYS = Number.parseInt(process.env.SUPERADMIN_RECORDS_CACHE_MAX_KEYS || '10', 10);
+
+let cachedGoogleDoc = null;
+let cachedGoogleDocExpiresAt = 0;
+let cachedGoogleDocPromise = null;
+
+const superadminRecordsCache = new Map();
+const superadminRecordsInFlight = new Map();
+
+function cleanupSuperadminRecordsCache() {
+  const now = Date.now();
+  for (const [key, entry] of superadminRecordsCache.entries()) {
+    if (!entry || now >= entry.expiresAt) {
+      superadminRecordsCache.delete(key);
+    }
+  }
+
+  if (superadminRecordsCache.size <= SUPERADMIN_RECORDS_CACHE_MAX_KEYS) {
+    return;
+  }
+
+  const entries = Array.from(superadminRecordsCache.entries())
+    .sort((a, b) => (a[1]?.expiresAt || 0) - (b[1]?.expiresAt || 0));
+  while (superadminRecordsCache.size > SUPERADMIN_RECORDS_CACHE_MAX_KEYS) {
+    const next = entries.shift();
+    if (!next) break;
+    superadminRecordsCache.delete(next[0]);
+  }
+}
+
+async function ensureDocInfoLoaded(doc) {
+  const now = Date.now();
+  const loadedAt = doc?.__gobyInfoLoadedAt || 0;
+  if (loadedAt && now - loadedAt < SHEETS_LOADINFO_TTL_MS) {
+    return;
+  }
+  await withSheetsRetry(() => doc.loadInfo(), 'doc.loadInfo');
+  doc.__gobyInfoLoadedAt = Date.now();
+}
 
 const RECORDS_SHEET_TITLE = 'REGISTROS';
 const USERS_SHEET_TITLE = 'USUARIOS';
@@ -1238,16 +1355,34 @@ async function getGoogleSheet() {
       scopes: SCOPES,
     });
 
-    // Conectar al documento
-    const doc = new GoogleSpreadsheet(
-      process.env.GOOGLE_SPREADSHEET_ID,
-      serviceAccountAuth
-    );
+    const now = Date.now();
+    if (cachedGoogleDoc && now < cachedGoogleDocExpiresAt) {
+      return cachedGoogleDoc;
+    }
+    if (cachedGoogleDocPromise) {
+      return await cachedGoogleDocPromise;
+    }
 
-    await doc.loadInfo();
-    return doc;
+    cachedGoogleDocPromise = (async () => {
+      const doc = new GoogleSpreadsheet(
+        process.env.GOOGLE_SPREADSHEET_ID,
+        serviceAccountAuth
+      );
+
+      await ensureDocInfoLoaded(doc);
+
+      cachedGoogleDoc = doc;
+      cachedGoogleDocExpiresAt = Date.now() + Math.max(0, SHEETS_DOC_CACHE_TTL_MS);
+      return doc;
+    })();
+
+    try {
+      return await cachedGoogleDocPromise;
+    } finally {
+      cachedGoogleDocPromise = null;
+    }
   } catch (error) {
-    console.error('Error al conectar con Google Sheets:', error);
+    console.error('Error al conectar con Google Sheets:', formatErrorForLogging(error));
     throw error;
   }
 }
@@ -1641,7 +1776,7 @@ async function getAllUsersRows(doc) {
   const globalSheet = await getOrCreateUsersSheet(doc);
   rows.push(...(await globalSheet.getRows()));
 
-  await doc.loadInfo();
+  await ensureDocInfoLoaded(doc);
   for (const sheet of doc.sheetsByIndex) {
     if (!sheet.title.endsWith('_USUARIOS')) continue;
     try {
@@ -2014,56 +2149,90 @@ function mapRecordRowToObject(row) {
 }
 
 async function getAllRecordsForSuperadmin(doc, { requestedClient = '', maxRecords = 0 } = {}) {
-  const records = [];
   const requestedKey = requestedClient ? normalizeClientForMatch(requestedClient) : '';
+  const cacheKey = requestedKey || '*';
 
-  const globalSheet = await getOrCreateRecordsSheet(doc);
-  const globalRows = await globalSheet.getRows();
-  records.push(...globalRows.map(mapRecordRowToObject));
+  const normalizedMax = Number.isFinite(maxRecords) && maxRecords > 0
+    ? Math.max(1, Math.min(maxRecords, 20_000))
+    : 0;
 
-  await doc.loadInfo();
-  for (const sheet of doc.sheetsByIndex) {
-    if (!sheet.title || sheet.title === RECORDS_SHEET_TITLE) continue;
-    if (!sheet.title.endsWith('_REGISTROS')) continue;
+  if (SUPERADMIN_RECORDS_CACHE_TTL_MS > 0) {
+    cleanupSuperadminRecordsCache();
 
+    const cached = superadminRecordsCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt && Array.isArray(cached.data)) {
+      const data = cached.data;
+      return normalizedMax ? data.slice(0, Math.min(normalizedMax, data.length)) : data.slice();
+    }
+
+    const inFlight = superadminRecordsInFlight.get(cacheKey);
+    if (inFlight) {
+      const data = await inFlight;
+      return normalizedMax ? data.slice(0, Math.min(normalizedMax, data.length)) : data.slice();
+    }
+  }
+
+  const loader = (async () => {
+    const records = [];
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    const globalRows = await globalSheet.getRows();
+    records.push(...globalRows.map(mapRecordRowToObject));
+
+    await ensureDocInfoLoaded(doc);
+    for (const sheet of doc.sheetsByIndex) {
+      if (!sheet.title || sheet.title === RECORDS_SHEET_TITLE) continue;
+      if (!sheet.title.endsWith('_REGISTROS')) continue;
+
+      try {
+        const rows = await sheet.getRows();
+        const mapped = rows.map(mapRecordRowToObject);
+        records.push(...mapped);
+      } catch (error) {
+        console.warn(`⚠️ No se pudo leer hoja ${sheet.title}:`, formatErrorForLogging(error));
+      }
+    }
+
+    const filtered = requestedKey
+      ? records.filter(r => normalizeClientForMatch(r.cliente || '') === requestedKey)
+      : records;
+
+    const byKey = new Map();
+    for (const record of filtered) {
+      const key = recordDedupKey(record);
+      if (!key || key === '|') continue;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, record);
+        continue;
+      }
+      const next = recordLatestEventTimestampMs(record) >= recordLatestEventTimestampMs(existing)
+        ? record
+        : existing;
+      byKey.set(key, next);
+    }
+
+    const deduped = Array.from(byKey.values());
+    deduped.sort((a, b) => recordLatestEventTimestampMs(b) - recordLatestEventTimestampMs(a));
+
+    return deduped;
+  })();
+
+  if (SUPERADMIN_RECORDS_CACHE_TTL_MS > 0) {
+    superadminRecordsInFlight.set(cacheKey, loader);
     try {
-      const rows = await sheet.getRows();
-      const mapped = rows.map(mapRecordRowToObject);
-      records.push(...mapped);
-    } catch (error) {
-      console.warn(`⚠️ No se pudo leer hoja ${sheet.title}:`, error?.message || error);
+      const data = await loader;
+      superadminRecordsCache.set(cacheKey, {
+        expiresAt: Date.now() + Math.max(0, SUPERADMIN_RECORDS_CACHE_TTL_MS),
+        data: Array.isArray(data) ? data : []
+      });
+      return normalizedMax ? data.slice(0, Math.min(normalizedMax, data.length)) : data;
+    } finally {
+      superadminRecordsInFlight.delete(cacheKey);
     }
   }
 
-  // Filtrar por cliente si aplica
-  const filtered = requestedKey
-    ? records.filter(r => normalizeClientForMatch(r.cliente || '') === requestedKey)
-    : records;
-
-  // Deduplicar por REFERENCIA|SERIAL, preservando la versión más reciente
-  const byKey = new Map();
-  for (const record of filtered) {
-    const key = recordDedupKey(record);
-    if (!key || key === '|') continue;
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, record);
-      continue;
-    }
-    const next = recordLatestEventTimestampMs(record) >= recordLatestEventTimestampMs(existing)
-      ? record
-      : existing;
-    byKey.set(key, next);
-  }
-
-  const deduped = Array.from(byKey.values());
-  deduped.sort((a, b) => recordLatestEventTimestampMs(b) - recordLatestEventTimestampMs(a));
-
-  if (Number.isFinite(maxRecords) && maxRecords > 0) {
-    return deduped.slice(0, Math.max(1, Math.min(maxRecords, deduped.length)));
-  }
-
-  return deduped;
+  const data = await loader;
+  return normalizedMax ? data.slice(0, Math.min(normalizedMax, data.length)) : data;
 }
 
 function accumulateUserScanCountsFromRecordRow(row, countsByUser) {
@@ -2195,7 +2364,7 @@ async function userExistsAcrossSheets(doc, usuario) {
     return true;
   }
 
-  await doc.loadInfo();
+  await ensureDocInfoLoaded(doc);
   for (const sheet of doc.sheetsByIndex) {
     if (!sheet.title.endsWith('_USUARIOS')) continue;
     const rows = await sheet.getRows();
@@ -2271,7 +2440,7 @@ async function getUserClient(doc, usuario) {
   }
   
   // Buscar en todas las hojas de clientes
-  await doc.loadInfo();
+  await ensureDocInfoLoaded(doc);
   for (const sheet of doc.sheetsByIndex) {
     if (sheet.title.endsWith('_USUARIOS')) {
       const rows = await sheet.getRows();
@@ -2370,7 +2539,7 @@ app.get('/api/clients', async (req, res) => {
       data: clients
     });
   } catch (error) {
-    console.error('Error al obtener clientes:', error);
+    console.error('Error al obtener clientes:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al obtener clientes',
@@ -2431,7 +2600,7 @@ app.post('/api/clients', async (req, res) => {
     });
 
     // Crear automáticamente la hoja de registros para este cliente
-    await doc.loadInfo();
+    await ensureDocInfoLoaded(doc);
     const clienteNormalizado = nombre.trim().toUpperCase();
     
     // Crear hoja de registros del cliente
@@ -2475,7 +2644,7 @@ app.post('/api/clients', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error al registrar cliente:', error);
+    console.error('Error al registrar cliente:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al registrar cliente',
@@ -2559,7 +2728,7 @@ app.put('/api/clients', async (req, res) => {
     // 2. Hoja de usuarios del cliente
     // 3. Renombrar la hoja del cliente (si existe)
     
-    await doc.loadInfo();
+    await ensureDocInfoLoaded(doc);
     
     // Actualizar registros globales
     const registrosSheet = await getOrCreateRecordsSheet(doc);
@@ -2610,7 +2779,7 @@ app.put('/api/clients', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error al actualizar cliente:', error);
+    console.error('Error al actualizar cliente:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al actualizar cliente',
@@ -2681,7 +2850,7 @@ app.delete('/api/clients', async (req, res) => {
     await clienteRow.delete();
 
     // Opcional: eliminar las hojas del cliente si existen
-    await doc.loadInfo();
+    await ensureDocInfoLoaded(doc);
     const clientUsersSheetName = `${normalizedNombre}_USUARIOS`;
     const clientRecordsSheetName = `${normalizedNombre}_REGISTROS`;
 
@@ -2703,7 +2872,7 @@ app.delete('/api/clients', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error al eliminar cliente:', error);
+    console.error('Error al eliminar cliente:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al eliminar cliente',
@@ -3207,7 +3376,7 @@ app.post('/api/save-qr', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error al guardar QR:', error);
+    console.error('Error al guardar QR:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al guardar en Google Sheets',
@@ -3296,7 +3465,7 @@ app.get('/api/recent-scans', async (req, res) => {
     res.json({ success: true, data });
 
   } catch (error) {
-    console.error('Error al obtener registros:', error);
+    console.error('Error al obtener registros:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al obtener registros',
@@ -3472,7 +3641,7 @@ app.get('/api/stats', async (req, res) => {
     res.json({ success: true, data: stats });
 
   } catch (error) {
-    console.error('Error al obtener estadísticas:', error);
+    console.error('Error al obtener estadísticas:', formatErrorForLogging(error));
     res.status(500).json({ 
       success: false, 
       error: 'Error al obtener estadísticas',
@@ -3645,7 +3814,7 @@ app.get('/api/projections', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al obtener proyecciones:', error);
+    console.error('Error al obtener proyecciones:', formatErrorForLogging(error));
     res.status(500).json({
       success: false,
       error: 'Error al obtener proyecciones',
@@ -3702,18 +3871,7 @@ app.post('/api/save-installer', async (req, res) => {
       });
     }
 
-    // Conectar con Google Sheets
-    const auth = new JWT({
-      email: process.env.GOOGLE_CLIENT_EMAIL,
-      key: process.env.GOOGLE_PRIVATE_KEY,
-      scopes: [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive.file',
-      ],
-    });
-
-    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SPREADSHEET_ID, auth);
-    await doc.loadInfo();
+    const doc = await getGoogleSheet();
 
     // Obtener la hoja REGISTROS
     const registrosSheet = await getOrCreateRecordsSheet(doc);
@@ -3743,7 +3901,7 @@ app.post('/api/save-installer', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error al guardar el nombre del instalador:', error);
+    console.error('❌ Error al guardar el nombre del instalador:', formatErrorForLogging(error));
     res.status(500).json({
       success: false,
       error: 'Error al guardar el nombre del instalador'
@@ -3847,7 +4005,7 @@ app.get('/api/rewards/users', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error al obtener recompensas por usuarios:', error);
+    console.error('❌ Error al obtener recompensas por usuarios:', formatErrorForLogging(error));
     res.status(500).json({
       success: false,
       error: 'Error al obtener recompensas por usuarios'
@@ -3913,7 +4071,7 @@ app.get('/api/rewards', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error al obtener recompensas:', error);
+    console.error('❌ Error al obtener recompensas:', formatErrorForLogging(error));
     res.status(500).json({
       success: false,
       error: 'Error al obtener recompensas'
@@ -3977,7 +4135,7 @@ app.post('/api/rewards/redeem', async (req, res) => {
         points: parsedPoints
       });
     } catch (error) {
-      console.warn('⚠️ No se pudieron crear alertas de canje:', error);
+      console.warn('⚠️ No se pudieron crear alertas de canje:', formatErrorForLogging(error));
     }
 
     return res.json({
@@ -3986,7 +4144,7 @@ app.post('/api/rewards/redeem', async (req, res) => {
       data: result.reward
     });
   } catch (error) {
-    console.error('❌ Error al redimir recompensas:', error);
+    console.error('❌ Error al redimir recompensas:', formatErrorForLogging(error));
     res.status(500).json({
       success: false,
       error: 'Error al redimir recompensas'
@@ -4047,7 +4205,7 @@ app.get('/api/alerts', async (req, res) => {
 
     return res.json({ success: true, data: alerts });
   } catch (error) {
-    console.error('❌ Error al obtener alertas:', error);
+    console.error('❌ Error al obtener alertas:', formatErrorForLogging(error));
     res.status(500).json({
       success: false,
       error: 'Error al obtener alertas'
