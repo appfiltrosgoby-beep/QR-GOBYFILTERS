@@ -58,6 +58,40 @@ function formatErrorForLogging(error) {
   return safe;
 }
 
+function getErrorHttpStatus(error) {
+  return error?.response?.status || error?.status || 0;
+}
+
+function isGoogleQuotaError(error) {
+  const status = getErrorHttpStatus(error);
+  if (status === 429) return true;
+  const message = (error?.response?.data?.error?.message || error?.message || '').toString().toLowerCase();
+  return message.includes('quota exceeded') || message.includes('rate limit');
+}
+
+function respondGoogleSheetsError(res, error, fallbackError = 'Error en Google Sheets') {
+  const status = getErrorHttpStatus(error);
+  const retryAfterMs = getRetryAfterMs(error);
+
+  if (isGoogleQuotaError(error)) {
+    if (retryAfterMs) {
+      res.set('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+    }
+    return res.status(429).json({
+      success: false,
+      error: 'Google API error - cuota excedida',
+      details: error?.response?.data?.error?.message || error?.message || 'Quota exceeded'
+    });
+  }
+
+  const safeDetails = error?.response?.data?.error?.message || error?.message || '';
+  return res.status(status && status >= 400 ? status : 500).json({
+    success: false,
+    error: fallbackError,
+    details: safeDetails
+  });
+}
+
 async function withSheetsRetry(fn, label = 'sheets') {
   const maxAttempts = Number.parseInt(process.env.SHEETS_RETRY_MAX_ATTEMPTS || '3', 10);
   const baseDelayMs = Number.parseInt(process.env.SHEETS_RETRY_BASE_DELAY_MS || '250', 10);
@@ -1258,6 +1292,7 @@ const SCOPES = [
 
 const SHEETS_DOC_CACHE_TTL_MS = Number.parseInt(process.env.SHEETS_DOC_CACHE_TTL_MS || '20000', 10);
 const SHEETS_LOADINFO_TTL_MS = Number.parseInt(process.env.SHEETS_LOADINFO_TTL_MS || '20000', 10);
+const SHEETS_HEADER_TTL_MS = Number.parseInt(process.env.SHEETS_HEADER_TTL_MS || '60000', 10);
 
 // Cache corto para agregación superadmin (evita leer N hojas en cada request).
 const SUPERADMIN_RECORDS_CACHE_TTL_MS = Number.parseInt(process.env.SUPERADMIN_RECORDS_CACHE_TTL_MS || '5000', 10);
@@ -1291,6 +1326,26 @@ function cleanupSuperadminRecordsCache() {
   }
 }
 
+// Cache corto por endpoint (reduce ráfagas desde la UI).
+const API_RESPONSE_CACHE_TTL_MS = Number.parseInt(process.env.API_RESPONSE_CACHE_TTL_MS || '4000', 10);
+const apiResponseCache = new Map();
+
+function getFromApiCache(key) {
+  if (API_RESPONSE_CACHE_TTL_MS <= 0) return null;
+  const entry = apiResponseCache.get(key);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    apiResponseCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setToApiCache(key, value) {
+  if (API_RESPONSE_CACHE_TTL_MS <= 0) return;
+  apiResponseCache.set(key, { expiresAt: Date.now() + API_RESPONSE_CACHE_TTL_MS, value });
+}
+
 async function ensureDocInfoLoaded(doc) {
   const now = Date.now();
   const loadedAt = doc?.__gobyInfoLoadedAt || 0;
@@ -1299,6 +1354,17 @@ async function ensureDocInfoLoaded(doc) {
   }
   await withSheetsRetry(() => doc.loadInfo(), 'doc.loadInfo');
   doc.__gobyInfoLoadedAt = Date.now();
+}
+
+async function ensureSheetHeaderRowLoaded(sheet) {
+  if (!sheet) return;
+  const now = Date.now();
+  const loadedAt = sheet.__gobyHeaderLoadedAt || 0;
+  if (loadedAt && sheet.headerValues && sheet.headerValues.length > 0 && (now - loadedAt) < SHEETS_HEADER_TTL_MS) {
+    return;
+  }
+  await withSheetsRetry(() => sheet.loadHeaderRow(), `sheet.loadHeaderRow:${sheet.title || 'unknown'}`);
+  sheet.__gobyHeaderLoadedAt = Date.now();
 }
 
 const RECORDS_SHEET_TITLE = 'REGISTROS';
@@ -1392,7 +1458,7 @@ async function getGoogleSheet() {
  * @param {Object} sheet - Hoja de Google Sheets
  */
 async function initializeRecordsSheet(sheet) {
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
   
   const requiredHeaders = [
     'ID',
@@ -1429,7 +1495,8 @@ async function initializeRecordsSheet(sheet) {
       console.log(`⚠️ Agregando columnas faltantes a hoja ${sheet.title}:`, missingHeaders);
       const newHeaders = [...sheet.headerValues, ...missingHeaders];
       await sheet.setHeaderRow(newHeaders);
-      await sheet.loadHeaderRow(); // Recargar headers
+      sheet.__gobyHeaderLoadedAt = 0;
+      await ensureSheetHeaderRowLoaded(sheet); // Recargar headers
     }
   }
 }
@@ -1439,7 +1506,7 @@ async function initializeRecordsSheet(sheet) {
  * @param {Object} sheet - Hoja de Google Sheets
  */
 async function initializeUsersSheet(sheet) {
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
 
   const requiredHeaders = [
     'NOMBRE',
@@ -1458,12 +1525,13 @@ async function initializeUsersSheet(sheet) {
   const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
   if (missingHeaders.length > 0) {
     await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
-    await sheet.loadHeaderRow();
+    sheet.__gobyHeaderLoadedAt = 0;
+    await ensureSheetHeaderRowLoaded(sheet);
   }
 }
 
 async function initializeContactRequestsSheet(sheet) {
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
 
   const requiredHeaders = [
     'FECHA',
@@ -1488,7 +1556,8 @@ async function initializeContactRequestsSheet(sheet) {
   const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
   if (missingHeaders.length > 0) {
     await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
-    await sheet.loadHeaderRow();
+    sheet.__gobyHeaderLoadedAt = 0;
+    await ensureSheetHeaderRowLoaded(sheet);
   }
 }
 
@@ -1575,7 +1644,7 @@ async function getOrCreateClientsSheet(doc) {
     console.log('✅ Creada hoja CLIENTES');
   }
 
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
   return sheet;
 }
 
@@ -1605,7 +1674,7 @@ async function getOrCreateUsersSheet(doc) {
 }
 
 async function initializeRewardsSheet(sheet) {
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
 
   const requiredHeaders = [
     'IDENTIFICADOR',
@@ -1625,12 +1694,13 @@ async function initializeRewardsSheet(sheet) {
   const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
   if (missingHeaders.length > 0) {
     await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
-    await sheet.loadHeaderRow();
+    sheet.__gobyHeaderLoadedAt = 0;
+    await ensureSheetHeaderRowLoaded(sheet);
   }
 }
 
 async function initializeRewardsHistorySheet(sheet) {
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
 
   const requiredHeaders = [
     'IDENTIFICADOR',
@@ -1657,12 +1727,13 @@ async function initializeRewardsHistorySheet(sheet) {
   const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
   if (missingHeaders.length > 0) {
     await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
-    await sheet.loadHeaderRow();
+    sheet.__gobyHeaderLoadedAt = 0;
+    await ensureSheetHeaderRowLoaded(sheet);
   }
 }
 
 async function initializeAlertsSheet(sheet) {
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
 
   const requiredHeaders = [
     'ID',
@@ -1685,7 +1756,8 @@ async function initializeAlertsSheet(sheet) {
   const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
   if (missingHeaders.length > 0) {
     await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
-    await sheet.loadHeaderRow();
+    sheet.__gobyHeaderLoadedAt = 0;
+    await ensureSheetHeaderRowLoaded(sheet);
   }
 }
 
@@ -2418,7 +2490,7 @@ async function getOrCreateClientRecordsSheet(doc, cliente) {
     console.log(`✅ Creada hoja de registros para cliente: ${sheetTitle}`);
   }
 
-  await sheet.loadHeaderRow();
+  await ensureSheetHeaderRowLoaded(sheet);
   return sheet;
 }
 
@@ -2918,7 +2990,7 @@ app.post('/api/save-qr', async (req, res) => {
     const globalSheet = await getOrCreateRecordsSheet(doc);
     
     // Asegurar que los headers estén cargados correctamente
-    await globalSheet.loadHeaderRow();
+    await ensureSheetHeaderRowLoaded(globalSheet);
     console.log('✅ Headers cargados en globalSheet:', globalSheet.headerValues);
 
     const existingGlobalRecord = await findExistingRecord(globalSheet, referencia, serial);
@@ -2939,7 +3011,7 @@ app.post('/api/save-qr', async (req, res) => {
       let existingCurrentClientRecord = null;
       if (effectiveClient) {
         currentClientSheet = await getOrCreateClientRecordsSheet(doc, effectiveClient);
-        await currentClientSheet.loadHeaderRow(); // Asegurar headers cargados
+        await ensureSheetHeaderRowLoaded(currentClientSheet); // Asegurar headers cargados
         existingCurrentClientRecord = await findExistingRecord(currentClientSheet, referencia, serial);
       }
       
@@ -2948,7 +3020,7 @@ app.post('/api/save-qr', async (req, res) => {
       let existingOriginalClientRecord = null;
       if (recordClient && recordClient !== normalizedUserClient && recordClient !== effectiveClient) {
         originalClientSheet = await getOrCreateClientRecordsSheet(doc, recordClient);
-        await originalClientSheet.loadHeaderRow(); // Asegurar headers cargados
+        await ensureSheetHeaderRowLoaded(originalClientSheet); // Asegurar headers cargados
         existingOriginalClientRecord = await findExistingRecord(originalClientSheet, referencia, serial);
       }
       
@@ -3333,7 +3405,7 @@ app.post('/api/save-qr', async (req, res) => {
       // Guardar tambien en la hoja del cliente
       if (normalizedUserClient) {
         const clientSheet = await getOrCreateClientRecordsSheet(doc, normalizedUserClient);
-        await clientSheet.loadHeaderRow();
+        await ensureSheetHeaderRowLoaded(clientSheet);
         const clientRows = await clientSheet.getRows();
         await clientSheet.addRow({
           'ID': clientRows.length + 1,
@@ -3413,19 +3485,20 @@ app.get('/api/recent-scans', async (req, res) => {
     const isSuper = authTipo === 'super';
     const isAdmin = authTipo === 'administrador';
     const authEmail = normalizeUser(auth.row.get('USUARIO') || authUser);
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 2000)) : 10;
+
+    const cacheKey = `recent-scans|${authTipo}|${normalizeClientForMatch(requestedClient)}|${safeLimit}|${authEmail}`;
+    const cached = getFromApiCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
 
     let records = [];
 
-    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 2000)) : 10;
-
-    if (isSuper) {
-      // Superadmin: agregar global + hojas por cliente
-      records = await getAllRecordsForSuperadmin(doc, { requestedClient: requestedClient || '', maxRecords: Math.max(2000, safeLimit) });
-    } else {
-      // Otros roles: usar hoja global (y filtrar)
-      const globalSheet = await getOrCreateRecordsSheet(doc);
-      records = (await globalSheet.getRows()).map(mapRecordRowToObject);
-    }
+    // Usar hoja global REGISTROS como fuente única de verdad.
+    // Esto reduce cuota (evita leer N hojas por cliente) y asegura consistencia.
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    records = (await globalSheet.getRows()).map(mapRecordRowToObject);
 
     if (requestedClient) {
       // Filtro por cliente: permitido para superadmin, y para admin solo si es su cliente
@@ -3460,17 +3533,18 @@ app.get('/api/recent-scans', async (req, res) => {
       });
     }
 
+    // Ordenar por el último evento (más reciente primero)
+    records.sort((a, b) => recordLatestEventTimestampMs(b) - recordLatestEventTimestampMs(a));
+
     const data = records.slice(0, safeLimit);
 
-    res.json({ success: true, data });
+    const payload = { success: true, data };
+    setToApiCache(cacheKey, payload);
+    res.json(payload);
 
   } catch (error) {
     console.error('Error al obtener registros:', formatErrorForLogging(error));
-    res.status(500).json({ 
-      success: false, 
-      error: 'Error al obtener registros',
-      details: error.message 
-    });
+    return respondGoogleSheetsError(res, error, 'Error al obtener registros');
   }
 });
 
@@ -3505,13 +3579,16 @@ app.get('/api/stats', async (req, res) => {
   // Admin y Superadmin ven conteos agregados del cliente / global.
   const shouldFilterByUser = !isSuper && !isAdmin;
 
-    let records = [];
-    if (isSuper) {
-      records = await getAllRecordsForSuperadmin(doc, { requestedClient: '' });
-    } else {
-      const globalSheet = await getOrCreateRecordsSheet(doc);
-      records = (await globalSheet.getRows()).map(mapRecordRowToObject);
+    const cacheKey = `stats|${authTipo}|${normalizeClientForMatch(cliente)}|${normalizedUser}`;
+    const cached = getFromApiCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
     }
+
+    // Stats siempre se calculan desde la hoja global REGISTROS (fuente única de verdad).
+    // Esto asegura que el contador de superadmin refleje exactamente el total en REGISTROS.
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    let records = (await globalSheet.getRows()).map(mapRecordRowToObject);
     console.log(`📊 Stats API: Total de registros disponibles: ${records.length}`);
 
     if (cliente) {
@@ -3638,15 +3715,13 @@ app.get('/api/stats', async (req, res) => {
     });
 
     console.log(`📈 Estadísticas finales:`, stats);
-    res.json({ success: true, data: stats });
+    const payload = { success: true, data: stats };
+    setToApiCache(cacheKey, payload);
+    res.json(payload);
 
   } catch (error) {
     console.error('Error al obtener estadísticas:', formatErrorForLogging(error));
-    res.status(500).json({ 
-      success: false, 
-      error: 'Error al obtener estadísticas',
-      details: error.message 
-    });
+    return respondGoogleSheetsError(res, error, 'Error al obtener estadísticas');
   }
 });
 
@@ -3875,7 +3950,7 @@ app.post('/api/save-installer', async (req, res) => {
 
     // Obtener la hoja REGISTROS
     const registrosSheet = await getOrCreateRecordsSheet(doc);
-    await registrosSheet.loadHeaderRow();
+    await ensureSheetHeaderRowLoaded(registrosSheet);
 
     // Agregar fila con el nombre del instalador y timestamp
     const timestamp = new Date().toLocaleString('es-ES', {
@@ -3932,6 +4007,12 @@ app.get('/api/rewards/users', async (req, res) => {
         success: false,
         error: 'No autorizado'
       });
+    }
+
+    const cacheKey = `rewards-users|${authData?.tipo || ''}|${normalizeClientForMatch(authData?.cliente || '')}`;
+    const cached = getFromApiCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
     }
 
     const rewardsSheet = await getOrCreateRewardsSheet(doc);
@@ -3996,20 +4077,19 @@ app.get('/api/rewards/users', async (req, res) => {
       .filter(item => !!item.usuario)
       .sort((a, b) => b.puntos - a.puntos);
 
-    return res.json({
+    const payload = {
       success: true,
       data: usersPoints,
       meta: {
         scope: authData.tipo === 'administrador' ? 'cliente' : 'global',
         cliente: authData.cliente || ''
       }
-    });
+    };
+    setToApiCache(cacheKey, payload);
+    return res.json(payload);
   } catch (error) {
     console.error('❌ Error al obtener recompensas por usuarios:', formatErrorForLogging(error));
-    res.status(500).json({
-      success: false,
-      error: 'Error al obtener recompensas por usuarios'
-    });
+    return respondGoogleSheetsError(res, error, 'Error al obtener recompensas por usuarios');
   }
 });
 
