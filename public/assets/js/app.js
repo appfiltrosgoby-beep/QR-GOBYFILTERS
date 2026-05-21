@@ -1851,6 +1851,13 @@ function setupEventListeners() {
     
     if (filterClienteRecords) {
         filterClienteRecords.addEventListener('change', (e) => {
+            if (currentUserRole === 'superadmin') {
+                // Para superadmin, pedir al backend los registros del cliente seleccionado.
+                loadRecentScans().catch(err => console.error('Error recargando registros por cliente:', err));
+                // Actualizar también contadores de escaneos/estadísticas del header.
+                loadStats(e.target.value).catch(err => console.error('Error recargando stats por cliente:', err));
+                return;
+            }
             filterRecordsByCliente(e.target.value);
         });
     }
@@ -1863,6 +1870,11 @@ function setupEventListeners() {
     
     if (filterClienteStats) {
         filterClienteStats.addEventListener('change', (e) => {
+            if (currentUserRole === 'superadmin') {
+                // Recargar stats desde backend filtradas por cliente.
+                loadStats().catch(err => console.error('Error recargando stats por cliente:', err));
+                return;
+            }
             filterStats();
         });
     }
@@ -2713,9 +2725,25 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
  */
 async function loadRecentScans() {
     try {
-        let queryParams = 'limit=20';
-        if (currentUserRole === 'admin' && currentUserClient) {
-            queryParams += `&cliente=${encodeURIComponent(currentUserClient)}`;
+        const filterSelect = document.getElementById('filterClienteRecords');
+
+        const requestedClient = (() => {
+            // Prioridad: selección explícita del superadmin en el filtro de Registros
+            if (currentUserRole === 'superadmin') {
+                return (filterSelect?.value || '').toString().trim();
+            }
+            // Admin siempre restringido a su cliente
+            if (currentUserRole === 'admin' && currentUserClient) {
+                return (currentUserClient || '').toString().trim();
+            }
+            return '';
+        })();
+
+        // Superadmin necesita más registros para poder filtrar por cliente con precisión.
+        const limit = currentUserRole === 'superadmin' ? 2000 : 20;
+        let queryParams = `limit=${limit}`;
+        if (requestedClient) {
+            queryParams += `&cliente=${encodeURIComponent(requestedClient)}`;
         }
 
         if (!currentUsername || !currentUserPassword) {
@@ -2733,7 +2761,9 @@ async function loadRecentScans() {
         if (result.success && result.data.length > 0) {
             allRecordsData = result.data;
             populateClientesSelectRecords();
-            filterRecordsByCliente(''); // Mostrar todos inicialmente
+            // Para superadmin, respetar el filtro actual (si existe).
+            const currentSelected = currentUserRole === 'superadmin' ? (filterSelect?.value || '') : '';
+            filterRecordsByCliente(currentSelected);
         } else {
             allRecordsData = [];
             renderNoRecordsRow(elements.recordsBody);
@@ -2786,17 +2816,26 @@ async function loadMyRecentScans() {
 /**
  * Carga las estadísticas desde el backend
  */
-async function loadStats() {
+async function loadStats(clientOverride = '') {
     try {
         console.log('📊 loadStats: Iniciando carga de estadísticas');
         console.log('Rol:', currentUserRole, 'Cliente:', currentUserClient);
         
+        const filterSelect = document.getElementById('filterClienteStats');
+        const overrideClient = (clientOverride || '').toString().trim();
+
         // Obtener estadísticas según rol (backend filtra por rol según credenciales)
-        let queryParams = '';
+        let requestedClient = '';
         if (currentUserRole === 'admin' && currentUserClient) {
-            queryParams = `?cliente=${encodeURIComponent(currentUserClient)}`;
+            requestedClient = (currentUserClient || '').toString().trim();
             console.log('🔒 Admin detectado, filtrando por cliente:', currentUserClient);
+        } else if (currentUserRole === 'superadmin') {
+            requestedClient = overrideClient || (filterSelect?.value || '').toString().trim();
         }
+
+        const queryParams = requestedClient
+            ? `?cliente=${encodeURIComponent(requestedClient)}`
+            : '';
 
         if (!currentUsername || !currentUserPassword) {
             console.warn('⚠️ loadStats: sesión no válida (sin credenciales).');
@@ -2816,12 +2855,32 @@ async function loadStats() {
         
         if (result.success) {
             displayStats(result.data);
-            // Usar los datos de allRecordsData si ya fueron cargados
-            if (allRecordsData && allRecordsData.length > 0) {
-                allStatsData = allRecordsData;
-                displayStatsTable(allStatsData);
-                populateReferenciasSelect();
-                populateClientesSelectStats();
+            // En vista Estadísticas, cargar dataset de tabla desde backend (evitar depender de allRecordsData=últimos 20).
+            const isStatsViewActive = document.getElementById('statsView')?.classList.contains('active');
+            if (isStatsViewActive && currentUsername && currentUserPassword) {
+                try {
+                    const limit = 2000;
+                    let scansQuery = `limit=${limit}`;
+                    if (requestedClient) {
+                        scansQuery += `&cliente=${encodeURIComponent(requestedClient)}`;
+                    }
+
+                    const scansResponse = await fetch(`${API_URL}/api/recent-scans?${scansQuery}`, {
+                        headers: {
+                            'x-auth-user': currentUsername,
+                            'x-auth-password': currentUserPassword
+                        }
+                    });
+                    const scansResult = await scansResponse.json();
+                    if (scansResult.success && Array.isArray(scansResult.data)) {
+                        allStatsData = scansResult.data;
+                        displayStatsTable(allStatsData);
+                        populateReferenciasSelect();
+                        populateClientesSelectStats();
+                    }
+                } catch (tableError) {
+                    console.error('Error cargando dataset de stats:', tableError);
+                }
             }
         }
     } catch (error) {
@@ -3684,6 +3743,12 @@ async function loadClients() {
         if (result.success) {
             allClientsData = sortClientsByNombre(result.data);
             displayClients(allClientsData);
+
+            // Actualizar selects de filtros por cliente (registros/estadísticas/usuarios)
+            // usando la lista canónica de clientes.
+            populateClientesSelectRecords();
+            populateClientesSelectStats();
+            populateClientesSelectUsers();
         } else {
             allClientsData = [];
             showToast(result.error || 'No se pudieron cargar clientes', 'error');
@@ -4214,11 +4279,27 @@ function filterUsersByCliente(cliente = '') {
 function populateClientesSelectRecords() {
     const filterSelect = document.getElementById('filterClienteRecords');
     
-    if (!filterSelect || !allRecordsData.length) return;
-    
-    // Obtener clientes únicos
-    const clientes = [...new Set(allRecordsData.map(row => row.cliente).filter(Boolean))]
-        .sort(compareClientNames);
+    if (!filterSelect) return;
+
+    const clientes = (() => {
+        // Superadmin: usar la lista de CLIENTES para permitir seleccionar cualquier empresa.
+        if (currentUserRole === 'superadmin' && Array.isArray(allClientsData) && allClientsData.length > 0) {
+            return allClientsData
+                .map(item => (item?.nombre || '').toString().trim())
+                .filter(Boolean)
+                .sort(compareClientNames);
+        }
+
+        if (!Array.isArray(allRecordsData) || allRecordsData.length === 0) {
+            return [];
+        }
+
+        return [...new Set(allRecordsData.map(row => row?.cliente).filter(Boolean))]
+            .map(value => value.toString())
+            .sort(compareClientNames);
+    })();
+
+    if (!clientes.length) return;
     
     // Guardar la opción actual
     const currentValue = filterSelect.value;
@@ -4276,11 +4357,27 @@ function populateClientesSelectUsers() {
 function populateClientesSelectStats() {
     const filterSelect = document.getElementById('filterClienteStats');
     
-    if (!filterSelect || !allStatsData.length) return;
-    
-    // Obtener clientes únicos
-    const clientes = [...new Set(allStatsData.map(row => row.cliente).filter(Boolean))]
-        .sort(compareClientNames);
+    if (!filterSelect) return;
+
+    const clientes = (() => {
+        // Superadmin: usar la lista de CLIENTES para permitir seleccionar cualquier empresa.
+        if (currentUserRole === 'superadmin' && Array.isArray(allClientsData) && allClientsData.length > 0) {
+            return allClientsData
+                .map(item => (item?.nombre || '').toString().trim())
+                .filter(Boolean)
+                .sort(compareClientNames);
+        }
+
+        if (!Array.isArray(allStatsData) || allStatsData.length === 0) {
+            return [];
+        }
+
+        return [...new Set(allStatsData.map(row => row?.cliente).filter(Boolean))]
+            .map(value => value.toString())
+            .sort(compareClientNames);
+    })();
+
+    if (!clientes.length) return;
     
     // Guardar la opción actual
     const currentValue = filterSelect.value;

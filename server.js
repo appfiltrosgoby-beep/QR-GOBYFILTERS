@@ -3331,7 +3331,10 @@ app.get('/api/stats', async (req, res) => {
     const authCliente = (auth.row.get('CLIENTE') || '').toString().trim();
     const isSuper = authTipo === 'super';
     const isAdmin = authTipo === 'administrador';
-    const normalizedUser = normalizeUser(auth.row.get('USUARIO') || authUser);
+  const normalizedUser = normalizeUser(auth.row.get('USUARIO') || authUser);
+  // Solo usuarios finales (mecánico/despacho) deben ver conteos por su propio usuario.
+  // Admin y Superadmin ven conteos agregados del cliente / global.
+  const shouldFilterByUser = !isSuper && !isAdmin;
 
     let records = [];
     if (isSuper) {
@@ -3450,8 +3453,8 @@ app.get('/api/stats', async (req, res) => {
           return;
         }
 
-        // Si se pidió filtrado por usuario, contar solo eventos hechos por ese usuario.
-        if (normalizedUser) {
+        // Si se pidió filtrado por usuario (solo usuarios finales), contar solo eventos hechos por ese usuario.
+        if (shouldFilterByUser && normalizedUser) {
           const stageUser = normalizeUser(row.get(stage.userKey));
           if (stageUser !== normalizedUser) {
             return;
