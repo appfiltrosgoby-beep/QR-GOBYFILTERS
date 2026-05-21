@@ -1327,7 +1327,8 @@ function cleanupSuperadminRecordsCache() {
 }
 
 // Cache corto por endpoint (reduce ráfagas desde la UI).
-const API_RESPONSE_CACHE_TTL_MS = Number.parseInt(process.env.API_RESPONSE_CACHE_TTL_MS || '4000', 10);
+const API_RESPONSE_CACHE_TTL_MS = Number.parseInt(process.env.API_RESPONSE_CACHE_TTL_MS || '20000', 10);
+const API_QUOTA_ERROR_CACHE_TTL_MS = Number.parseInt(process.env.API_QUOTA_ERROR_CACHE_TTL_MS || '60000', 10);
 const apiResponseCache = new Map();
 
 function getFromApiCache(key) {
@@ -1341,9 +1342,30 @@ function getFromApiCache(key) {
   return entry.value;
 }
 
-function setToApiCache(key, value) {
-  if (API_RESPONSE_CACHE_TTL_MS <= 0) return;
-  apiResponseCache.set(key, { expiresAt: Date.now() + API_RESPONSE_CACHE_TTL_MS, value });
+function setToApiCache(key, value, ttlMsOverride = 0) {
+  const ttl = Number.isFinite(ttlMsOverride) && ttlMsOverride > 0 ? ttlMsOverride : API_RESPONSE_CACHE_TTL_MS;
+  if (ttl <= 0) return;
+  apiResponseCache.set(key, { expiresAt: Date.now() + ttl, value });
+}
+
+// Cache global corto de la hoja REGISTROS (reduce lecturas duplicadas entre endpoints/usuarios)
+const RECORDS_ROWS_CACHE_TTL_MS = Number.parseInt(process.env.RECORDS_ROWS_CACHE_TTL_MS || '8000', 10);
+let recordsObjectsCache = { expiresAt: 0, value: null };
+
+async function getGlobalRecordsObjects(doc) {
+  const now = Date.now();
+  if (RECORDS_ROWS_CACHE_TTL_MS > 0 && recordsObjectsCache.value && now < recordsObjectsCache.expiresAt) {
+    return recordsObjectsCache.value;
+  }
+
+  const globalSheet = await getOrCreateRecordsSheet(doc);
+  const rows = await withSheetsRetry(() => globalSheet.getRows(), 'REGISTROS.getRows');
+  const records = rows.map(mapRecordRowToObject);
+
+  if (RECORDS_ROWS_CACHE_TTL_MS > 0) {
+    recordsObjectsCache = { expiresAt: now + RECORDS_ROWS_CACHE_TTL_MS, value: records };
+  }
+  return records;
 }
 
 async function ensureDocInfoLoaded(doc) {
@@ -3463,6 +3485,7 @@ app.post('/api/save-qr', async (req, res) => {
  * Requiere headers: x-auth-user, x-auth-password
  */
 app.get('/api/recent-scans', async (req, res) => {
+  let cacheKey = null;
   try {
     const limit = parseInt(req.query.limit) || 10;
     const requestedClient = (req.query.cliente || '').toString().trim();
@@ -3487,7 +3510,7 @@ app.get('/api/recent-scans', async (req, res) => {
     const authEmail = normalizeUser(auth.row.get('USUARIO') || authUser);
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 2000)) : 10;
 
-    const cacheKey = `recent-scans|${authTipo}|${normalizeClientForMatch(requestedClient)}|${safeLimit}|${authEmail}`;
+    cacheKey = `recent-scans|${authTipo}|${normalizeClientForMatch(requestedClient)}|${safeLimit}|${authEmail}`;
     const cached = getFromApiCache(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -3497,8 +3520,7 @@ app.get('/api/recent-scans', async (req, res) => {
 
     // Usar hoja global REGISTROS como fuente única de verdad.
     // Esto reduce cuota (evita leer N hojas por cliente) y asegura consistencia.
-    const globalSheet = await getOrCreateRecordsSheet(doc);
-    records = (await globalSheet.getRows()).map(mapRecordRowToObject);
+    records = await getGlobalRecordsObjects(doc);
 
     if (requestedClient) {
       // Filtro por cliente: permitido para superadmin, y para admin solo si es su cliente
@@ -3544,6 +3566,14 @@ app.get('/api/recent-scans', async (req, res) => {
 
   } catch (error) {
     console.error('Error al obtener registros:', formatErrorForLogging(error));
+    if (cacheKey && isGoogleQuotaError(error)) {
+      const payload = {
+        success: false,
+        error: 'Google API error - cuota excedida',
+        details: error?.response?.data?.error?.message || error?.message || 'Quota exceeded'
+      };
+      setToApiCache(cacheKey, payload, API_QUOTA_ERROR_CACHE_TTL_MS);
+    }
     return respondGoogleSheetsError(res, error, 'Error al obtener registros');
   }
 });
@@ -3554,6 +3584,7 @@ app.get('/api/recent-scans', async (req, res) => {
  * Requiere headers: x-auth-user, x-auth-password
  */
 app.get('/api/stats', async (req, res) => {
+  let cacheKey = null;
   try {
     const cliente = (req.query.cliente || '').toString().trim();
     const authUser = (req.headers['x-auth-user'] || '').toString().trim();
@@ -3579,7 +3610,7 @@ app.get('/api/stats', async (req, res) => {
   // Admin y Superadmin ven conteos agregados del cliente / global.
   const shouldFilterByUser = !isSuper && !isAdmin;
 
-    const cacheKey = `stats|${authTipo}|${normalizeClientForMatch(cliente)}|${normalizedUser}`;
+    cacheKey = `stats|${authTipo}|${normalizeClientForMatch(cliente)}|${normalizedUser}`;
     const cached = getFromApiCache(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -3587,8 +3618,7 @@ app.get('/api/stats', async (req, res) => {
 
     // Stats siempre se calculan desde la hoja global REGISTROS (fuente única de verdad).
     // Esto asegura que el contador de superadmin refleje exactamente el total en REGISTROS.
-    const globalSheet = await getOrCreateRecordsSheet(doc);
-    let records = (await globalSheet.getRows()).map(mapRecordRowToObject);
+    let records = await getGlobalRecordsObjects(doc);
     console.log(`📊 Stats API: Total de registros disponibles: ${records.length}`);
 
     if (cliente) {
@@ -3721,6 +3751,14 @@ app.get('/api/stats', async (req, res) => {
 
   } catch (error) {
     console.error('Error al obtener estadísticas:', formatErrorForLogging(error));
+    if (cacheKey && isGoogleQuotaError(error)) {
+      const payload = {
+        success: false,
+        error: 'Google API error - cuota excedida',
+        details: error?.response?.data?.error?.message || error?.message || 'Quota exceeded'
+      };
+      setToApiCache(cacheKey, payload, API_QUOTA_ERROR_CACHE_TTL_MS);
+    }
     return respondGoogleSheetsError(res, error, 'Error al obtener estadísticas');
   }
 });
@@ -3989,6 +4027,7 @@ app.post('/api/save-installer', async (req, res) => {
  * Obtiene el puntaje de recompensas por usuario (vista admin/superadmin)
  */
 app.get('/api/rewards/users', async (req, res) => {
+  let cacheKey = null;
   try {
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
@@ -4009,7 +4048,7 @@ app.get('/api/rewards/users', async (req, res) => {
       });
     }
 
-    const cacheKey = `rewards-users|${authData?.tipo || ''}|${normalizeClientForMatch(authData?.cliente || '')}`;
+    cacheKey = `rewards-users|${authData?.tipo || ''}|${normalizeClientForMatch(authData?.cliente || '')}`;
     const cached = getFromApiCache(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -4089,6 +4128,14 @@ app.get('/api/rewards/users', async (req, res) => {
     return res.json(payload);
   } catch (error) {
     console.error('❌ Error al obtener recompensas por usuarios:', formatErrorForLogging(error));
+    if (cacheKey && isGoogleQuotaError(error)) {
+      const payload = {
+        success: false,
+        error: 'Google API error - cuota excedida',
+        details: error?.response?.data?.error?.message || error?.message || 'Quota exceeded'
+      };
+      setToApiCache(cacheKey, payload, API_QUOTA_ERROR_CACHE_TTL_MS);
+    }
     return respondGoogleSheetsError(res, error, 'Error al obtener recompensas por usuarios');
   }
 });

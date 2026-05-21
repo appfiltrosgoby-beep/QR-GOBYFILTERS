@@ -32,6 +32,83 @@ let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admi
 let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
 let currentAdminRewardsUsersData = []; // Datos de recompensas por usuario para admin/superadmin
 
+// Backoff simple para evitar golpear la API cuando Google devuelve 429 (cuota excedida)
+const API_RATE_LIMIT_DEFAULT_MS = 60000;
+const API_RATE_LIMIT_MAX_MS = 10 * 60 * 1000;
+const apiRateLimitState = new Map();
+let lastQuotaToastAt = 0;
+let lastStatsTableLoadAt = 0;
+
+function getRetryAfterMsFromHeaders(headers) {
+    try {
+        const raw = headers?.get?.('Retry-After');
+        if (!raw) return 0;
+        const seconds = Number.parseInt(raw, 10);
+        if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+        return 0;
+    } catch {
+        return 0;
+    }
+}
+
+function getApiCooldownState(key) {
+    if (!apiRateLimitState.has(key)) {
+        apiRateLimitState.set(key, { cooldownUntil: 0, backoffMs: 0 });
+    }
+    return apiRateLimitState.get(key);
+}
+
+function isApiInCooldown(key) {
+    const state = getApiCooldownState(key);
+    return Date.now() < (state.cooldownUntil || 0);
+}
+
+function markApiRateLimited(key, response) {
+    const state = getApiCooldownState(key);
+    const retryAfterMs = getRetryAfterMsFromHeaders(response?.headers);
+    const nextBackoff = state.backoffMs ? Math.min(API_RATE_LIMIT_MAX_MS, state.backoffMs * 2) : API_RATE_LIMIT_DEFAULT_MS;
+    const delayMs = Math.max(retryAfterMs || 0, nextBackoff);
+    state.backoffMs = delayMs;
+    state.cooldownUntil = Date.now() + delayMs;
+    return delayMs;
+}
+
+function resetApiRateLimit(key) {
+    const state = getApiCooldownState(key);
+    state.backoffMs = 0;
+    state.cooldownUntil = 0;
+}
+
+async function fetchJsonWithBackoff(key, url, options) {
+    if (isApiInCooldown(key)) {
+        return { skipped: true, status: 429, result: null, response: null };
+    }
+
+    const response = await fetch(url, options);
+    let result = null;
+    try {
+        result = await response.json();
+    } catch {
+        result = null;
+    }
+
+    if (response.status === 429) {
+        const delayMs = markApiRateLimited(key, response);
+        const now = Date.now();
+        if (now - lastQuotaToastAt > 15000) {
+            lastQuotaToastAt = now;
+            showToast(`Cuota excedida. Reintentando en ${Math.ceil(delayMs / 1000)}s`, 'warning');
+        }
+        return { skipped: false, status: 429, result, response };
+    }
+
+    if (response.ok) {
+        resetApiRateLimit(key);
+    }
+
+    return { skipped: false, status: response.status, result, response };
+}
+
 const rewardsCatalog = Array.isArray(window.REWARDS_CATALOG) ? window.REWARDS_CATALOG : [];
 
 // Elementos del DOM
@@ -1471,8 +1548,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             await loadRecentScans();
             // Pequeño delay para evitar rate limiting
             await new Promise(resolve => setTimeout(resolve, 500));
-            await loadStats();
-            await loadRewards();
+            await loadStats('', true);
+            await loadRewards(true);
         }
     }, 30000);
     
@@ -2816,10 +2893,12 @@ async function loadMyRecentScans() {
 /**
  * Carga las estadísticas desde el backend
  */
-async function loadStats(clientOverride = '') {
+async function loadStats(clientOverride = '', isAutoRefresh = false) {
     try {
         console.log('📊 loadStats: Iniciando carga de estadísticas');
         console.log('Rol:', currentUserRole, 'Cliente:', currentUserClient);
+
+        const autoRefresh = isAutoRefresh === true;
         
         const filterSelect = document.getElementById('filterClienteStats');
         const overrideClient = (clientOverride || '').toString().trim();
@@ -2842,14 +2921,19 @@ async function loadStats(clientOverride = '') {
             return;
         }
 
+        const statsKey = `stats|${currentUserRole || ''}|${(requestedClient || '').toString().trim().toUpperCase()}`;
         console.log('📡 Llamando API:', `${API_URL}/api/stats${queryParams}`);
-        const response = await fetch(`${API_URL}/api/stats${queryParams}`, {
+        const { skipped, status, result } = await fetchJsonWithBackoff(statsKey, `${API_URL}/api/stats${queryParams}`, {
             headers: {
                 'x-auth-user': currentUsername,
                 'x-auth-password': currentUserPassword
             }
         });
-        const result = await response.json();
+
+        if (skipped || status === 429) {
+            // Evitar spam cuando la cuota está agotada.
+            return;
+        }
         
         console.log('✅ Respuesta stats API:', result);
         
@@ -2859,21 +2943,33 @@ async function loadStats(clientOverride = '') {
             const isStatsViewActive = document.getElementById('statsView')?.classList.contains('active');
             if (isStatsViewActive && currentUsername && currentUserPassword) {
                 try {
+                    // Esta carga es pesada (limit=2000). En auto-refresh la limitamos para evitar cuota.
+                    const now = Date.now();
+                    if (autoRefresh && (now - lastStatsTableLoadAt) < 120000) {
+                        return;
+                    }
+
                     const limit = 2000;
                     let scansQuery = `limit=${limit}`;
                     if (requestedClient) {
                         scansQuery += `&cliente=${encodeURIComponent(requestedClient)}`;
                     }
 
-                    const scansResponse = await fetch(`${API_URL}/api/recent-scans?${scansQuery}`, {
+                    const scansKey = `recent-scans-stats-table|${currentUserRole || ''}|${(requestedClient || '').toString().trim().toUpperCase()}`;
+                    const scansRes = await fetchJsonWithBackoff(scansKey, `${API_URL}/api/recent-scans?${scansQuery}`, {
                         headers: {
                             'x-auth-user': currentUsername,
                             'x-auth-password': currentUserPassword
                         }
                     });
-                    const scansResult = await scansResponse.json();
-                    if (scansResult.success && Array.isArray(scansResult.data)) {
-                        allStatsData = scansResult.data;
+
+                    if (scansRes.skipped || scansRes.status === 429) {
+                        return;
+                    }
+
+                    if (scansRes.result && scansRes.result.success && Array.isArray(scansRes.result.data)) {
+                        lastStatsTableLoadAt = Date.now();
+                        allStatsData = scansRes.result.data;
                         displayStatsTable(allStatsData);
                         populateReferenciasSelect();
                         populateClientesSelectStats();
@@ -3120,19 +3216,28 @@ function renderAdminRewardsView(usersData) {
     `).join('');
 }
 
-async function loadAdminRewards() {
+async function loadAdminRewards(isAutoRefresh = false) {
     try {
         if (!currentUsername || !currentUserPassword) {
             throw new Error('Credenciales de administrador no disponibles');
         }
 
-        const response = await fetch(`${API_URL}/api/rewards/users`, {
+        const autoRefresh = isAutoRefresh === true;
+        const rewardsUsersKey = `rewards-users|${currentUserRole || ''}`;
+        const { skipped, status, result } = await fetchJsonWithBackoff(rewardsUsersKey, `${API_URL}/api/rewards/users`, {
             headers: {
                 'x-auth-user': currentUsername,
                 'x-auth-password': currentUserPassword
             }
         });
-        const result = await response.json();
+
+        if (skipped || status === 429) {
+            // En auto-refresh no forzar error/toast extra.
+            if (!autoRefresh) {
+                showToast('Cuota excedida. Intenta de nuevo en unos segundos.', 'warning');
+            }
+            return;
+        }
 
         if (!result.success) {
             throw new Error(result.error || 'No se pudieron cargar los puntos por usuario');
@@ -3148,10 +3253,11 @@ async function loadAdminRewards() {
     }
 }
 
-async function loadRewards() {
+async function loadRewards(isAutoRefresh = false) {
     try {
+        const autoRefresh = isAutoRefresh === true;
         if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
-            await loadAdminRewards();
+            await loadAdminRewards(autoRefresh);
             return;
         }
 
