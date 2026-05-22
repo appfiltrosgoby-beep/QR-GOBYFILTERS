@@ -25,9 +25,15 @@ let allRecordsData = []; // Guardar todos los registros para filtrado
 let allUsersData = []; // Guardar todos los usuarios para filtrado
 let allClientsData = []; // Guardar todos los clientes para filtrado
 let pendingInstallationQR = null; // QR pendiente de instalación (tercer escaneo)
-let pendingUninstallationQR = null; // QR pendiente de desinstalación (sin uso en flujo de 3 escaneos)
+let pendingUninstallationQR = null; // QR pendiente de desinstalación (cuarto escaneo)
 let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
 let scannerRestartTimeout = null; // Timer para reiniciar scanner
+let isAwaitingScanFormData = false; // Bloquea nuevos escaneos mientras hay un modal pendiente (instalación/desinstalación)
+
+// Evitar duplicados cuando el mismo QR se queda frente a la cámara.
+const DUPLICATE_SCAN_WINDOW_MS = 1800;
+let lastScannedPayload = '';
+let lastScannedAt = 0;
 let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admin' | null)
 let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
 let currentAdminRewardsUsersData = []; // Datos de recompensas por usuario para admin/superadmin
@@ -1103,6 +1109,10 @@ function logout() {
     currentUserDisplayName = null;
     currentUserPassword = null;
     currentUserClient = null;
+    pendingInstallationQR = null;
+    pendingUninstallationQR = null;
+    isAwaitingScanFormData = false;
+    isProcessingQR = false;
     
     clearUnifiedLoginForm();
     if (elements.passwordError) elements.passwordError.classList.add('hidden');
@@ -2205,6 +2215,10 @@ async function startScanning() {
         showToast('El superadmin no tiene permiso para escanear', 'warning');
         return;
     }
+    if (isAwaitingScanFormData) {
+        showToast('Completa o cancela el formulario antes de seguir escaneando', 'info');
+        return;
+    }
     if (!html5QrCode) {
         showToast('Escáner no disponible', 'warning');
         return;
@@ -2222,7 +2236,7 @@ async function startScanning() {
         }
         
         const config = {
-            fps: 10, // Aumentado de 10 a 15 para escaneo más rápido
+            fps: 15, // Escaneo más rápido (optimizado)
             qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0,
             disableFlip: false // Permite detectar QRs invertidos
@@ -2299,6 +2313,9 @@ async function stopScanning() {
  * Reinicia el scanner con control de intentos
  */
 async function restartScanning(delayMs = 500) {
+    if (isAwaitingScanFormData) {
+        return;
+    }
     // Limpiar timeout anterior
     if (scannerRestartTimeout) {
         clearTimeout(scannerRestartTimeout);
@@ -2334,20 +2351,30 @@ async function restartScanning(delayMs = 500) {
  * OPTIMIZADO: Permite escaneo continuo sin necesidad de recargar
  */
 async function onQRCodeScanned(decodedText, decodedResult) {
-    // Si ya estamos procesando un QR, ignorar este (evitar duplicados)
-    if (isProcessingQR) {
+    // Si ya estamos procesando o esperando datos de un modal, ignorar este (evitar duplicados/escaneos fantasma)
+    if (isProcessingQR || isAwaitingScanFormData) {
         console.log('⏸️ Escaneando simultáneamente, ignorando...');
         return;
+    }
+
+    const payload = (decodedText || '').toString().trim();
+    if (payload) {
+        const now = Date.now();
+        if (payload === lastScannedPayload && (now - lastScannedAt) < DUPLICATE_SCAN_WINDOW_MS) {
+            return;
+        }
+        lastScannedPayload = payload;
+        lastScannedAt = now;
     }
     
     try {
         // Marcar que estamos procesando
         isProcessingQR = true;
         
-        console.log('✅ QR detectado:', decodedText);
+        console.log('✅ QR detectado:', payload);
         
         // Validar que no esté vacío
-        if (!decodedText || decodedText.trim() === '') {
+        if (!payload) {
             showToast('⚠️ QR vacío o inválido', 'warning');
             updateStatus('❌ QR vacío detectado', 'error');
             // Reintentar rápidamente
@@ -2359,7 +2386,7 @@ async function onQRCodeScanned(decodedText, decodedResult) {
         updateStatus('💾 Guardando...', 'saving');
         
         // Guardar el QR (esto puede tomar 1-2 segundos)
-        await saveQRCode(decodedText);
+        await saveQRCode(payload);
         
     } catch (error) {
         console.error('Error procesando QR:', error);
@@ -2368,9 +2395,11 @@ async function onQRCodeScanned(decodedText, decodedResult) {
     } finally {
         // Marcar que terminó el procesamiento
         isProcessingQR = false;
-        
-        // Reiniciar scanner después de 1 segundo
-        restartScanning(1000);
+
+        // Reiniciar scanner rápido si no hay un modal pendiente
+        if (!isAwaitingScanFormData) {
+            restartScanning(100);
+        }
     }
 }
 
@@ -2489,6 +2518,9 @@ async function onInstalacionSubmit() {
     try {
         // Ocultar modal
         onHideInstalacion();
+
+        // Bloquear nuevos escaneos mientras se guarda la instalación
+        isProcessingQR = true;
         
         updateStatus('💾 Guardando datos de instalación...', 'saving');
         
@@ -2497,6 +2529,9 @@ async function onInstalacionSubmit() {
         
         // Limpiar QR pendiente
         pendingInstallationQR = null;
+
+        // Se completó el formulario: permitir nuevos escaneos
+        isAwaitingScanFormData = false;
         
         // Reiniciar scanner después de 1 segundo
         restartScanning(1000);
@@ -2507,7 +2542,10 @@ async function onInstalacionSubmit() {
         updateStatus('❌ Error al guardar', 'error');
         
         // Volver a mostrar el modal para reintento
+        isAwaitingScanFormData = true;
         onShowInstalacion();
+    } finally {
+        isProcessingQR = false;
     }
 }
 
@@ -2520,6 +2558,9 @@ function onInstalacionCancel() {
     
     // Limpiar QR pendiente
     pendingInstallationQR = null;
+
+    // Permitir escaneos nuevamente
+    isAwaitingScanFormData = false;
     
     // Mostrar mensaje
     updateStatus('⚠️ Instalación cancelada', 'warning');
@@ -2583,12 +2624,18 @@ async function submitDesinstalacion() {
     try {
         // Ocultar modal
         hideDesinstalacionModal();
+
+        // Bloquear nuevos escaneos mientras se guarda la desinstalación
+        isProcessingQR = true;
         
         // Enviar datos al backend con el kilometraje de desinstalación
         await saveQRCode(pendingUninstallationQR, '', '', kilometraje);
         
         // Limpiar QR pendiente
-        pendingUninstallationQR = '';
+        pendingUninstallationQR = null;
+
+        // Se completó el formulario: permitir nuevos escaneos
+        isAwaitingScanFormData = false;
         
         // Reiniciar scanner después de 1 segundo
         restartScanning(1000);
@@ -2598,7 +2645,10 @@ async function submitDesinstalacion() {
         showToast('Error al guardar datos de desinstalación', 'error');
         
         // Volver a mostrar el modal para que el usuario reintente
+        isAwaitingScanFormData = true;
         showDesinstalacionModal();
+    } finally {
+        isProcessingQR = false;
     }
 }
 
@@ -2607,7 +2657,8 @@ async function submitDesinstalacion() {
  */
 function cancelDesinstalacion() {
     hideDesinstalacionModal();
-    pendingUninstallationQR = '';
+    pendingUninstallationQR = null;
+    isAwaitingScanFormData = false;
     updateStatus('⚠️ Desinstalación cancelada', 'warning');
     showToast('Desinstalación cancelada', 'warning');
     
@@ -2744,12 +2795,14 @@ async function saveQRCode(qrContent, placa = '', kilometrajeInstalacion = '', ki
             
             if (action === 'needs_installation_data') {
                 // Se requieren datos de instalación - mostrar modal
+                isAwaitingScanFormData = true;
                 pendingInstallationQR = qrContent;
                 onShowInstalacion();
                 updateStatus(`🔧 Ingresa datos de instalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');
                 return; // No continuar procesando
             } else if (action === 'needs_uninstallation_data') {
                 // Se requieren datos de desinstalación - mostrar modal
+                isAwaitingScanFormData = true;
                 pendingUninstallationQR = qrContent;
                 showDesinstalacionModal();
                 updateStatus(`📤 Ingresa kilometraje de desinstalación para ${result.data.referencia} | ${result.data.serial}`, 'warning');

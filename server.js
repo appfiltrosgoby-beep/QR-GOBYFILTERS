@@ -703,7 +703,8 @@ async function findUserRowByLoginIdentifier(doc, loginIdentifier, passwordHint =
  * Registro de usuario (público)
  * POST /api/register
  * Body: { nombre, correo, password, cliente }
- * Crea usuario en hoja global USUARIOS con cliente asociado.
+ * Crea una solicitud de registro pendiente (requiere aprobación de superadmin).
+ * Al aprobar, se guarda la información en la hoja global USUARIOS.
  */
 app.post('/api/register', async (req, res) => {
   try {
@@ -751,12 +752,27 @@ app.post('/api/register', async (req, res) => {
     const canonicalClientName = (matchedClientRow.get('NOMBRE') || '').toString().trim() || normalizedClientInput;
 
     const globalSheet = await getOrCreateUsersSheet(doc);
+    const pendingSheet = await getOrCreatePendingUsersSheet(doc);
 
     // Validar duplicado en hoja global
     const globalRows = await globalSheet.getRows();
     const existsGlobal = globalRows.some(row => normalizeUser(row.get('USUARIO')) === normalizedEmail);
     if (existsGlobal) {
       return res.status(409).json({ success: false, message: 'El usuario ya existe' });
+    }
+
+    // Validar duplicado en pendientes
+    const pendingRows = await pendingSheet.getRows();
+    const pendingExists = pendingRows.some(row => {
+      const rowUser = normalizeUser(row.get('USUARIO'));
+      const estado = (row.get('ESTADO') || '').toString().trim().toUpperCase();
+      return rowUser === normalizedEmail && (estado === 'PENDIENTE' || estado === 'EN_REVISION');
+    });
+    if (pendingExists) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ya existe una solicitud pendiente para este usuario'
+      });
     }
 
     // Validar duplicado en hojas por cliente (si existen)
@@ -770,19 +786,198 @@ app.post('/api/register', async (req, res) => {
       }
     }
 
-    await globalSheet.addRow({
+    const requestId = generateRegistrationRequestId();
+    const createdAt = new Date().toLocaleString('es-ES');
+
+    await pendingSheet.addRow({
+      'ID': requestId,
       'NOMBRE': normalizedName,
       'TELEFONO': normalizedPhone,
       'USUARIO': normalizedEmail,
-      'TIPO': normalizedTipo,
       'CONTRASEÑA': password,
-      'CLIENTE': canonicalClientName
+      'CLIENTE': canonicalClientName,
+      'TIPO': normalizedTipo,
+      'ESTADO': 'PENDIENTE',
+      'CREADO_EN': createdAt,
+      'APROBADO_EN': '',
+      'APROBADO_POR': ''
     });
 
-    return res.json({ success: true, message: 'Usuario registrado correctamente' });
+    // Notificar superadmins (no bloquear por errores de notificación)
+    try {
+      await createPendingRegistrationAlerts(doc, {
+        requestId,
+        nombre: normalizedName,
+        email: normalizedEmail,
+        telefono: normalizedPhone,
+        cliente: canonicalClientName
+      });
+    } catch (error) {
+      console.warn('⚠️ No se pudieron crear alertas de registro pendiente:', formatErrorForLogging(error));
+    }
+
+    await sendPendingRegistrationEmailToSuperadmins({
+      requestId,
+      nombre: normalizedName,
+      email: normalizedEmail,
+      telefono: normalizedPhone,
+      cliente: canonicalClientName
+    });
+
+    return res.json({
+      success: true,
+      message: 'Solicitud enviada. Pendiente de aprobación por superadmin',
+      requestId
+    });
   } catch (error) {
     console.error('Error al registrar usuario:', formatErrorForLogging(error));
     return res.status(500).json({ success: false, message: 'Error al registrar usuario' });
+  }
+});
+
+/**
+ * Lista solicitudes de registro pendientes (solo superadmin)
+ * GET /api/register/pending
+ * Headers: x-auth-user, x-auth-password
+ */
+app.get('/api/register/pending', async (req, res) => {
+  let cacheKey = null;
+  try {
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, error: 'Credenciales requeridas' });
+    }
+
+    const doc = await getGoogleSheet();
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'No autorizado' });
+    }
+
+    const authTipo = normalizeType(auth.row.get('TIPO'));
+    if (authTipo !== 'super') {
+      return res.status(403).json({ success: false, error: 'Solo superadmin' });
+    }
+
+    cacheKey = `register-pending|${normalizeUser(auth.row.get('USUARIO') || authUser)}`;
+    const cached = getFromApiCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const pendingSheet = await getOrCreatePendingUsersSheet(doc);
+    const rows = await pendingSheet.getRows();
+    const pending = rows
+      .map(row => ({
+        id: (row.get('ID') || '').toString().trim(),
+        nombre: (row.get('NOMBRE') || '').toString().trim(),
+        telefono: (row.get('TELEFONO') || '').toString().trim(),
+        usuario: normalizeUser(row.get('USUARIO')),
+        cliente: (row.get('CLIENTE') || '').toString().trim(),
+        tipo: normalizeType(row.get('TIPO')),
+        estado: (row.get('ESTADO') || '').toString().trim().toUpperCase(),
+        creadoEn: (row.get('CREADO_EN') || '').toString().trim()
+      }))
+      .filter(item => !!item.id && item.estado === 'PENDIENTE');
+
+    const payload = { success: true, data: pending };
+    setToApiCache(cacheKey, payload);
+    return res.json(payload);
+  } catch (error) {
+    console.error('Error listando registros pendientes:', formatErrorForLogging(error));
+    if (cacheKey && isGoogleQuotaError(error)) {
+      const payload = {
+        success: false,
+        error: 'Google API error - cuota excedida',
+        details: error?.response?.data?.error?.message || error?.message || 'Quota exceeded'
+      };
+      setToApiCache(cacheKey, payload, API_QUOTA_ERROR_CACHE_TTL_MS);
+    }
+    return respondGoogleSheetsError(res, error, 'Error listando registros pendientes');
+  }
+});
+
+/**
+ * Aprueba una solicitud de registro pendiente (solo superadmin)
+ * POST /api/register/approve
+ * Headers: x-auth-user, x-auth-password
+ * Body: { requestId }
+ */
+app.post('/api/register/approve', async (req, res) => {
+  try {
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+    const requestId = (req.body?.requestId || '').toString().trim();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, error: 'Credenciales requeridas' });
+    }
+    if (!requestId) {
+      return res.status(400).json({ success: false, error: 'requestId es requerido' });
+    }
+
+    const doc = await getGoogleSheet();
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'No autorizado' });
+    }
+
+    const authTipo = normalizeType(auth.row.get('TIPO'));
+    if (authTipo !== 'super') {
+      return res.status(403).json({ success: false, error: 'Solo superadmin' });
+    }
+
+    const pendingSheet = await getOrCreatePendingUsersSheet(doc);
+    const pendingRows = await pendingSheet.getRows();
+    const pendingRow = pendingRows.find(row => (row.get('ID') || '').toString().trim() === requestId) || null;
+    if (!pendingRow) {
+      return res.status(404).json({ success: false, error: 'Solicitud no encontrada' });
+    }
+
+    const estado = (pendingRow.get('ESTADO') || '').toString().trim().toUpperCase();
+    if (estado !== 'PENDIENTE') {
+      return res.status(409).json({ success: false, error: `La solicitud no está pendiente (estado: ${estado || 'N/A'})` });
+    }
+
+    const nombre = (pendingRow.get('NOMBRE') || '').toString().trim();
+    const telefono = (pendingRow.get('TELEFONO') || '').toString().trim();
+    const usuario = normalizeUser(pendingRow.get('USUARIO'));
+    const password = (pendingRow.get('CONTRASEÑA') || '').toString();
+    const cliente = (pendingRow.get('CLIENTE') || '').toString().trim();
+    const tipo = normalizeType(pendingRow.get('TIPO')) || 'mecanico';
+
+    if (!usuario || !password || !cliente) {
+      return res.status(400).json({ success: false, error: 'Solicitud incompleta (usuario/contraseña/cliente)' });
+    }
+
+    const globalUsersSheet = await getOrCreateUsersSheet(doc);
+    const globalRows = await globalUsersSheet.getRows();
+    const exists = globalRows.some(row => normalizeUser(row.get('USUARIO')) === usuario);
+    if (exists) {
+      return res.status(409).json({ success: false, error: 'El usuario ya existe en USUARIOS' });
+    }
+
+    await globalUsersSheet.addRow({
+      'NOMBRE': nombre,
+      'TELEFONO': telefono,
+      'USUARIO': usuario,
+      'TIPO': tipo,
+      'CONTRASEÑA': password,
+      'CLIENTE': cliente
+    });
+
+    const approvedAt = new Date().toLocaleString('es-ES');
+    pendingRow.set('ESTADO', 'APROBADO');
+    pendingRow.set('APROBADO_EN', approvedAt);
+    pendingRow.set('APROBADO_POR', normalizeUser(auth.row.get('USUARIO') || authUser));
+    await pendingRow.save();
+
+    return res.json({ success: true, message: 'Solicitud aprobada y usuario creado' });
+  } catch (error) {
+    console.error('Error aprobando registro pendiente:', formatErrorForLogging(error));
+    return respondGoogleSheetsError(res, error, 'Error aprobando registro pendiente');
   }
 });
 
@@ -1391,12 +1586,125 @@ async function ensureSheetHeaderRowLoaded(sheet) {
 
 const RECORDS_SHEET_TITLE = 'REGISTROS';
 const USERS_SHEET_TITLE = 'USUARIOS';
+const PENDING_USERS_SHEET_TITLE = 'USUARIOS_PENDIENTES';
 const REWARDS_SHEET_TITLE = 'RECOMPENSAS';
 const REWARDS_HISTORY_SHEET_TITLE = 'RECOMPENSAS_HISTORIAL';
 const ALERTS_SHEET_TITLE = 'ALERTAS';
 const CONTACT_REQUESTS_SHEET_TITLE = 'SOLICITUDES';
 const SUPERADMIN_1_EMAIL = process.env.SUPERADMIN_1_EMAIL || '';
 const SUPERADMIN_2_EMAIL = process.env.SUPERADMIN_2_EMAIL || '';
+
+function generateRegistrationRequestId() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function getSuperadminRecipientEmailsFromUsersRows(rows) {
+  const recipients = new Set();
+  for (const row of rows || []) {
+    const tipo = normalizeType(row.get('TIPO'));
+    if (tipo !== 'super') continue;
+    const email = normalizeUser(row.get('USUARIO'));
+    if (email) recipients.add(email);
+  }
+
+  [SUPERADMIN_1_EMAIL, SUPERADMIN_2_EMAIL]
+    .map(normalizeUser)
+    .filter(Boolean)
+    .forEach(email => recipients.add(email));
+
+  return Array.from(recipients);
+}
+
+async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, telefono, cliente }) {
+  const alertsSheet = await getOrCreateAlertsSheet(doc);
+  const allUserRows = await getAllUsersRows(doc);
+  const recipients = getSuperadminRecipientEmailsFromUsersRows(allUserRows);
+
+  if (recipients.length === 0) {
+    return { created: 0 };
+  }
+
+  const now = new Date().toLocaleString('es-ES');
+  const message = `Nueva solicitud de registro: ${email}${cliente ? ` (Cliente: ${cliente})` : ''}.`;
+  const detail = JSON.stringify({ requestId, nombre, email, telefono, cliente });
+
+  let created = 0;
+  for (const recipientEmail of recipients) {
+    await alertsSheet.addRow({
+      'ID': generateAlertId(),
+      'DESTINATARIO': recipientEmail,
+      'DESTINATARIO_TIPO': 'super',
+      'CLIENTE': cliente || '',
+      'EVENTO': 'REGISTRO_PENDIENTE',
+      'MENSAJE': message,
+      'DETALLE': detail,
+      'FECHA': now,
+      'LEIDO': 'NO',
+      'LEIDO_EN': ''
+    });
+    created += 1;
+  }
+
+  return { created };
+}
+
+async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, email, telefono, cliente }) {
+  const recipients = [SUPERADMIN_1_EMAIL, SUPERADMIN_2_EMAIL]
+    .map(normalizeUser)
+    .filter(Boolean);
+
+  if (recipients.length === 0) return { sent: 0 };
+
+  try {
+    const transport = getMailTransport();
+    const { from } = getSmtpConfig();
+
+    const subject = 'Solicitud de registro pendiente (GOBY FILTERS QR)';
+    const now = new Date();
+
+    const text = [
+      'Hay una nueva solicitud de registro pendiente de aprobación.',
+      '',
+      `ID: ${requestId}`,
+      `Nombre: ${nombre || ''}`,
+      `Correo: ${email}`,
+      `Teléfono: ${telefono || ''}`,
+      `Cliente: ${cliente || ''}`,
+      `Fecha: ${now.toLocaleString('es-CO')}`,
+      '',
+      'Ingresa a la app como superadmin y aprueba la solicitud en Gestión de Usuarios.'
+    ].join('\n');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.45;">
+        <p>Hay una nueva solicitud de registro pendiente de aprobación.</p>
+        <hr/>
+        <p style="margin:0;"><strong>ID:</strong> ${escapeHtml(requestId)}</p>
+        <p style="margin:0;"><strong>Nombre:</strong> ${escapeHtml(nombre || '')}</p>
+        <p style="margin:0;"><strong>Correo:</strong> ${escapeHtml(email)}</p>
+        <p style="margin:0;"><strong>Teléfono:</strong> ${escapeHtml(telefono || '')}</p>
+        <p style="margin:0;"><strong>Cliente:</strong> ${escapeHtml(cliente || '')}</p>
+        <p style="margin:0;"><strong>Fecha:</strong> ${escapeHtml(now.toLocaleString('es-CO'))}</p>
+        <hr/>
+        <p>Ingresa a la app como <strong>superadmin</strong> y aprueba la solicitud en <strong>Gestión de Usuarios</strong>.</p>
+      </div>
+    `;
+
+    await transport.sendMail({
+      from,
+      to: recipients.join(','),
+      subject,
+      text,
+      html
+    });
+
+    return { sent: recipients.length };
+  } catch (error) {
+    // No bloquear el registro si el correo falla.
+    console.warn('⚠️ No se pudo enviar correo a superadmins por solicitud de registro:', formatErrorForLogging(error));
+    return { sent: 0, error: error?.message || String(error) };
+  }
+}
 
 function formatDateTimeForSheet(date) {
   const value = date instanceof Date ? date : new Date();
@@ -1552,6 +1860,36 @@ async function initializeUsersSheet(sheet) {
   }
 }
 
+async function initializePendingUsersSheet(sheet) {
+  await ensureSheetHeaderRowLoaded(sheet);
+
+  const requiredHeaders = [
+    'ID',
+    'NOMBRE',
+    'TELEFONO',
+    'USUARIO',
+    'CONTRASEÑA',
+    'CLIENTE',
+    'TIPO',
+    'ESTADO',
+    'CREADO_EN',
+    'APROBADO_EN',
+    'APROBADO_POR'
+  ];
+
+  if (!sheet.headerValues || sheet.headerValues.length === 0) {
+    await sheet.setHeaderRow(requiredHeaders);
+    return;
+  }
+
+  const missingHeaders = requiredHeaders.filter(header => !sheet.headerValues.includes(header));
+  if (missingHeaders.length > 0) {
+    await sheet.setHeaderRow([...sheet.headerValues, ...missingHeaders]);
+    sheet.__gobyHeaderLoadedAt = 0;
+    await ensureSheetHeaderRowLoaded(sheet);
+  }
+}
+
 async function initializeContactRequestsSheet(sheet) {
   await ensureSheetHeaderRowLoaded(sheet);
 
@@ -1692,6 +2030,32 @@ async function getOrCreateUsersSheet(doc) {
   }
 
   await initializeUsersSheet(sheet);
+  return sheet;
+}
+
+async function getOrCreatePendingUsersSheet(doc) {
+  let sheet = doc.sheetsByTitle[PENDING_USERS_SHEET_TITLE];
+
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: PENDING_USERS_SHEET_TITLE,
+      headerValues: [
+        'ID',
+        'NOMBRE',
+        'TELEFONO',
+        'USUARIO',
+        'CONTRASEÑA',
+        'CLIENTE',
+        'TIPO',
+        'ESTADO',
+        'CREADO_EN',
+        'APROBADO_EN',
+        'APROBADO_POR'
+      ]
+    });
+  }
+
+  await initializePendingUsersSheet(sheet);
   return sheet;
 }
 
