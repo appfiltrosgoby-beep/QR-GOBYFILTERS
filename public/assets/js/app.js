@@ -4880,37 +4880,41 @@ function exportReferenceSummaryToExcel() {
         return;
     }
 
-    // Exportar SOLO: referencia + conteos por estado (énfasis almacén/ despachados) + diferencia entre estados.
-    // Nota: “diferencia” se exporta como INSTALADOS - DESINSTALADOS (balance de ciclo).
-    const rows = summary.map(item => ({
-        REFERENCIA: item.referencia,
-        EN_ALMACEN: item.enAlmacen,
-        DESPACHADOS: item.despachados,
-        INSTALADOS: item.instalados,
-        DESINSTALADOS: item.desinstalados,
-        DIF_INSTALADOS_MENOS_DESINSTALADOS: item.diferenciaInstaladosDesinstalados
-    }));
+    // Exportar SOLO: referencia + conteos por estado + diferencia.
+    // Para asegurar que la fila TOTAL siempre aparezca/calcule, generamos la hoja por AoA con fórmulas SUM.
+    const header = [
+        'REFERENCIA',
+        'EN_ALMACEN',
+        'DESPACHADOS',
+        'INSTALADOS',
+        'DESINSTALADOS',
+        'DIF_INSTALADOS_MENOS_DESINSTALADOS'
+    ];
 
-    // Agregar fila TOTAL al final (según el requerimiento).
-    const totalsRow = rows.reduce((acc, row) => {
-        acc.EN_ALMACEN += Number(row.EN_ALMACEN) || 0;
-        acc.DESPACHADOS += Number(row.DESPACHADOS) || 0;
-        acc.INSTALADOS += Number(row.INSTALADOS) || 0;
-        acc.DESINSTALADOS += Number(row.DESINSTALADOS) || 0;
-        return acc;
-    }, {
-        REFERENCIA: 'TOTAL',
-        EN_ALMACEN: 0,
-        DESPACHADOS: 0,
-        INSTALADOS: 0,
-        DESINSTALADOS: 0,
-        DIF_INSTALADOS_MENOS_DESINSTALADOS: 0
-    });
+    const dataRows = summary.map(item => ([
+        item.referencia,
+        Number(item.enAlmacen) || 0,
+        Number(item.despachados) || 0,
+        Number(item.instalados) || 0,
+        Number(item.desinstalados) || 0,
+        Number(item.diferenciaInstaladosDesinstalados) || 0
+    ]));
 
-    totalsRow.DIF_INSTALADOS_MENOS_DESINSTALADOS = (totalsRow.INSTALADOS || 0) - (totalsRow.DESINSTALADOS || 0);
-    rows.push(totalsRow);
+    // Rango para SUM: desde fila 2 (primera data) hasta fila n+1 (última data)
+    const lastDataRowNumber = dataRows.length + 1;
+    const totalsExcelRowNumber = lastDataRowNumber + 1;
+    const sumFromRow = 2;
 
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const totalsRow = [
+        'TOTAL',
+        { f: `SUM(B${sumFromRow}:B${lastDataRowNumber})` },
+        { f: `SUM(C${sumFromRow}:C${lastDataRowNumber})` },
+        { f: `SUM(D${sumFromRow}:D${lastDataRowNumber})` },
+        { f: `SUM(E${sumFromRow}:E${lastDataRowNumber})` },
+        { f: `D${totalsExcelRowNumber}-E${totalsExcelRowNumber}` }
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows, totalsRow]);
     ws['!cols'] = [
         { wch: 18 },
         { wch: 12 },
