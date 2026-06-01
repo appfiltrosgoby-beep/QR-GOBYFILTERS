@@ -4891,6 +4891,25 @@ function exportReferenceSummaryToExcel() {
         DIF_INSTALADOS_MENOS_DESINSTALADOS: item.diferenciaInstaladosDesinstalados
     }));
 
+    // Agregar fila TOTAL al final (según el requerimiento).
+    const totalsRow = rows.reduce((acc, row) => {
+        acc.EN_ALMACEN += Number(row.EN_ALMACEN) || 0;
+        acc.DESPACHADOS += Number(row.DESPACHADOS) || 0;
+        acc.INSTALADOS += Number(row.INSTALADOS) || 0;
+        acc.DESINSTALADOS += Number(row.DESINSTALADOS) || 0;
+        return acc;
+    }, {
+        REFERENCIA: 'TOTAL',
+        EN_ALMACEN: 0,
+        DESPACHADOS: 0,
+        INSTALADOS: 0,
+        DESINSTALADOS: 0,
+        DIF_INSTALADOS_MENOS_DESINSTALADOS: 0
+    });
+
+    totalsRow.DIF_INSTALADOS_MENOS_DESINSTALADOS = (totalsRow.INSTALADOS || 0) - (totalsRow.DESINSTALADOS || 0);
+    rows.push(totalsRow);
+
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
         { wch: 18 },
