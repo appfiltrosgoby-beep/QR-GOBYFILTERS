@@ -974,10 +974,71 @@ app.post('/api/register/approve', async (req, res) => {
     pendingRow.set('APROBADO_POR', normalizeUser(auth.row.get('USUARIO') || authUser));
     await pendingRow.save();
 
+    // Limpiar cache del listado de pendientes para refresco inmediato
+    invalidateApiCacheByPrefix('register-pending|');
+
     return res.json({ success: true, message: 'Solicitud aprobada y usuario creado' });
   } catch (error) {
     console.error('Error aprobando registro pendiente:', formatErrorForLogging(error));
     return respondGoogleSheetsError(res, error, 'Error aprobando registro pendiente');
+  }
+});
+
+/**
+ * Rechaza una solicitud de registro pendiente (solo superadmin)
+ * POST /api/register/reject
+ * Headers: x-auth-user, x-auth-password
+ * Body: { requestId }
+ */
+app.post('/api/register/reject', async (req, res) => {
+  try {
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+    const requestId = (req.body?.requestId || '').toString().trim();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, error: 'Credenciales requeridas' });
+    }
+    if (!requestId) {
+      return res.status(400).json({ success: false, error: 'requestId es requerido' });
+    }
+
+    const doc = await getGoogleSheet();
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'No autorizado' });
+    }
+
+    const authTipo = normalizeType(auth.row.get('TIPO'));
+    if (authTipo !== 'super') {
+      return res.status(403).json({ success: false, error: 'Solo superadmin' });
+    }
+
+    const pendingSheet = await getOrCreatePendingUsersSheet(doc);
+    const pendingRows = await pendingSheet.getRows();
+    const pendingRow = pendingRows.find(row => (row.get('ID') || '').toString().trim() === requestId) || null;
+    if (!pendingRow) {
+      return res.status(404).json({ success: false, error: 'Solicitud no encontrada' });
+    }
+
+    const estado = (pendingRow.get('ESTADO') || '').toString().trim().toUpperCase();
+    if (estado !== 'PENDIENTE') {
+      return res.status(409).json({ success: false, error: `La solicitud no está pendiente (estado: ${estado || 'N/A'})` });
+    }
+
+    const rejectedAt = new Date().toLocaleString('es-ES');
+    pendingRow.set('ESTADO', 'RECHAZADO');
+    pendingRow.set('RECHAZADO_EN', rejectedAt);
+    pendingRow.set('RECHAZADO_POR', normalizeUser(auth.row.get('USUARIO') || authUser));
+    await pendingRow.save();
+
+    // Limpiar cache del listado de pendientes para refresco inmediato
+    invalidateApiCacheByPrefix('register-pending|');
+
+    return res.json({ success: true, message: 'Solicitud rechazada' });
+  } catch (error) {
+    console.error('Error rechazando registro pendiente:', formatErrorForLogging(error));
+    return respondGoogleSheetsError(res, error, 'Error rechazando registro pendiente');
   }
 });
 
@@ -1526,6 +1587,15 @@ const API_RESPONSE_CACHE_TTL_MS = Number.parseInt(process.env.API_RESPONSE_CACHE
 const API_QUOTA_ERROR_CACHE_TTL_MS = Number.parseInt(process.env.API_QUOTA_ERROR_CACHE_TTL_MS || '60000', 10);
 const apiResponseCache = new Map();
 
+function invalidateApiCacheByPrefix(prefix) {
+  if (!prefix) return;
+  for (const key of apiResponseCache.keys()) {
+    if (typeof key === 'string' && key.startsWith(prefix)) {
+      apiResponseCache.delete(key);
+    }
+  }
+}
+
 function getFromApiCache(key) {
   if (API_RESPONSE_CACHE_TTL_MS <= 0) return null;
   const entry = apiResponseCache.get(key);
@@ -1874,7 +1944,9 @@ async function initializePendingUsersSheet(sheet) {
     'ESTADO',
     'CREADO_EN',
     'APROBADO_EN',
-    'APROBADO_POR'
+    'APROBADO_POR',
+    'RECHAZADO_EN',
+    'RECHAZADO_POR'
   ];
 
   if (!sheet.headerValues || sheet.headerValues.length === 0) {
@@ -2050,7 +2122,9 @@ async function getOrCreatePendingUsersSheet(doc) {
         'ESTADO',
         'CREADO_EN',
         'APROBADO_EN',
-        'APROBADO_POR'
+        'APROBADO_POR',
+        'RECHAZADO_EN',
+        'RECHAZADO_POR'
       ]
     });
   }

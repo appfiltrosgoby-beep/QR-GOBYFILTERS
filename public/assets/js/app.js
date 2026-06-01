@@ -214,6 +214,16 @@ const elements = {
     userFormError: document.getElementById('userFormError'),
     refreshUsersBtn: document.getElementById('refreshUsersBtn'),
     usersBody: document.getElementById('usersBody'),
+
+    // Superadmin - Solicitudes de registro (Usuarios)
+    pendingUsersCard: document.getElementById('pendingUsersCard'),
+    refreshPendingUsersBtn: document.getElementById('refreshPendingUsersBtn'),
+    pendingUsersBody: document.getElementById('pendingUsersBody'),
+
+    // Superadmin - Notificaciones (Perfil)
+    profilePendingUsersCard: document.getElementById('profilePendingUsersCard'),
+    refreshProfilePendingUsersBtn: document.getElementById('refreshProfilePendingUsersBtn'),
+    profilePendingUsersBody: document.getElementById('profilePendingUsersBody'),
     clientSelectorContainer: document.getElementById('clientSelectorContainer'),
     selectedClient: document.getElementById('selectedClient'),
     newClientName: document.getElementById('newClientName'),
@@ -808,6 +818,30 @@ async function loadProfile() {
         return;
     }
 
+    // El backend explícitamente bloquea /api/profile para superadmin.
+    // Mostramos datos básicos locales y deshabilitamos edición.
+    if (currentUserRole === 'superadmin') {
+        if (elements.profileName) {
+            elements.profileName.value = (currentUserDisplayName || 'Superadmin').toString();
+        }
+        if (elements.profileEmail) {
+            elements.profileEmail.value = (currentUsername || '').toString();
+        }
+        if (elements.profilePhone) {
+            elements.profilePhone.value = '';
+        }
+        if (elements.profilePassword) {
+            elements.profilePassword.value = '';
+        }
+        if (elements.profileCurrentPassword) {
+            elements.profileCurrentPassword.value = '';
+        }
+
+        setProfileFieldsLocked(true);
+        setProfileError('');
+        return;
+    }
+
     try {
         const response = await fetch(`${API_URL}/api/profile`, {
             method: 'GET',
@@ -849,6 +883,11 @@ async function saveProfile() {
     setProfileError('');
     if (!currentUsername || !currentUserPassword) {
         setProfileError('Debes iniciar sesión para guardar cambios');
+        return;
+    }
+
+    if (currentUserRole === 'superadmin') {
+        showToast('Superadmin no usa este módulo de perfil', 'info');
         return;
     }
 
@@ -1456,6 +1495,8 @@ function switchView(viewId) {
         loadProjections();
     } else if (viewId === 'profileView') {
         loadProfile();
+        // Superadmin: mostrar notificaciones de solicitudes de registro
+        loadPendingRegistrationsForCard(elements.profilePendingUsersCard, elements.profilePendingUsersBody).catch(() => {});
     }
 }
 
@@ -1625,6 +1666,25 @@ function setupEventListeners() {
     if (elements.saveProfileBtn) {
         elements.saveProfileBtn.addEventListener('click', saveProfile);
     }
+
+    // Solicitudes pendientes (superadmin)
+    if (elements.refreshPendingUsersBtn) {
+        elements.refreshPendingUsersBtn.addEventListener('click', () => {
+            loadPendingRegistrationsForCard(elements.pendingUsersCard, elements.pendingUsersBody).catch(() => {});
+        });
+    }
+    if (elements.refreshProfilePendingUsersBtn) {
+        elements.refreshProfilePendingUsersBtn.addEventListener('click', () => {
+            loadPendingRegistrationsForCard(elements.profilePendingUsersCard, elements.profilePendingUsersBody).catch(() => {});
+        });
+    }
+
+    setupPendingRegistrationsTableHandlers(elements.pendingUsersBody, async () => {
+        await loadPendingRegistrationsForCard(elements.pendingUsersCard, elements.pendingUsersBody);
+    });
+    setupPendingRegistrationsTableHandlers(elements.profilePendingUsersBody, async () => {
+        await loadPendingRegistrationsForCard(elements.profilePendingUsersCard, elements.profilePendingUsersBody);
+    });
 
     if (elements.forgotPasswordBtn) {
         elements.forgotPasswordBtn.addEventListener('click', showForgotPassword);
@@ -3645,6 +3705,11 @@ async function loadUsers() {
             
             populateClientesSelectUsers();
             filterUsersByCliente(''); // Mostrar todos inicialmente
+
+            // Superadmin: cargar solicitudes de registro pendientes
+            if (currentUserRole === 'superadmin') {
+                loadPendingRegistrationsForCard(elements.pendingUsersCard, elements.pendingUsersBody).catch(() => {});
+            }
         } else {
             allUsersData = [];
             showToast(result.message || 'No se pudieron cargar usuarios', 'error');
@@ -3653,6 +3718,184 @@ async function loadUsers() {
         console.error('Error al cargar usuarios:', error);
         showToast('Error al cargar usuarios', 'error');
     }
+}
+
+// ============================================
+// NOTIFICACIONES - SOLICITUDES DE REGISTRO (SUPERADMIN)
+// ============================================
+
+async function fetchPendingRegistrations() {
+    if (currentUserRole !== 'superadmin') {
+        return [];
+    }
+    if (!currentUsername || !currentUserPassword) {
+        return [];
+    }
+
+    const response = await fetch(`${API_URL}/api/register/pending`, {
+        headers: {
+            'x-auth-user': currentUsername || '',
+            'x-auth-password': currentUserPassword || ''
+        }
+    });
+
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) {
+        return [];
+    }
+    return Array.isArray(result.data) ? result.data : [];
+}
+
+function renderPendingRegistrationsRows(rows, tbodyEl) {
+    if (!tbodyEl) return;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+        tbodyEl.innerHTML = `
+            <tr>
+                <td colspan="6" class="no-data">No hay solicitudes pendientes</td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbodyEl.innerHTML = rows.map(item => {
+        const safeId = (item?.id || '').toString();
+        const safeCreado = (item?.creadoEn || '').toString();
+        const safeNombre = (item?.nombre || '').toString();
+        const safeUsuario = (item?.usuario || '').toString();
+        const safeTelefono = (item?.telefono || '').toString();
+        const safeCliente = (item?.cliente || '').toString();
+
+        return `
+            <tr data-request-id="${safeId}">
+                <td>${safeCreado || '-'}</td>
+                <td>${safeNombre || '-'}</td>
+                <td class="content-cell"><strong>${safeUsuario || '-'}</strong></td>
+                <td>${safeTelefono || '-'}</td>
+                <td>${safeCliente || '-'}</td>
+                <td class="acciones-col">
+                    <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                        <button class="btn btn-primary" type="button" data-action="approve" data-id="${safeId}" style="padding:.35rem .6rem;">Aprobar</button>
+                        <button class="btn btn-secondary" type="button" data-action="reject" data-id="${safeId}" style="padding:.35rem .6rem;">Rechazar</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function approvePendingRegistration(requestId) {
+    if (currentUserRole !== 'superadmin' || !currentUsername || !currentUserPassword) {
+        showToast('No autorizado', 'error');
+        return false;
+    }
+
+    const ok = await showStyledConfirm({
+        title: 'Aprobar solicitud',
+        message: '¿Deseas aprobar esta solicitud y crear el usuario?',
+        confirmText: 'Aprobar',
+        cancelText: 'Cancelar'
+    });
+    if (!ok) return false;
+
+    const response = await fetch(`${API_URL}/api/register/approve`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-auth-user': currentUsername || '',
+            'x-auth-password': currentUserPassword || ''
+        },
+        body: JSON.stringify({ requestId })
+    });
+
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) {
+        showToast(result?.error || result?.message || 'No se pudo aprobar la solicitud', 'error');
+        return false;
+    }
+
+    showToast('✅ Solicitud aprobada', 'success');
+    return true;
+}
+
+async function rejectPendingRegistration(requestId) {
+    if (currentUserRole !== 'superadmin' || !currentUsername || !currentUserPassword) {
+        showToast('No autorizado', 'error');
+        return false;
+    }
+
+    const ok = await showStyledConfirm({
+        title: 'Rechazar solicitud',
+        message: '¿Deseas rechazar esta solicitud de registro?',
+        confirmText: 'Rechazar',
+        cancelText: 'Cancelar'
+    });
+    if (!ok) return false;
+
+    const response = await fetch(`${API_URL}/api/register/reject`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-auth-user': currentUsername || '',
+            'x-auth-password': currentUserPassword || ''
+        },
+        body: JSON.stringify({ requestId })
+    });
+
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) {
+        showToast(result?.error || result?.message || 'No se pudo rechazar la solicitud', 'error');
+        return false;
+    }
+
+    showToast('✅ Solicitud rechazada', 'success');
+    return true;
+}
+
+async function loadPendingRegistrationsForCard(cardEl, tbodyEl) {
+    // Solo superadmin puede verlas
+    if (currentUserRole !== 'superadmin') {
+        if (cardEl) cardEl.style.display = 'none';
+        return;
+    }
+
+    if (cardEl) {
+        cardEl.style.display = '';
+    }
+
+    const rows = await fetchPendingRegistrations();
+    renderPendingRegistrationsRows(rows, tbodyEl);
+}
+
+function setupPendingRegistrationsTableHandlers(tbodyEl, reloadFn) {
+    if (!tbodyEl) return;
+    tbodyEl.addEventListener('click', async (ev) => {
+        const btn = ev.target?.closest?.('button[data-action][data-id]');
+        if (!btn) return;
+
+        const action = btn.getAttribute('data-action');
+        const requestId = (btn.getAttribute('data-id') || '').toString().trim();
+        if (!requestId) return;
+
+        btn.disabled = true;
+        try {
+            if (action === 'approve') {
+                const ok = await approvePendingRegistration(requestId);
+                if (ok && typeof reloadFn === 'function') {
+                    await reloadFn();
+                    // Refrescar lista de usuarios también
+                    await loadUsers();
+                }
+            } else if (action === 'reject') {
+                const ok = await rejectPendingRegistration(requestId);
+                if (ok && typeof reloadFn === 'function') {
+                    await reloadFn();
+                }
+            }
+        } finally {
+            btn.disabled = false;
+        }
+    });
 }
 
 /**
