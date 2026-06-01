@@ -4900,18 +4900,22 @@ function exportReferenceSummaryToExcel() {
         Number(item.diferenciaInstaladosDesinstalados) || 0
     ]));
 
-    // Rango para SUM: desde fila 2 (primera data) hasta fila n+1 (última data)
-    const lastDataRowNumber = dataRows.length + 1;
-    const totalsExcelRowNumber = lastDataRowNumber + 1;
-    const sumFromRow = 2;
+    // Fila TOTAL: usar valores ya calculados para que siempre se vea (sin depender de recálculo de fórmulas).
+    const totals = summary.reduce((acc, item) => {
+        acc.enAlmacen += Number(item.enAlmacen) || 0;
+        acc.despachados += Number(item.despachados) || 0;
+        acc.instalados += Number(item.instalados) || 0;
+        acc.desinstalados += Number(item.desinstalados) || 0;
+        return acc;
+    }, { enAlmacen: 0, despachados: 0, instalados: 0, desinstalados: 0 });
 
     const totalsRow = [
         'TOTAL',
-        { f: `SUM(B${sumFromRow}:B${lastDataRowNumber})` },
-        { f: `SUM(C${sumFromRow}:C${lastDataRowNumber})` },
-        { f: `SUM(D${sumFromRow}:D${lastDataRowNumber})` },
-        { f: `SUM(E${sumFromRow}:E${lastDataRowNumber})` },
-        { f: `D${totalsExcelRowNumber}-E${totalsExcelRowNumber}` }
+        totals.enAlmacen,
+        totals.despachados,
+        totals.instalados,
+        totals.desinstalados,
+        totals.instalados - totals.desinstalados
     ];
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows, totalsRow]);
