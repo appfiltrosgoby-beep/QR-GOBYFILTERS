@@ -4339,8 +4339,19 @@ function displayStatsTable(data) {
         statsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="no-data">No hay datos para mostrar</td></tr>`;
         return;
     }
-    
-    statsTableBody.innerHTML = data.map(row => {
+
+    const totals = data.reduce((acc, row) => {
+        const estado = (row?.estado || '').toString().trim().toUpperCase();
+        if (estado === 'EN ALMACEN') acc.enAlmacen += 1;
+        else if (estado === 'DESPACHADO') acc.despachados += 1;
+        else if (estado === 'INSTALADO') acc.instalados += 1;
+        else if (estado === 'DESINSTALADO') acc.desinstalados += 1;
+        return acc;
+    }, { enAlmacen: 0, despachados: 0, instalados: 0, desinstalados: 0 });
+
+    const colSpan = currentUserRole === 'superadmin' ? '6' : '5';
+
+    const rowsHtml = data.map(row => {
         let estadoClass = 'almacen';
         
         if (row.estado === 'EN ALMACEN') {
@@ -4367,7 +4378,18 @@ function displayStatsTable(data) {
                 <td>${row.fechaDesinstalacion || 'N/A'}</td>
             </tr>
         `;
+
     }).join('');
+
+    const totalsRowHtml = `
+        <tr>
+            <td colspan="${colSpan}" class="no-data" style="font-style: normal;">
+                <strong>Totales</strong> — En almacén: <strong>${totals.enAlmacen}</strong> · Despachados: <strong>${totals.despachados}</strong> · Instalados: <strong>${totals.instalados}</strong> · Desinstalados: <strong>${totals.desinstalados}</strong>
+            </td>
+        </tr>
+    `;
+
+    statsTableBody.innerHTML = rowsHtml + totalsRowHtml;
 }
 
 /**
