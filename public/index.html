@@ -24,6 +24,8 @@
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <!-- Librería Chart.js para gráficas -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Librería SheetJS (XLSX) para exportar Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <!-- Contenedor principal -->
@@ -490,6 +492,22 @@
                                 </svg>
                                 Exportar Datos
                             </button>
+                            <button id="exportReferenceExcelBtn" class="btn btn-icon-text" type="button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                                </svg>
+                                Exportar Excel (Referencias)
+                            </button>
+                        </div>
+
+                        <!-- Gráfica: Resumen por referencia -->
+                        <div class="charts-container">
+                            <div class="chart-card">
+                                <h3>📊 Inventario por Referencia (Estados + Diferencia)</h3>
+                                <div class="chart-wrapper chart-wrapper-large">
+                                    <canvas id="referenceSummaryChart"></canvas>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Tabla de datos filtrados -->

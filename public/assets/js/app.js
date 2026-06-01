@@ -38,6 +38,9 @@ let selectedLoginType = null; // Botón seleccionado en el login ('user' | 'admi
 let currentRewardsData = { reward: null, history: [] }; // Datos de recompensas del usuario actual
 let currentAdminRewardsUsersData = []; // Datos de recompensas por usuario para admin/superadmin
 
+// Estadísticas - Gráfica por referencia
+let referenceSummaryChart = null;
+
 // Backoff simple para evitar golpear la API cuando Google devuelve 429 (cuota excedida)
 const API_RATE_LIMIT_DEFAULT_MS = 60000;
 const API_RATE_LIMIT_MAX_MS = 10 * 60 * 1000;
@@ -1923,6 +1926,7 @@ function setupEventListeners() {
     // Event listeners de estadísticas
     const filterReferencia = document.getElementById('filterReferencia');
     const exportStatsBtn = document.getElementById('exportStatsBtn');
+    const exportReferenceExcelBtn = document.getElementById('exportReferenceExcelBtn');
     const filterClienteRecords = document.getElementById('filterClienteRecords');
     const filterClienteUsers = document.getElementById('filterClienteUsers');
     const filterClienteStats = document.getElementById('filterClienteStats');
@@ -1978,6 +1982,10 @@ function setupEventListeners() {
     
     if (exportStatsBtn) {
         exportStatsBtn.addEventListener('click', exportStatsToCSV);
+    }
+
+    if (exportReferenceExcelBtn) {
+        exportReferenceExcelBtn.addEventListener('click', exportReferenceSummaryToExcel);
     }
 
     // Event listeners de proyecciones
@@ -4312,6 +4320,9 @@ function displayStatsTable(data) {
     
     // Guardar datos filtrados actuales
     currentFilteredData = data;
+
+    // Actualizar gráfica por referencia
+    updateReferenceSummaryChart(data);
     
     // Actualizar label dinámico (sin cambiar el totalCount que ya tiene el global)
     if (totalLabel) {
@@ -4622,6 +4633,292 @@ function exportStatsToCSV() {
     document.body.removeChild(link);
     
     showToast('Datos exportados exitosamente', 'success');
+}
+
+function getCssVarValue(varName, fallback = '') {
+    try {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue(varName);
+        const value = (raw || '').toString().trim();
+        return value || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function hexToRgba(hex, alpha = 1) {
+    const value = (hex || '').toString().trim();
+    const match = value.replace('#', '');
+    if (match.length !== 6) {
+        return value;
+    }
+    const r = parseInt(match.slice(0, 2), 16);
+    const g = parseInt(match.slice(2, 4), 16);
+    const b = parseInt(match.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function compareReferences(a, b) {
+    return (a || '').toString().localeCompare((b || '').toString(), 'es', { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * Construye un resumen por referencia con conteos por estado.
+ * Nota: usa el estado actual del registro (no eventos históricos).
+ */
+function buildReferenceStateSummary(records) {
+    const rows = Array.isArray(records) ? records : [];
+    const summaryByRef = new Map();
+
+    for (const row of rows) {
+        const referencia = (row?.referencia || '').toString().trim();
+        if (!referencia) {
+            continue;
+        }
+
+        if (!summaryByRef.has(referencia)) {
+            summaryByRef.set(referencia, {
+                referencia,
+                enAlmacen: 0,
+                despachados: 0,
+                instalados: 0,
+                desinstalados: 0
+            });
+        }
+
+        const entry = summaryByRef.get(referencia);
+        const estado = (row?.estado || '').toString().trim().toUpperCase();
+
+        if (estado === 'EN ALMACEN') {
+            entry.enAlmacen += 1;
+        } else if (estado === 'DESPACHADO') {
+            entry.despachados += 1;
+        } else if (estado === 'INSTALADO') {
+            entry.instalados += 1;
+        } else if (estado === 'DESINSTALADO') {
+            entry.desinstalados += 1;
+        }
+    }
+
+    const result = [...summaryByRef.values()]
+        .sort((a, b) => compareReferences(a.referencia, b.referencia))
+        .map(item => {
+            const total = item.enAlmacen + item.despachados + item.instalados + item.desinstalados;
+            const diferenciaInstaladosDesinstalados = item.instalados - item.desinstalados;
+            return {
+                ...item,
+                total,
+                diferenciaInstaladosDesinstalados
+            };
+        });
+
+    return result;
+}
+
+/**
+ * Actualiza la gráfica por referencia (conteos por estado + diferencia).
+ */
+function updateReferenceSummaryChart(records) {
+    const canvas = document.getElementById('referenceSummaryChart');
+    if (!canvas || typeof Chart === 'undefined') {
+        return;
+    }
+
+    const summary = buildReferenceStateSummary(records);
+
+    if (referenceSummaryChart) {
+        referenceSummaryChart.destroy();
+        referenceSummaryChart = null;
+    }
+
+    if (!summary.length) {
+        return;
+    }
+
+    const infoColor = getCssVarValue('--info-color', '#5BC2E7');
+    const successColor = getCssVarValue('--success-color', '#10b981');
+    const errorColor = getCssVarValue('--error-color', '#ef4444');
+    const primaryDark = getCssVarValue('--primary-dark', '#0D47A1');
+
+    const labels = summary.map(item => item.referencia);
+    const ctx = canvas.getContext('2d');
+
+    referenceSummaryChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'En Almacén',
+                    data: summary.map(item => item.enAlmacen),
+                    backgroundColor: hexToRgba(infoColor, 0.35),
+                    borderColor: infoColor,
+                    borderWidth: 1
+                },
+                {
+                    type: 'bar',
+                    label: 'Despachados',
+                    data: summary.map(item => item.despachados),
+                    backgroundColor: hexToRgba(successColor, 0.30),
+                    borderColor: successColor,
+                    borderWidth: 1
+                },
+                {
+                    type: 'bar',
+                    label: 'Instalados',
+                    data: summary.map(item => item.instalados),
+                    backgroundColor: hexToRgba(primaryDark, 0.18),
+                    borderColor: primaryDark,
+                    borderWidth: 1
+                },
+                {
+                    type: 'bar',
+                    label: 'Desinstalados',
+                    data: summary.map(item => item.desinstalados),
+                    backgroundColor: hexToRgba(errorColor, 0.25),
+                    borderColor: errorColor,
+                    borderWidth: 1
+                },
+                {
+                    type: 'line',
+                    label: 'Diferencia (Instalados - Desinstalados)',
+                    data: summary.map(item => item.diferenciaInstaladosDesinstalados),
+                    borderColor: primaryDark,
+                    backgroundColor: hexToRgba(primaryDark, 0.15),
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 2,
+                    pointHoverRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        afterBody: (tooltipItems) => {
+                            try {
+                                if (!tooltipItems || !tooltipItems.length) return '';
+                                const idx = tooltipItems[0].dataIndex;
+                                const row = summary[idx];
+                                return `Total: ${row.total}`;
+                            } catch {
+                                return '';
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        autoSkip: true,
+                        maxRotation: 0,
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Exporta a Excel el resumen por referencia (En almacén/Despachado/Instalado/Desinstalado + diferencia).
+ * Respeta los filtros actuales porque usa `currentFilteredData`.
+ */
+function exportReferenceSummaryToExcel() {
+    const source = (Array.isArray(currentFilteredData) && currentFilteredData.length > 0)
+        ? currentFilteredData
+        : (Array.isArray(allStatsData) ? allStatsData : []);
+
+    const summary = buildReferenceStateSummary(source);
+
+    if (!summary.length) {
+        showToast('No hay datos para exportar', 'warning');
+        return;
+    }
+
+    if (typeof XLSX === 'undefined' || !XLSX?.utils) {
+        showToast('No se pudo cargar la librería de Excel (XLSX)', 'error');
+        return;
+    }
+
+    const rows = summary.map(item => ({
+        REFERENCIA: item.referencia,
+        EN_ALMACEN: item.enAlmacen,
+        DESPACHADOS: item.despachados,
+        INSTALADOS: item.instalados,
+        DESINSTALADOS: item.desinstalados,
+        TOTAL: item.total,
+        DIF_INSTALADOS_MENOS_DESINSTALADOS: item.diferenciaInstaladosDesinstalados
+    }));
+
+    // Totales
+    const totals = rows.reduce((acc, row) => {
+        acc.EN_ALMACEN += Number(row.EN_ALMACEN) || 0;
+        acc.DESPACHADOS += Number(row.DESPACHADOS) || 0;
+        acc.INSTALADOS += Number(row.INSTALADOS) || 0;
+        acc.DESINSTALADOS += Number(row.DESINSTALADOS) || 0;
+        acc.TOTAL += Number(row.TOTAL) || 0;
+        acc.DIF_INSTALADOS_MENOS_DESINSTALADOS += Number(row.DIF_INSTALADOS_MENOS_DESINSTALADOS) || 0;
+        return acc;
+    }, {
+        REFERENCIA: 'TOTAL',
+        EN_ALMACEN: 0,
+        DESPACHADOS: 0,
+        INSTALADOS: 0,
+        DESINSTALADOS: 0,
+        TOTAL: 0,
+        DIF_INSTALADOS_MENOS_DESINSTALADOS: 0
+    });
+
+    rows.push(totals);
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 28 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumen');
+
+    const selectedClient = (document.getElementById('filterClienteStats')?.value || '').toString().trim();
+    const selectedRef = (document.getElementById('filterReferencia')?.value || '').toString().trim();
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    const parts = ['inventario-por-referencia'];
+    if (selectedClient) parts.push(selectedClient);
+    if (selectedRef) parts.push(selectedRef);
+    parts.push(dateStr);
+
+    const safe = parts
+        .join('-')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_\-\.]/g, '');
+
+    XLSX.writeFile(wb, `${safe}.xlsx`);
+    showToast('Excel exportado por referencia', 'success');
 }
 
 /**
