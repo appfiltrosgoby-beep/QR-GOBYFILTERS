@@ -4858,36 +4858,16 @@ function exportReferenceSummaryToExcel() {
         return;
     }
 
+    // Exportar SOLO: referencia + conteos por estado (énfasis almacén/ despachados) + diferencia entre estados.
+    // Nota: “diferencia” se exporta como INSTALADOS - DESINSTALADOS (balance de ciclo).
     const rows = summary.map(item => ({
         REFERENCIA: item.referencia,
         EN_ALMACEN: item.enAlmacen,
         DESPACHADOS: item.despachados,
         INSTALADOS: item.instalados,
         DESINSTALADOS: item.desinstalados,
-        TOTAL: item.total,
         DIF_INSTALADOS_MENOS_DESINSTALADOS: item.diferenciaInstaladosDesinstalados
     }));
-
-    // Totales
-    const totals = rows.reduce((acc, row) => {
-        acc.EN_ALMACEN += Number(row.EN_ALMACEN) || 0;
-        acc.DESPACHADOS += Number(row.DESPACHADOS) || 0;
-        acc.INSTALADOS += Number(row.INSTALADOS) || 0;
-        acc.DESINSTALADOS += Number(row.DESINSTALADOS) || 0;
-        acc.TOTAL += Number(row.TOTAL) || 0;
-        acc.DIF_INSTALADOS_MENOS_DESINSTALADOS += Number(row.DIF_INSTALADOS_MENOS_DESINSTALADOS) || 0;
-        return acc;
-    }, {
-        REFERENCIA: 'TOTAL',
-        EN_ALMACEN: 0,
-        DESPACHADOS: 0,
-        INSTALADOS: 0,
-        DESINSTALADOS: 0,
-        TOTAL: 0,
-        DIF_INSTALADOS_MENOS_DESINSTALADOS: 0
-    });
-
-    rows.push(totals);
 
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
@@ -4896,7 +4876,6 @@ function exportReferenceSummaryToExcel() {
         { wch: 12 },
         { wch: 12 },
         { wch: 14 },
-        { wch: 10 },
         { wch: 28 }
     ];
 
