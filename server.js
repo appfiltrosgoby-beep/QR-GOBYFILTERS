@@ -121,13 +121,18 @@ async function withSheetsRetry(fn, label = 'sheets') {
 }
 
 // Validar variables de entorno críticas
-const requiredEnvVars = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SPREADSHEET_ID'];
+const requiredEnvVars = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SPREADSHEET_ID', 'SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
   console.warn('⚠️ ADVERTENCIA: Variables de entorno faltantes:', missingEnvVars);
-  console.warn('⚠️ El servidor se iniciará pero las rutas de Google Sheets fallarán.');
-  console.warn('⚠️ Por favor, configura estas variables en tu archivo .env o en Render');
+  if (missingEnvVars.some(v => v.startsWith('SMTP'))) {
+      console.warn('⚠️ La funcionalidad de envío de correos (restablecer contraseña) no funcionará.');
+  }
+  if (missingEnvVars.some(v => v.includes('GOOGLE'))) {
+      console.warn('⚠️ Las rutas de Google Sheets fallarán.');
+  }
+  console.warn('⚠️ Configura estas variables en el panel de Render para solucionar el error 500.');
 }
 
 const app = express();

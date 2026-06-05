@@ -5696,9 +5696,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
     // Guardar el evento para usarlo después
     deferredPrompt = e;
     // Hacer visibles los botones de instalación (menú y login)
-    console.log('🌐 Chrome detectó que la app se puede instalar');
     const installBtn = document.getElementById('installAppBtn');
     const installLoginBtn = document.getElementById('installAppLoginBtn');
+    
+    console.log('🌐 PWA: Chrome detectó que la app es instalable');
     if (installBtn) installBtn.style.display = 'flex';
     if (installLoginBtn) installLoginBtn.style.display = 'flex';
 });
