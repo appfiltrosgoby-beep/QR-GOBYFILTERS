@@ -3798,13 +3798,16 @@ function renderPendingRegistrationsRows(rows, tbodyEl) {
         const safeTelefono = (item?.telefono || '').toString();
         const safeCliente = (item?.cliente || '').toString();
 
+        const rowStyle = item.clienteNuevo ? 'style="background-color: rgba(255, 193, 7, 0.1);"' : '';
+        const clientBadge = item.clienteNuevo ? '<span style="background-color: #ffc107; color: #000; font-size: 10px; padding: 2px 4px; margin-left: 5px; border-radius: 3px; font-weight: bold; display: inline-block; vertical-align: middle;">NUEVA</span>' : '';
+
         return `
-            <tr data-request-id="${safeId}">
+            <tr data-request-id="${safeId}" ${rowStyle}>
                 <td>${safeCreado || '-'}</td>
                 <td>${safeNombre || '-'}</td>
                 <td class="content-cell"><strong>${safeUsuario || '-'}</strong></td>
                 <td>${safeTelefono || '-'}</td>
-                <td>${safeCliente || '-'}</td>
+                <td>${safeCliente || '-'}${clientBadge}</td>
                 <td class="acciones-col">
                     <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
                         <button class="btn btn-primary" type="button" data-action="approve" data-id="${safeId}" style="padding:.35rem .6rem;">Aprobar</button>

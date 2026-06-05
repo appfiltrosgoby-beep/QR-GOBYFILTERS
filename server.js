@@ -769,13 +769,13 @@ app.post('/api/register', async (req, res) => {
     const clientsSheet = await getOrCreateClientsSheet(doc);
     const clientsRows = await clientsSheet.getRows();
     const matchedClientRow = clientsRows.find(row => normalizeClientForMatch(row.get('NOMBRE') || '') === normalizedClientInput);
-    if (!matchedClientRow) {
-      return res.status(400).json({
-        success: false,
-        message: `Empresa/cliente no encontrado: ${normalizedClientInput}`
-      });
-    }
-    const canonicalClientName = (matchedClientRow.get('NOMBRE') || '').toString().trim() || normalizedClientInput;
+    
+    // Si no existe, permitimos el registro pero lo marcamos como nuevo (se creará al aprobar)
+    const canonicalClientName = matchedClientRow 
+      ? (matchedClientRow.get('NOMBRE') || '').toString().trim() 
+      : (cliente || '').toString().trim().toUpperCase();
+    
+    const isNewClient = !matchedClientRow;
 
     const globalSheet = await getOrCreateUsersSheet(doc);
     const pendingSheet = await getOrCreatePendingUsersSheet(doc);
@@ -836,7 +836,8 @@ app.post('/api/register', async (req, res) => {
         nombre: normalizedName,
         email: normalizedEmail,
         telefono: normalizedPhone,
-        cliente: canonicalClientName
+        cliente: canonicalClientName,
+        isNewClient
       });
     } catch (error) {
       console.warn('⚠️ No se pudieron crear alertas de registro pendiente:', formatErrorForLogging(error));
@@ -847,7 +848,8 @@ app.post('/api/register', async (req, res) => {
       nombre: normalizedName,
       email: normalizedEmail,
       telefono: normalizedPhone,
-      cliente: canonicalClientName
+      cliente: canonicalClientName,
+      isNewClient
     });
 
     return res.json({
@@ -895,17 +897,27 @@ app.get('/api/register/pending', async (req, res) => {
 
     const pendingSheet = await getOrCreatePendingUsersSheet(doc);
     const rows = await pendingSheet.getRows();
+    
+    // Cargar clientes existentes para marcar los nuevos en la lista
+    const clientsSheet = await getOrCreateClientsSheet(doc);
+    const clientsRows = await clientsSheet.getRows();
+    const existingClientNames = new Set(clientsRows.map(r => normalizeClientForMatch(r.get('NOMBRE') || '')));
+
     const pending = rows
-      .map(row => ({
-        id: (row.get('ID') || '').toString().trim(),
-        nombre: (row.get('NOMBRE') || '').toString().trim(),
-        telefono: (row.get('TELEFONO') || '').toString().trim(),
-        usuario: normalizeUser(row.get('USUARIO')),
-        cliente: (row.get('CLIENTE') || '').toString().trim(),
-        tipo: normalizeType(row.get('TIPO')),
-        estado: (row.get('ESTADO') || '').toString().trim().toUpperCase(),
-        creadoEn: (row.get('CREADO_EN') || '').toString().trim()
-      }))
+      .map(row => {
+        const clientName = (row.get('CLIENTE') || '').toString().trim();
+        return {
+          id: (row.get('ID') || '').toString().trim(),
+          nombre: (row.get('NOMBRE') || '').toString().trim(),
+          telefono: (row.get('TELEFONO') || '').toString().trim(),
+          usuario: normalizeUser(row.get('USUARIO')),
+          cliente: clientName,
+          clienteNuevo: !existingClientNames.has(normalizeClientForMatch(clientName)),
+          tipo: normalizeType(row.get('TIPO')),
+          estado: (row.get('ESTADO') || '').toString().trim().toUpperCase(),
+          creadoEn: (row.get('CREADO_EN') || '').toString().trim()
+        };
+      })
       .filter(item => !!item.id && item.estado === 'PENDIENTE');
 
     const payload = { success: true, data: pending };
@@ -985,6 +997,24 @@ app.post('/api/register/approve', async (req, res) => {
       return res.status(409).json({ success: false, error: 'El usuario ya existe en USUARIOS' });
     }
 
+    // Validar si la empresa existe, si no, crearla automáticamente
+    const clientsSheet = await getOrCreateClientsSheet(doc);
+    const clientsRows = await clientsSheet.getRows();
+    const normalizedClientInput = normalizeClientForMatch(cliente);
+    const matchedClientRow = clientsRows.find(row => normalizeClientForMatch(row.get('NOMBRE') || '') === normalizedClientInput);
+
+    if (!matchedClientRow) {
+      console.log(`🆕 Creando nueva empresa "${cliente}" automáticamente al aprobar registro`);
+      const now = new Date().toLocaleDateString('es-ES');
+      await clientsSheet.addRow({
+        'NOMBRE': cliente,
+        'FECHA_REGISTRO': now
+      });
+      // Inicializar sus hojas correspondientes
+      await getOrCreateClientUsersSheet(doc, cliente);
+      await getOrCreateClientRecordsSheet(doc, cliente);
+    }
+
     await globalUsersSheet.addRow({
       'NOMBRE': nombre,
       'TELEFONO': telefono,
@@ -993,6 +1023,26 @@ app.post('/api/register/approve', async (req, res) => {
       'CONTRASEÑA': password,
       'CLIENTE': cliente
     });
+
+    // Guardar también en la hoja específica del cliente (Dual Save)
+    if (tipo !== 'super') {
+      try {
+        const clientUsersSheet = await getOrCreateClientUsersSheet(doc, cliente);
+        const clientUsersRows = await clientUsersSheet.getRows();
+        if (!clientUsersRows.some(row => normalizeUser(row.get('USUARIO')) === usuario)) {
+          await clientUsersSheet.addRow({
+            'NOMBRE': nombre,
+            'TELEFONO': telefono,
+            'USUARIO': usuario,
+            'TIPO': tipo,
+            'CONTRASEÑA': password,
+            'CLIENTE': cliente
+          });
+        }
+      } catch (err) {
+        console.warn(`⚠️ Error al guardar en hoja secundaria de "${cliente}":`, err.message);
+      }
+    }
 
     const approvedAt = new Date().toLocaleString('es-ES');
     pendingRow.set('ESTADO', 'APROBADO');
@@ -1744,7 +1794,7 @@ async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, 
   return { created };
 }
 
-async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, email, telefono, cliente }) {
+async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, email, telefono, cliente, isNewClient }) {
   const recipients = [SUPERADMIN_1_EMAIL, SUPERADMIN_2_EMAIL]
     .map(normalizeUser)
     .filter(Boolean);
@@ -1755,17 +1805,17 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
     const transport = getMailTransport();
     const { from } = getSmtpConfig();
 
-    const subject = 'Solicitud de registro pendiente (GOBY FILTERS QR)';
+    const subject = `Solicitud de registro pendiente${isNewClient ? ' (NUEVA EMPRESA)' : ''} (GOBY FILTERS QR)`;
     const now = new Date();
 
     const text = [
-      'Hay una nueva solicitud de registro pendiente de aprobación.',
+      `Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' ¡LA EMPRESA ES NUEVA!' : ''}`,
       '',
       `ID: ${requestId}`,
       `Nombre: ${nombre || ''}`,
       `Correo: ${email}`,
       `Teléfono: ${telefono || ''}`,
-      `Cliente: ${cliente || ''}`,
+      `Cliente: ${cliente || ''}${isNewClient ? ' (NUEVA)' : ''}`,
       `Fecha: ${now.toLocaleString('es-CO')}`,
       '',
       'Ingresa a la app como superadmin y aprueba la solicitud en Gestión de Usuarios.'
@@ -1773,13 +1823,13 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.45;">
-        <p>Hay una nueva solicitud de registro pendiente de aprobación.</p>
+        <p>Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' <strong style="color: #d32f2f;">¡LA EMPRESA ES NUEVA!</strong>' : ''}</p>
         <hr/>
         <p style="margin:0;"><strong>ID:</strong> ${escapeHtml(requestId)}</p>
         <p style="margin:0;"><strong>Nombre:</strong> ${escapeHtml(nombre || '')}</p>
         <p style="margin:0;"><strong>Correo:</strong> ${escapeHtml(email)}</p>
         <p style="margin:0;"><strong>Teléfono:</strong> ${escapeHtml(telefono || '')}</p>
-        <p style="margin:0;"><strong>Cliente:</strong> ${escapeHtml(cliente || '')}</p>
+        <p style="margin:0;"><strong>Cliente:</strong> ${escapeHtml(cliente || '')} ${isNewClient ? '<span style="background-color: #ffc107; padding: 2px 5px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">NUEVA</span>' : ''}</p>
         <p style="margin:0;"><strong>Fecha:</strong> ${escapeHtml(now.toLocaleString('es-CO'))}</p>
         <hr/>
         <p>Ingresa a la app como <strong>superadmin</strong> y aprueba la solicitud en <strong>Gestión de Usuarios</strong>.</p>
