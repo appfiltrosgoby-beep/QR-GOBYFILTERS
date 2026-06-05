@@ -581,7 +581,20 @@ function showLoginForm() {
 
 function showRegisterForm() {
     if (elements.loginForm) elements.loginForm.classList.add('hidden');
-    if (elements.registerForm) elements.registerForm.classList.remove('hidden');
+    if (elements.registerForm) {
+        elements.registerForm.classList.remove('hidden');
+        // Ajuste para un tamaño más compacto y ajustado
+        elements.registerForm.style.display = 'flex';
+        elements.registerForm.style.flexDirection = 'column';
+        elements.registerForm.style.gap = '8px'; // Espaciado reducido
+        
+        // Asegurar que el modal permita scroll si el contenido es alto
+        if (elements.loginModal) {
+            elements.loginModal.style.alignItems = 'flex-start';
+            elements.loginModal.style.padding = '20px 10px';
+            elements.loginModal.style.overflowY = 'auto';
+        }
+    }
     if (elements.showRegisterBtn) elements.showRegisterBtn.style.display = 'none';
     if (elements.forgotPasswordBtn) elements.forgotPasswordBtn.style.display = 'none';
     if (elements.forgotPasswordInfo) elements.forgotPasswordInfo.classList.add('hidden');
@@ -603,8 +616,10 @@ function showForgotPassword() {
         return;
     }
 
+    if (elements.loginError) elements.loginError.classList.add('hidden');
+
     if (elements.forgotPasswordInfo) {
-        elements.forgotPasswordInfo.textContent = 'Enviando solicitud...';
+        elements.forgotPasswordInfo.innerHTML = '<span class="spinner"></span> Enviando solicitud...';
         elements.forgotPasswordInfo.classList.remove('hidden');
     }
 
