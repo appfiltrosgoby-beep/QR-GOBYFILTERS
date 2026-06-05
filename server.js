@@ -303,15 +303,16 @@ function getMailTransport() {
     auth: { user, pass },
     debug: true, // Agregado para diagnóstico
     logger: true, // Agregado para diagnóstico
-    // Optimizaciones para entornos de nube (Render)
-    pool: true,
+    // Deshabilitamos el pool temporalmente para asegurar una conexión directa limpia
+    pool: false,
     maxConnections: 3,
     maxMessages: 100,
-    connectionTimeout: 10000, // 10 segundos
-    greetingTimeout: 10000,
-    socketTimeout: 20000,
+    connectionTimeout: 30000, // Aumentado a 30 segundos para entornos de nube
+    greetingTimeout: 30000,
+    socketTimeout: 45000,
     tls: {
-      rejectUnauthorized: true
+      // Permite la conexión aunque el certificado SMTP no sea perfecto
+      rejectUnauthorized: false
     }
   });
 
