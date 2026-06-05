@@ -301,6 +301,17 @@ function getMailTransport() {
     port,
     secure,
     auth: { user, pass }
+    auth: { user, pass },
+    // Optimizaciones para entornos de nube (Render)
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+    connectionTimeout: 10000, // 10 segundos
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    tls: {
+      rejectUnauthorized: true
+    }
   });
 
   return mailTransport;
@@ -566,6 +577,14 @@ app.post('/api/forgot-password', async (req, res) => {
     } catch (mailError) {
       console.error('Error enviando correo de forgot-password:', formatErrorForLogging(mailError));
       return res.status(500).json({ success: false, message: 'No se pudo enviar el correo de confirmación. Intenta más tarde.' });
+      const errorLog = formatErrorForLogging(mailError);
+      console.error('❌ Error crítico enviando correo:', errorLog);
+      
+      let userMessage = 'No se pudo enviar el correo de confirmación. Intenta más tarde.';
+      if (mailError?.code === 'EAUTH') {
+        userMessage = 'Error de autenticación con el servidor de correo. Revisa SMTP_USER y SMTP_PASS.';
+      }
+      return res.status(500).json({ success: false, message: userMessage });
     }
 
     return res.json(genericResponse);
