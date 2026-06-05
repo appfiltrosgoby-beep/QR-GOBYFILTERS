@@ -29,6 +29,7 @@ let pendingUninstallationQR = null; // QR pendiente de desinstalación (cuarto e
 let isProcessingQR = false; // Flag para evitar múltiples escaneos simultáneos
 let scannerRestartTimeout = null; // Timer para reiniciar scanner
 let isAwaitingScanFormData = false; // Bloquea nuevos escaneos mientras hay un modal pendiente (instalación/desinstalación)
+let deferredPrompt = null; // Almacena el evento de instalación PWA
 
 // Evitar duplicados cuando el mismo QR se queda frente a la cámara.
 const DUPLICATE_SCAN_WINDOW_MS = 1800;
@@ -210,6 +211,7 @@ const elements = {
     newUserType: document.getElementById('newUserType'),
     createUserBtn: document.getElementById('createUserBtn'),
     updateUserBtn: document.getElementById('updateUserBtn'),
+    installAppLoginBtn: document.getElementById('installAppLoginBtn'),
     cancelEditBtn: document.getElementById('cancelEditBtn'),
     userFormError: document.getElementById('userFormError'),
     refreshUsersBtn: document.getElementById('refreshUsersBtn'),
@@ -2089,6 +2091,36 @@ function setupEventListeners() {
             }
         }
     });
+
+    // Listener para el botón de instalación PWA
+    const installAppBtn = document.getElementById('installAppBtn');
+    if (installAppBtn) {
+        installAppBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            
+            // Mostrar el prompt de instalación
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to the install prompt: ${outcome}`);
+            deferredPrompt = null;
+            installAppBtn.style.display = 'none';
+        });
+    }
+
+    // Listener para el botón de instalación en el login
+    const installAppLoginBtn = document.getElementById('installAppLoginBtn');
+    if (installAppLoginBtn) {
+        installAppLoginBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            
+            // Mostrar el prompt de instalación de Chrome
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to the login install prompt: ${outcome}`);
+            deferredPrompt = null;
+            hideInstallButtons();
+        });
+    }
 }
 
 function setContactRequestError(message) {
@@ -5646,3 +5678,35 @@ function truncateText(text, maxLength) {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
 }
+
+// ============================================
+// MANEJO DE INSTALACIÓN PWA
+// ============================================
+
+function hideInstallButtons() {
+    const installBtn = document.getElementById('installAppBtn');
+    const installLoginBtn = document.getElementById('installAppLoginBtn');
+    if (installBtn) installBtn.style.display = 'none';
+    if (installLoginBtn) installLoginBtn.style.display = 'none';
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Evitar que Chrome muestre el banner automático por defecto
+    e.preventDefault();
+    // Guardar el evento para usarlo después
+    deferredPrompt = e;
+    // Hacer visibles los botones de instalación (menú y login)
+    console.log('🌐 Chrome detectó que la app se puede instalar');
+    const installBtn = document.getElementById('installAppBtn');
+    const installLoginBtn = document.getElementById('installAppLoginBtn');
+    if (installBtn) installBtn.style.display = 'flex';
+    if (installLoginBtn) installLoginBtn.style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', (evt) => {
+    // Ocultar los botones una vez instalada la app
+    hideInstallButtons();
+    deferredPrompt = null;
+    showToast('✅ Aplicación instalada correctamente', 'success');
+});
+ 
