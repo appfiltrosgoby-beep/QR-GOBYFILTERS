@@ -1761,7 +1761,7 @@ function getSuperadminRecipientEmailsFromUsersRows(rows) {
   return Array.from(recipients);
 }
 
-async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, telefono, cliente }) {
+async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, telefono, cliente, isNewClient }) {
   const alertsSheet = await getOrCreateAlertsSheet(doc);
   const allUserRows = await getAllUsersRows(doc);
   const recipients = getSuperadminRecipientEmailsFromUsersRows(allUserRows);
@@ -1769,9 +1769,8 @@ async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, 
   if (recipients.length === 0) {
     return { created: 0 };
   }
-
   const now = new Date().toLocaleString('es-ES');
-  const message = `Nueva solicitud de registro: ${email}${cliente ? ` (Cliente: ${cliente})` : ''}.`;
+  const message = `Nueva solicitud de registro: ${email}${cliente ? ` (Cliente: ${cliente})` : ''}${isNewClient ? ' - ¡EMPRESA NUEVA!' : ''}.`;
   const detail = JSON.stringify({ requestId, nombre, email, telefono, cliente });
 
   let created = 0;
