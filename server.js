@@ -1811,6 +1811,7 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
 
     const text = [
       `Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' ¡ADVERTENCIA: La empresa ingresada no existe en la base de clientes y requiere validación!' : ''}`,
+      `Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' ¡LA EMPRESA ES NUEVA!' : ''}`,
       '',
       `ID: ${requestId}`,
       `Nombre: ${nombre || ''}`,
@@ -1825,6 +1826,7 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.45;">
         <p>Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' <strong style="color: #d32f2f;">¡ADVERTENCIA: La empresa ingresada no existe en la base de clientes y requiere validación!</strong>' : ''}</p>
+        <p>Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' <strong style="color: #d32f2f;">¡LA EMPRESA ES NUEVA!</strong>' : ''}</p>
         <hr/>
         <p style="margin:0;"><strong>ID:</strong> ${escapeHtml(requestId)}</p>
         <p style="margin:0;"><strong>Nombre:</strong> ${escapeHtml(nombre || '')}</p>
