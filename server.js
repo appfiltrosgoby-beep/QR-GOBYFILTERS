@@ -114,7 +114,8 @@ async function withSheetsRetry(fn, label = 'sheets') {
       const jitter = Math.floor(Math.random() * 150);
       const delayMs = Math.min(maxDelayMs, Math.max(retryAfterMs, exponential) + jitter);
 
-      console.warn(`⚠️ Sheets retry (${label}) intento ${attempt}/${maxAttempts} en ${delayMs}ms:`, formatErrorForLogging(error));
+      const logData = formatErrorForLogging(error);
+      console.warn(`⚠️ Sheets API [MISS] (${label}) intento ${attempt}/${maxAttempts} en ${delayMs}ms. Error: ${logData.googleMessage || logData.message}`);
       await sleep(delayMs);
     }
   }
@@ -660,33 +661,25 @@ async function findUserRowByLoginIdentifier(doc, loginIdentifier, passwordHint =
   const normalizedUser = normalizeUser(input);
   const normalizedName = normalizePersonNameForMatch(input);
 
+  // Optimizamos usando el caché global de filas de usuarios para evitar N lecturas a Sheets
+  const startTime = Date.now();
+  const allRows = await getCachedAllUsersRows(doc);
+  const duration = Date.now() - startTime;
+  
   const emailMatches = [];
   const nameMatches = [];
 
-  const globalSheet = await getOrCreateUsersSheet(doc);
-  const globalRows = await globalSheet.getRows();
-  for (const row of globalRows) {
+  for (const item of allRows) {
+    const row = item.row;
     if (normalizeUser(row.get('USUARIO')) === normalizedUser) {
-      emailMatches.push({ sheet: globalSheet, row });
+      emailMatches.push({ sheet: item.sheet, row });
     }
     if (normalizePersonNameForMatch(row.get('NOMBRE') || '') === normalizedName) {
-      nameMatches.push({ sheet: globalSheet, row });
+      nameMatches.push({ sheet: item.sheet, row });
     }
   }
 
-  await ensureDocInfoLoaded(doc);
-  for (const sheet of doc.sheetsByIndex) {
-    if (!sheet.title.endsWith('_USUARIOS')) continue;
-    const rows = await sheet.getRows();
-    for (const row of rows) {
-      if (normalizeUser(row.get('USUARIO')) === normalizedUser) {
-        emailMatches.push({ sheet, row });
-      }
-      if (normalizePersonNameForMatch(row.get('NOMBRE') || '') === normalizedName) {
-        nameMatches.push({ sheet, row });
-      }
-    }
-  }
+  console.log(`🔍 Lookup Usuario: "${input}" | [CACHE ${duration < 10 ? 'HIT' : 'MISS'}] | Tiempo: ${duration}ms | Resultados: ${emailMatches.length + nameMatches.length}`);
 
   // Si parece correo, solo buscar por USUARIO
   if (looksLikeEmail(input)) {
@@ -1294,29 +1287,35 @@ app.get('/api/users', async (req, res) => {
     }
 
     const { tipo: authTipo, cliente: authCliente } = authData;
-    const globalSheet = await getOrCreateUsersSheet(doc);
 
     // Calcular escaneos por usuario desde la hoja REGISTROS global.
-    // Un "escaneo" cuenta por etapa con fecha (almacén, despacho, instalación, desinstalación).
     const countsByUser = Object.create(null);
-    const recordsSheet = await getOrCreateRecordsSheet(doc);
-    let recordRows = await recordsSheet.getRows();
+    
+    // OPTIMIZACIÓN: Usar el caché de objetos global para evitar leer Sheets de nuevo
+    const startTime = Date.now();
+    let records = await getGlobalRecordsObjects(doc);
+    
     if (authTipo !== 'super' && authCliente) {
       const normalizedAuthClient = normalizeClientForMatch(authCliente);
-      recordRows = recordRows.filter(row => normalizeClientForMatch(row.get('CLIENTE') || '') === normalizedAuthClient);
+      records = records.filter(r => normalizeClientForMatch(r.cliente || '') === normalizedAuthClient);
     }
-    for (const row of recordRows) {
-      accumulateUserScanCountsFromRecordRow(row, countsByUser);
+    
+    for (const record of records) {
+      accumulateUserScanCountsFromRecordObject(record, countsByUser);
     }
 
-    await ensureDocInfoLoaded(doc);
     const allUsers = [];
+    const allUserRows = await getCachedAllUsersRows(doc);
     
     if (authTipo === 'super') {
-      // Superadmin solo ve usuarios de la hoja global USUARIOS
-      const globalRows = await globalSheet.getRows();
-      for (const row of globalRows) {
+      // Mostrar todos los usuarios únicos del caché
+      const uniqueUsers = new Set();
+      for (const item of allUserRows) {
+        const row = item.row;
         const userValue = normalizeUser(row.get('USUARIO'));
+        if (uniqueUsers.has(userValue)) continue;
+        uniqueUsers.add(userValue);
+        
         allUsers.push({
           usuario: userValue,
           tipo: normalizeType(row.get('TIPO')),
@@ -1327,12 +1326,13 @@ app.get('/api/users', async (req, res) => {
     } else {
       // Administrador: validar usuarios por columna CLIENTE en hoja global USUARIOS
       const normalizedAuthClient = normalizeClientForMatch(authCliente || '');
-      const globalRows = await globalSheet.getRows();
-      const rows = globalRows.filter(row => {
+      const rows = allUserRows.filter(item => {
+        const row = item.row;
         const rowClient = normalizeClientForMatch(row.get('CLIENTE') || '');
         return !!rowClient && rowClient === normalizedAuthClient;
       });
-      for (const row of rows) {
+      for (const item of rows) {
+        const row = item.row;
         const userValue = normalizeUser(row.get('USUARIO'));
         allUsers.push({
           usuario: userValue,
@@ -1343,7 +1343,8 @@ app.get('/api/users', async (req, res) => {
       }
     }
 
-    res.json({ success: true, data: allUsers });
+    console.log(`👥 Listar Usuarios | [HIT] | Tiempo: ${Date.now() - startTime}ms | Total: ${allUsers.length}`);
+    res.json({ success: true, data: allUsers, _log: { cache: 'HIT', time: `${Date.now() - startTime}ms` } });
   } catch (error) {
     console.error('Error al listar usuarios:', formatErrorForLogging(error));
     res.status(500).json({ success: false, error: 'Error al listar usuarios' });
@@ -1682,13 +1683,43 @@ function getFromApiCache(key) {
     apiResponseCache.delete(key);
     return null;
   }
+  console.log(`⚡ API Cache [HIT]: ${key}`);
   return entry.value;
 }
 
 function setToApiCache(key, value, ttlMsOverride = 0) {
   const ttl = Number.isFinite(ttlMsOverride) && ttlMsOverride > 0 ? ttlMsOverride : API_RESPONSE_CACHE_TTL_MS;
   if (ttl <= 0) return;
+  console.log(`💾 API Cache [SET]: ${key} (TTL: ${ttl/1000}s)`);
   apiResponseCache.set(key, { expiresAt: Date.now() + ttl, value });
+}
+
+// Cache global para filas de usuarios (evita N lecturas en login/perfil)
+const USERS_ROWS_CACHE_TTL_MS = 60000;
+let usersRowsCache = { expiresAt: 0, value: null };
+
+async function getCachedAllUsersRows(doc) {
+  const now = Date.now();
+  if (usersRowsCache.value && now < usersRowsCache.expiresAt) {
+    return usersRowsCache.value;
+  }
+
+  const startTime = Date.now();
+  const rows = [];
+  const globalSheet = await getOrCreateUsersSheet(doc);
+  const globalRows = await withSheetsRetry(() => globalSheet.getRows(), 'USUARIOS.getRows');
+  globalRows.forEach(r => rows.push({ sheet: globalSheet, row: r }));
+
+  await ensureDocInfoLoaded(doc);
+  for (const sheet of doc.sheetsByIndex) {
+    if (!sheet.title.endsWith('_USUARIOS') || sheet.title === USERS_SHEET_TITLE) continue;
+    const clientRows = await withSheetsRetry(() => sheet.getRows(), `${sheet.title}.getRows`);
+    clientRows.forEach(r => rows.push({ sheet, row: r }));
+  }
+
+  usersRowsCache = { expiresAt: now + USERS_ROWS_CACHE_TTL_MS, value: rows };
+  console.log(`👥 Users Cache [MISS] | Lectura completa realizada en ${Date.now() - startTime}ms`);
+  return rows;
 }
 
 // Cache global corto de la hoja REGISTROS (reduce lecturas duplicadas entre endpoints/usuarios)
@@ -1698,9 +1729,11 @@ let recordsObjectsCache = { expiresAt: 0, value: null };
 async function getGlobalRecordsObjects(doc) {
   const now = Date.now();
   if (RECORDS_ROWS_CACHE_TTL_MS > 0 && recordsObjectsCache.value && now < recordsObjectsCache.expiresAt) {
+    console.log(`📦 Records Cache [HIT]`);
     return recordsObjectsCache.value;
   }
 
+  const startTime = Date.now();
   const globalSheet = await getOrCreateRecordsSheet(doc);
   const rows = await withSheetsRetry(() => globalSheet.getRows(), 'REGISTROS.getRows');
   const records = rows.map(mapRecordRowToObject);
@@ -1708,6 +1741,7 @@ async function getGlobalRecordsObjects(doc) {
   if (RECORDS_ROWS_CACHE_TTL_MS > 0) {
     recordsObjectsCache = { expiresAt: now + RECORDS_ROWS_CACHE_TTL_MS, value: records };
   }
+  console.log(`📦 Records Cache [MISS] | Lectura de REGISTROS en ${Date.now() - startTime}ms`);
   return records;
 }
 
@@ -2866,6 +2900,25 @@ function accumulateUserScanCountsFromRecordRow(row, countsByUser) {
   }
 }
 
+function accumulateUserScanCountsFromRecordObject(record, countsByUser) {
+  const scanStages = [
+    { date: record.fechaAlmacen, user: record.usuarioPlanta },
+    { date: record.fechaDespacho, user: record.usuarioDespacho },
+    { date: record.fechaInstalacion, user: record.usuarioInstalacion },
+    { date: record.fechaDesinstalacion, user: record.usuarioDesinstalacion }
+  ];
+
+  for (const stage of scanStages) {
+    const dateValue = (stage.date || '').toString().trim();
+    if (!dateValue) continue;
+
+    const userValue = normalizeUser(stage.user);
+    if (!userValue) continue;
+
+    countsByUser[userValue] = (countsByUser[userValue] || 0) + 1;
+  }
+}
+
 /**
  * Valida credenciales de administrador o superadmin y retorna el row con información
  * @param {GoogleSpreadsheet} doc
@@ -3137,19 +3190,24 @@ app.get('/api/health', (req, res) => {
  * GET /api/clients
  */
 app.get('/api/clients', async (req, res) => {
+  const cacheKey = 'api-clients-list';
+  const cached = getFromApiCache(cacheKey);
+  if (cached) return res.json(cached);
+
   try {
+    const startTime = Date.now();
     const doc = await getGoogleSheet();
     const sheet = await getOrCreateClientsSheet(doc);
-    const rows = await sheet.getRows();
+    const rows = await withSheetsRetry(() => sheet.getRows(), 'CLIENTES.getRows');
 
     const clients = rows.map(row => ({
       nombre: row.get('NOMBRE') || ''
     })).filter(c => c.nombre.trim() !== '');
 
-    res.json({ 
-      success: true, 
-      data: clients
-    });
+    const payload = { success: true, data: clients };
+    setToApiCache(cacheKey, payload, 300000); // 5 min cache para clientes
+    console.log(`🏢 Listar Clientes | [MISS] | Tiempo: ${Date.now() - startTime}ms`);
+    res.json(payload);
   } catch (error) {
     console.error('Error al obtener clientes:', formatErrorForLogging(error));
     res.status(500).json({ 
@@ -4432,7 +4490,7 @@ app.get('/api/projections', async (req, res) => {
       ? Math.round(allDurations.reduce((sum, d) => sum + d, 0) / allDurations.length)
       : 0;
 
-    res.json({
+    const payload = {
       success: true,
       data: {
         nextReplacements: nextReplacements,
@@ -4442,8 +4500,10 @@ app.get('/api/projections', async (req, res) => {
           nextReplacementsCount: nextReplacements.length
         }
       }
-    });
-
+    };
+    setToApiCache(cacheKey, payload, 300000); // 5 min cache
+    console.log(`🔮 Proyecciones | [MISS] | Tiempo: ${Date.now() - startTime}ms`);
+    res.json(payload);
   } catch (error) {
     console.error('Error al obtener proyecciones:', formatErrorForLogging(error));
     res.status(500).json({
@@ -4842,13 +4902,20 @@ app.get('/api/alerts', async (req, res) => {
     }));
 
     // Marcar como leídas
-    for (const row of unreadRows) {
-      row.set('LEIDO', 'SI');
-      row.set('LEIDO_EN', now);
-      await row.save();
+    if (unreadRows.length > 0) {
+      for (const row of unreadRows) {
+        row.set('LEIDO', 'SI');
+        row.set('LEIDO_EN', now);
+        await row.save();
+      }
+      // Invalidate cache immediately if we changed state
+      invalidateApiCacheByPrefix(cacheKey);
     }
 
-    return res.json({ success: true, data: alerts });
+    const payload = { success: true, data: alerts };
+    setToApiCache(cacheKey, payload, 30000); // 30s cache
+    console.log(`🔔 Alertas | [MISS] | Tiempo: ${Date.now() - startTime}ms`);
+    return res.json(payload);
   } catch (error) {
     console.error('❌ Error al obtener alertas:', formatErrorForLogging(error));
     res.status(500).json({
