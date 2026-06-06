@@ -767,7 +767,12 @@ async function registerUser() {
             return;
         }
 
-        showToast('✅ Usuario registrado correctamente', 'success');
+        // Mensaje personalizado si la empresa es nueva
+        const successMsg = resolvedClient.isNewClient
+            ? 'Tu solicitud fue recibida correctamente. La empresa ingresada será validada por nuestro equipo antes de aprobar el registro.'
+            : '✅ Usuario registrado correctamente';
+            
+        showToast(successMsg, 'success');
         // Llevar al login y prellenar el usuario
         if (elements.loginUsername) elements.loginUsername.value = email.trim();
         if (elements.loginPassword) elements.loginPassword.value = '';

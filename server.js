@@ -824,6 +824,7 @@ app.post('/api/register', async (req, res) => {
       'CLIENTE': canonicalClientName,
       'TIPO': normalizedTipo,
       'ESTADO': 'PENDIENTE',
+      'CLIENTE_NUEVO': isNewClient ? 'SÍ' : 'NO',
       'CREADO_EN': createdAt,
       'APROBADO_EN': '',
       'APROBADO_POR': ''
@@ -1771,7 +1772,7 @@ async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, 
     return { created: 0 };
   }
   const now = new Date().toLocaleString('es-ES');
-  const message = `Nueva solicitud de registro: ${email}${cliente ? ` (Cliente: ${cliente})` : ''}${isNewClient ? ' - ¡EMPRESA NUEVA!' : ''}.`;
+  const message = `Nueva solicitud de registro: ${email}${cliente ? ` (Cliente: ${cliente})` : ''}${isNewClient ? ' - ¡LA EMPRESA NO EXISTE Y REQUIERE VALIDACIÓN!' : ''}.`;
   const detail = JSON.stringify({ requestId, nombre, email, telefono, cliente });
 
   let created = 0;
@@ -1809,7 +1810,7 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
     const now = new Date();
 
     const text = [
-      `Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' ¡LA EMPRESA ES NUEVA!' : ''}`,
+      `Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' ¡ADVERTENCIA: La empresa ingresada no existe en la base de clientes y requiere validación!' : ''}`,
       '',
       `ID: ${requestId}`,
       `Nombre: ${nombre || ''}`,
@@ -1823,7 +1824,7 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.45;">
-        <p>Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' <strong style="color: #d32f2f;">¡LA EMPRESA ES NUEVA!</strong>' : ''}</p>
+        <p>Hay una nueva solicitud de registro pendiente de aprobación.${isNewClient ? ' <strong style="color: #d32f2f;">¡ADVERTENCIA: La empresa ingresada no existe en la base de clientes y requiere validación!</strong>' : ''}</p>
         <hr/>
         <p style="margin:0;"><strong>ID:</strong> ${escapeHtml(requestId)}</p>
         <p style="margin:0;"><strong>Nombre:</strong> ${escapeHtml(nombre || '')}</p>
@@ -2018,6 +2019,7 @@ async function initializePendingUsersSheet(sheet) {
     'CLIENTE',
     'TIPO',
     'ESTADO',
+    'CLIENTE_NUEVO',
     'CREADO_EN',
     'APROBADO_EN',
     'APROBADO_POR',
