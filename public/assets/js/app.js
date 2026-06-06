@@ -562,11 +562,10 @@ async function resolveClientName(inputValue) {
 
     const clients = Array.isArray(data.data) ? data.data : [];
     const match = clients.find(client => normalizeClientValue(client?.nombre) === target);
-    if (!match || !match.nombre) {
-        return { ok: false, message: `Empresa/cliente no encontrado: ${target}` };
-    }
-
-    return { ok: true, clientName: match.nombre };
+    
+    // Si no hay coincidencia, permitimos continuar usando el nombre ingresado
+    // pero indicamos que es un cliente nuevo.
+    return { ok: true, clientName: match ? match.nombre : target, isNewClient: !match };
 }
 
 function showLoginForm() {
@@ -724,13 +723,7 @@ async function registerUser() {
         return;
     }
 
-    if (!resolvedClient.ok) {
-        if (elements.registerError) {
-            elements.registerError.textContent = resolvedClient.message;
-            elements.registerError.classList.remove('hidden');
-        }
-        return;
-    }
+    // Ya no bloqueamos si el cliente no existe, permitimos el registro como cliente nuevo
 
     if (!isValidEmail(email)) {
         if (elements.registerError) {
@@ -1613,16 +1606,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadRewards();
     }
     
-    // Actualizar datos cada 30 segundos
+    // Actualizar datos cada 60 segundos para ahorrar cuota de Google API
     setInterval(async () => {
-        if (!isScanning && currentUserRole) {
+        if (!isScanning && currentUserRole && document.visibilityState === 'visible') {
             await loadRecentScans();
             // Pequeño delay para evitar rate limiting
             await new Promise(resolve => setTimeout(resolve, 500));
             await loadStats('', true);
             await loadRewards(true);
         }
-    }, 30000);
+    }, 60000);
     
     showToast('Aplicación lista para escanear', 'success');
 });

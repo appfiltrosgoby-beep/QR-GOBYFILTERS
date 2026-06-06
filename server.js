@@ -1622,12 +1622,13 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
 ];
 
-const SHEETS_DOC_CACHE_TTL_MS = Number.parseInt(process.env.SHEETS_DOC_CACHE_TTL_MS || '20000', 10);
-const SHEETS_LOADINFO_TTL_MS = Number.parseInt(process.env.SHEETS_LOADINFO_TTL_MS || '20000', 10);
-const SHEETS_HEADER_TTL_MS = Number.parseInt(process.env.SHEETS_HEADER_TTL_MS || '60000', 10);
+// Aumentamos los tiempos de caché para reducir el consumo de la cuota de Google Sheets API
+const SHEETS_DOC_CACHE_TTL_MS = Number.parseInt(process.env.SHEETS_DOC_CACHE_TTL_MS || '60000', 10);
+const SHEETS_LOADINFO_TTL_MS = Number.parseInt(process.env.SHEETS_LOADINFO_TTL_MS || '60000', 10);
+const SHEETS_HEADER_TTL_MS = Number.parseInt(process.env.SHEETS_HEADER_TTL_MS || '300000', 10);
 
 // Cache corto para agregación superadmin (evita leer N hojas en cada request).
-const SUPERADMIN_RECORDS_CACHE_TTL_MS = Number.parseInt(process.env.SUPERADMIN_RECORDS_CACHE_TTL_MS || '5000', 10);
+const SUPERADMIN_RECORDS_CACHE_TTL_MS = Number.parseInt(process.env.SUPERADMIN_RECORDS_CACHE_TTL_MS || '30000', 10);
 const SUPERADMIN_RECORDS_CACHE_MAX_KEYS = Number.parseInt(process.env.SUPERADMIN_RECORDS_CACHE_MAX_KEYS || '10', 10);
 
 let cachedGoogleDoc = null;
@@ -1659,7 +1660,7 @@ function cleanupSuperadminRecordsCache() {
 }
 
 // Cache corto por endpoint (reduce ráfagas desde la UI).
-const API_RESPONSE_CACHE_TTL_MS = Number.parseInt(process.env.API_RESPONSE_CACHE_TTL_MS || '20000', 10);
+const API_RESPONSE_CACHE_TTL_MS = Number.parseInt(process.env.API_RESPONSE_CACHE_TTL_MS || '60000', 10);
 const API_QUOTA_ERROR_CACHE_TTL_MS = Number.parseInt(process.env.API_QUOTA_ERROR_CACHE_TTL_MS || '60000', 10);
 const apiResponseCache = new Map();
 
@@ -1690,7 +1691,7 @@ function setToApiCache(key, value, ttlMsOverride = 0) {
 }
 
 // Cache global corto de la hoja REGISTROS (reduce lecturas duplicadas entre endpoints/usuarios)
-const RECORDS_ROWS_CACHE_TTL_MS = Number.parseInt(process.env.RECORDS_ROWS_CACHE_TTL_MS || '8000', 10);
+const RECORDS_ROWS_CACHE_TTL_MS = Number.parseInt(process.env.RECORDS_ROWS_CACHE_TTL_MS || '60000', 10);
 let recordsObjectsCache = { expiresAt: 0, value: null };
 
 async function getGlobalRecordsObjects(doc) {
