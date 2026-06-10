@@ -588,6 +588,8 @@ app.post('/api/forgot-password', async (req, res) => {
         userMessage = 'Error de autenticación con el servidor de correo. Revisa SMTP_USER y SMTP_PASS.';
       } else if (mailError?.code === 'ETIMEDOUT') {
         userMessage = 'Tiempo de espera agotado conectando al servidor SMTP. Revisa SMTP_HOST y SMTP_PORT.';
+      } else if (mailError?.code === 'ENOTFOUND' || mailError?.code === 'EDNS') {
+        userMessage = 'No se pudo encontrar el servidor SMTP. Verifica que SMTP_HOST sea correcto en la configuración.';
       }
       return res.status(500).json({ success: false, message: userMessage });
     }
