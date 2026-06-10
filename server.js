@@ -297,6 +297,8 @@ function getMailTransport() {
   assertMailConfigured();
   const { host, port, user, pass, secure } = getSmtpConfig();
 
+  console.log('📧 Configurando transporte de correo:', { host, port, user, secure }); // Agregado para diagnóstico
+
   mailTransport = nodemailer.createTransport({
     host,
     port,
