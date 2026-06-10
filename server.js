@@ -261,6 +261,7 @@ app.get('/browserconfig.xml', (req, res) => {
 let mailTransport = null;
 
 function getSmtpConfig() {
+  const service = (process.env.SMTP_SERVICE || '').toString().trim();
   const host = (process.env.SMTP_HOST || '').toString().trim();
   const port = Number.parseInt((process.env.SMTP_PORT || '').toString().trim() || '587', 10);
   const user = (process.env.SMTP_USER || '').toString().trim();
@@ -270,13 +271,13 @@ function getSmtpConfig() {
   const secureRaw = (process.env.SMTP_SECURE || '').toString().trim().toLowerCase();
   const secure = secureRaw ? secureRaw === 'true' : port === 465;
 
-  return { host, port, user, pass, from, secure };
+  return { service, host, port, user, pass, from, secure };
 }
 
 function assertMailConfigured() {
-  const { host, port, user, pass, from } = getSmtpConfig();
+  const { service, host, port, user, pass, from } = getSmtpConfig();
   const missing = [];
-  if (!host) missing.push('SMTP_HOST');
+  if (!service && !host) missing.push('SMTP_HOST o SMTP_SERVICE');
   if (!Number.isFinite(port) || port <= 0) missing.push('SMTP_PORT');
   if (!user) missing.push('SMTP_USER');
   if (!pass) missing.push('SMTP_PASS');
@@ -295,29 +296,34 @@ function getMailTransport() {
   }
 
   assertMailConfigured();
-  const { host, port, user, pass, secure } = getSmtpConfig();
+  const { service, host, port, user, pass, secure } = getSmtpConfig();
 
-  console.log('📧 Configurando transporte de correo:', { host, port, user, secure }); // Agregado para diagnóstico
+  console.log('📧 Configurando transporte de correo:', { service, host, port, user, secure });
 
-  mailTransport = nodemailer.createTransport({
-    host,
-    port,
-    secure,
+  const transportOptions = {
     auth: { user, pass },
-    debug: true, // Agregado para diagnóstico
-    logger: true, // Agregado para diagnóstico
-    // Deshabilitamos el pool temporalmente para asegurar una conexión directa limpia
+    debug: true,
+    logger: true,
     pool: false,
     maxConnections: 3,
     maxMessages: 100,
-    connectionTimeout: 30000, // Aumentado a 30 segundos para entornos de nube
+    connectionTimeout: 30000,
     greetingTimeout: 30000,
     socketTimeout: 45000,
     tls: {
-      // Permite la conexión aunque el certificado SMTP no sea perfecto
       rejectUnauthorized: false
     }
-  });
+  };
+
+  if (service) {
+    transportOptions.service = service;
+  } else {
+    transportOptions.host = host;
+    transportOptions.port = port;
+    transportOptions.secure = secure;
+  }
+
+  mailTransport = nodemailer.createTransport(transportOptions);
 
   return mailTransport;
 }
