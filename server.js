@@ -4451,6 +4451,7 @@ app.get('/api/stats', async (req, res) => {
  */
 app.get('/api/projections', async (req, res) => {
   try {
+    const startTime = Date.now();
     const cliente = req.query.cliente || '';
     const authUser = req.headers['x-auth-user'] || '';
     const authPassword = req.headers['x-auth-password'] || '';
@@ -4464,6 +4465,13 @@ app.get('/api/projections', async (req, res) => {
     }
 
     const { tipo: authTipo, cliente: authCliente } = authData;
+    const effectiveCliente = cliente || (authTipo !== 'super' ? authCliente : '');
+    const cacheKey = `projections|${authTipo}|${normalizeClientForMatch(effectiveCliente)}`;
+    const cached = getFromApiCache(cacheKey);
+    if (cached) {
+      console.log(`🔮 Proyecciones | [HIT] | ${Date.now() - startTime}ms`);
+      return res.json(cached);
+    }
     
     // Recopilar todos los registros solo de la hoja REGISTROS global
     const globalSheet = await getOrCreateRecordsSheet(doc);
