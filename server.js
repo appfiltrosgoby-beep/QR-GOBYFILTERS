@@ -387,10 +387,69 @@ async function sendEmailViaResend({ from, to, subject, html, text }) {
 }
 
 /**
- * Envío unificado. Usa Resend HTTP API si RESEND_API_KEY está definido
- * (producción/Render), de lo contrario usa SMTP (desarrollo local).
+ * Envía un correo via Brevo HTTP API usando https.request() nativo.
+ * No requiere verificar dominio — solo el correo remitente (SMTP_FROM).
+ */
+async function sendEmailViaBrevo({ from, to, subject, html, text }) {
+  const apiKey = process.env.BREVO_API_KEY;
+  const toList = (Array.isArray(to) ? to : [to]).map(email =>
+    typeof email === 'string' ? { email } : email
+  );
+  const body = JSON.stringify({
+    sender: { name: 'GOBY FILTERS QR', email: from },
+    to: toList,
+    subject,
+    htmlContent: html,
+    textContent: text,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.brevo.com',
+        path: '/v3/smtp/email',
+        method: 'POST',
+        headers: {
+          'api-key': apiKey,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(parsed);
+            } else {
+              const err = new Error(`Brevo API (${res.statusCode}): ${parsed.message || JSON.stringify(parsed)}`);
+              err.code = res.statusCode === 401 ? 'EAUTH' : 'EBREVO';
+              reject(err);
+            }
+          } catch (e) {
+            reject(new Error(`Brevo: respuesta no parseable: ${data.slice(0, 200)}`));
+          }
+        });
+        res.on('error', reject);
+      }
+    );
+    req.setTimeout(15000, () => req.destroy(new Error('Brevo API timeout')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Envío unificado.
+ * Prioridad: Brevo → Resend → SMTP (desarrollo local).
  */
 async function sendEmail({ from, to, subject, html, text }) {
+  if (process.env.BREVO_API_KEY) {
+    return sendEmailViaBrevo({ from, to, subject, html, text });
+  }
   if (process.env.RESEND_API_KEY) {
     return sendEmailViaResend({ from, to, subject, html, text });
   }
