@@ -1000,6 +1000,18 @@ app.post('/api/register', async (req, res) => {
       isNewClient
     });
 
+    // Confirmar al usuario que su solicitud fue recibida
+    try {
+      await sendRegistrationConfirmationToUser({
+        nombre: normalizedName,
+        email: normalizedEmail,
+        cliente: canonicalClientName,
+        requestId
+      });
+    } catch (mailError) {
+      console.warn('⚠️ No se pudo enviar confirmación de registro al usuario:', formatErrorForLogging(mailError));
+    }
+
     return res.json({
       success: true,
       message: 'Solicitud enviada. Pendiente de aprobación por superadmin',
@@ -1981,6 +1993,45 @@ async function createPendingRegistrationAlerts(doc, { requestId, nombre, email, 
   }
 
   return { created };
+}
+
+async function sendRegistrationConfirmationToUser({ nombre, email, cliente, requestId }) {
+  const { from } = getSmtpConfig();
+  const safeName = (nombre || '').toString().trim() || 'Usuario';
+
+  const subject = 'Solicitud de registro recibida - GOBY FILTERS QR';
+  const text = [
+    `Hola ${safeName},`,
+    '',
+    'Recibimos tu solicitud de registro en GOBY FILTERS QR.',
+    'Un administrador la revisará y recibirás acceso una vez sea aprobada.',
+    '',
+    `Empresa: ${cliente}`,
+    `ID de solicitud: ${requestId}`,
+    '',
+    'Si tienes dudas, contáctate con tu administrador.'
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; max-width: 520px;">
+      <p>Hola <strong>${escapeHtml(safeName)}</strong>,</p>
+      <p>Recibimos tu solicitud de registro en <strong>GOBY FILTERS QR</strong>.</p>
+      <p>Un administrador la revisará y recibirás acceso una vez sea aprobada.</p>
+      <table style="border-collapse: collapse; background: #f5f5f5; border-radius: 6px; padding: 16px; width: 100%; margin: 16px 0;">
+        <tr>
+          <td style="padding: 8px 12px; font-weight: bold; white-space: nowrap;">Empresa:</td>
+          <td style="padding: 8px 12px;">${escapeHtml(cliente)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; font-weight: bold; white-space: nowrap;">ID de solicitud:</td>
+          <td style="padding: 8px 12px; font-family: monospace;">${escapeHtml(requestId)}</td>
+        </tr>
+      </table>
+      <p style="color: #555; font-size: 0.9em;">Si tienes dudas, contáctate con tu administrador.</p>
+    </div>
+  `;
+
+  await sendEmail({ from, to: email, subject, html, text });
 }
 
 async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, email, telefono, cliente, isNewClient }) {
