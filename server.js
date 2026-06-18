@@ -165,11 +165,11 @@ function createInMemoryRateLimiter({ windowMs, maxRequests, keyFn }) {
     try {
       const now = Date.now();
       const key = (keyFn ? keyFn(req) : getRequestIp(req)) || 'unknown';
-      const entry = hits.get(key);
+      let entry = hits.get(key);
 
       if (!entry || now >= entry.resetAt) {
-        hits.set(key, { count: 1, resetAt: now + windowMs });
-        return next();
+        entry = { count: 0, resetAt: now + windowMs };
+        hits.set(key, entry);
       }
 
       entry.count += 1;
@@ -300,19 +300,14 @@ function getMailTransport() {
 
   console.log('📧 Configurando transporte de correo:', { service, host, port, user, secure });
 
+  const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production';
   const transportOptions = {
     auth: { user, pass },
-    debug: true,
-    logger: true,
-    pool: false,
-    maxConnections: 3,
-    maxMessages: 100,
+    debug: !isProd,
+    logger: !isProd,
     connectionTimeout: 30000,
     greetingTimeout: 30000,
-    socketTimeout: 45000,
-    tls: {
-      rejectUnauthorized: false
-    }
+    socketTimeout: 45000
   };
 
   if (service) {
@@ -4558,59 +4553,6 @@ function formatMonthYear(monthYear) {
 }
 
 /**
- * POST /api/save-installer
- * Guarda el nombre del instalador en la hoja REGISTROS
- */
-app.post('/api/save-installer', async (req, res) => {
-  try {
-    const { installerName } = req.body;
-
-    if (!installerName || typeof installerName !== 'string' || !installerName.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'El nombre del instalador es requerido'
-      });
-    }
-
-    const doc = await getGoogleSheet();
-
-    // Obtener la hoja REGISTROS
-    const registrosSheet = await getOrCreateRecordsSheet(doc);
-    await ensureSheetHeaderRowLoaded(registrosSheet);
-
-    // Agregar fila con el nombre del instalador y timestamp
-    const timestamp = new Date().toLocaleString('es-ES', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-
-    await registrosSheet.addRow({
-      'NOMBRE_INSTALADOR': installerName.trim(),
-      'FECHA_ALMACEN': timestamp.split(' ')[0],
-      'HORA_ALMACEN': timestamp.split(' ')[1]
-    });
-
-    console.log(`✅ Nombre del instalador guardado: ${installerName}`);
-    res.json({
-      success: true,
-      message: 'Nombre del instalador guardado correctamente',
-      installerName: installerName.trim()
-    });
-
-  } catch (error) {
-    console.error('❌ Error al guardar el nombre del instalador:', formatErrorForLogging(error));
-    res.status(500).json({
-      success: false,
-      error: 'Error al guardar el nombre del instalador'
-    });
-  }
-});
-
-/**
  * GET /api/rewards/users
  * Obtiene el puntaje de recompensas por usuario (vista admin/superadmin)
  */
@@ -4735,6 +4677,12 @@ app.get('/api/rewards/users', async (req, res) => {
 app.get('/api/rewards', async (req, res) => {
   try {
     const { identifier } = req.query;
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, error: 'Credenciales requeridas' });
+    }
 
     if (!identifier) {
       return res.status(400).json({
@@ -4744,9 +4692,23 @@ app.get('/api/rewards', async (req, res) => {
     }
 
     const doc = await getGoogleSheet();
+
+    const authData = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!authData) {
+      return res.status(401).json({ success: false, error: 'No autorizado' });
+    }
+
+    const authTipo = normalizeType(authData.row.get('TIPO'));
+    const normalizedAuthUser = normalizeUser(authUser);
+    const normalizedIdentifier = normalizeRewardIdentifier(identifier);
+
+    // Solo admins/superadmin pueden consultar cualquier usuario; los demás solo el suyo propio
+    const isAdmin = authTipo === 'super' || authTipo === 'administrador';
+    if (!isAdmin && normalizeRewardIdentifier(normalizedAuthUser) !== normalizedIdentifier) {
+      return res.status(403).json({ success: false, error: 'Solo puedes consultar tus propias recompensas' });
+    }
     const rewardsSheet = await getOrCreateRewardsSheet(doc);
     const historySheet = await getOrCreateRewardsHistorySheet(doc);
-    const normalizedIdentifier = normalizeRewardIdentifier(identifier);
     const rewardRow = await getRewardBalanceRow(rewardsSheet, normalizedIdentifier);
     const historyRows = await historySheet.getRows();
 

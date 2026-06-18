@@ -31,10 +31,6 @@
         const info = document.createElement('div');
         info.className = 'stat-info';
 
-        const type = document.createElement('div');
-        type.className = 'stat-type';
-        type.textContent = title;
-
         const badge = document.createElement('span');
         badge.className = `type-badge ${badgeClass}`;
         badge.textContent = title;
@@ -51,7 +47,6 @@
             valueEl.textContent = value;
         }
 
-        info.appendChild(type);
         info.appendChild(valueEl);
 
         if (smallNote) {

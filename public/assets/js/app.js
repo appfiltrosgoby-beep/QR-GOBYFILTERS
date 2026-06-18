@@ -3433,7 +3433,12 @@ async function loadRewards(isAutoRefresh = false) {
             return;
         }
 
-        const response = await fetch(`${API_URL}/api/rewards?identifier=${encodeURIComponent(identifier)}`);
+        const response = await fetch(`${API_URL}/api/rewards?identifier=${encodeURIComponent(identifier)}`, {
+            headers: {
+                'x-auth-user': currentUsername || '',
+                'x-auth-password': currentUserPassword || ''
+            }
+        });
         const result = await response.json();
 
         if (result.success) {
