@@ -31,7 +31,7 @@ function isRetryableSheetsError(error) {
   if (status >= 500 && status <= 599) return true;
 
   const code = (error?.code || '').toString();
-  return ['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND', 'ECONNABORTED'].includes(code);
+  return ['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND', 'ECONNABORTED', 'ERR_STREAM_PREMATURE_CLOSE'].includes(code);
 }
 
 function formatErrorForLogging(error) {
@@ -1926,48 +1926,40 @@ function formatDateTimeForSheet(date) {
  * @returns {GoogleSpreadsheet} Documento de Google Sheets autenticado
  */
 async function getGoogleSheet() {
-  try {
-    // Validar variables de entorno
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY || !process.env.GOOGLE_SPREADSHEET_ID) {
-      throw new Error('Variables de entorno de Google Sheets no configuradas');
-    }
+  // Validar variables de entorno antes de intentar cualquier conexión
+  if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY || !process.env.GOOGLE_SPREADSHEET_ID) {
+    throw new Error('Variables de entorno de Google Sheets no configuradas');
+  }
 
-    // Configuración de autenticación JWT
-    const serviceAccountAuth = new JWT({
+  const now = Date.now();
+  if (cachedGoogleDoc && now < cachedGoogleDocExpiresAt) {
+    return cachedGoogleDoc;
+  }
+  if (cachedGoogleDocPromise) {
+    return await cachedGoogleDocPromise;
+  }
+
+  // Cada intento crea un JWT fresco para evitar reutilizar credenciales expiradas
+  cachedGoogleDocPromise = withSheetsRetry(async () => {
+    const auth = new JWT({
       email: process.env.GOOGLE_CLIENT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       scopes: SCOPES,
     });
-
-    const now = Date.now();
-    if (cachedGoogleDoc && now < cachedGoogleDocExpiresAt) {
-      return cachedGoogleDoc;
-    }
-    if (cachedGoogleDocPromise) {
-      return await cachedGoogleDocPromise;
-    }
-
-    cachedGoogleDocPromise = (async () => {
-      const doc = new GoogleSpreadsheet(
-        process.env.GOOGLE_SPREADSHEET_ID,
-        serviceAccountAuth
-      );
-
-      await ensureDocInfoLoaded(doc);
-
-      cachedGoogleDoc = doc;
-      cachedGoogleDocExpiresAt = Date.now() + Math.max(0, SHEETS_DOC_CACHE_TTL_MS);
-      return doc;
-    })();
-
-    try {
-      return await cachedGoogleDocPromise;
-    } finally {
-      cachedGoogleDocPromise = null;
-    }
-  } catch (error) {
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SPREADSHEET_ID, auth);
+    await ensureDocInfoLoaded(doc);
+    cachedGoogleDoc = doc;
+    cachedGoogleDocExpiresAt = Date.now() + Math.max(0, SHEETS_DOC_CACHE_TTL_MS);
+    return doc;
+  }, 'getGoogleSheet').catch(error => {
     console.error('Error al conectar con Google Sheets:', formatErrorForLogging(error));
     throw error;
+  });
+
+  try {
+    return await cachedGoogleDocPromise;
+  } finally {
+    cachedGoogleDocPromise = null;
   }
 }
 
