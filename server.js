@@ -463,35 +463,45 @@ async function sendEmail({ from, to, subject, html, text }) {
   });
 }
 
-async function sendForgotPasswordConfirmationEmail({ toEmail, displayName, requestId, requestIp, userAgent }) {
+async function sendForgotPasswordConfirmationEmail({ toEmail, displayName, accountUsername, accountPassword, requestId, requestIp, userAgent }) {
   const { from } = getSmtpConfig();
 
   const safeName = (displayName || '').toString().trim() || 'Usuario';
   const now = new Date();
 
-  const subject = 'Confirmación de solicitud de restablecimiento de contraseña';
+  const subject = 'Tus credenciales de acceso - GOBY FILTERS QR';
   const text = [
     `Hola ${safeName},`,
     '',
-    'Recibimos una solicitud para restablecer tu contraseña en GOBY FILTERS QR.',
-    'Si no fuiste tú, ignora este correo o contacta a tu administrador.',
+    'Aquí están tus credenciales de acceso a GOBY FILTERS QR:',
+    '',
+    `Usuario: ${accountUsername}`,
+    accountPassword ? `Contraseña: ${accountPassword}` : null,
+    '',
+    'Si no solicitaste este correo, contáctate con tu administrador.',
     '',
     `ID de solicitud: ${requestId}`,
     `Fecha: ${now.toLocaleString('es-CO')}`,
-    requestIp ? `IP: ${requestIp}` : null,
-    userAgent ? `Navegador: ${userAgent}` : null
   ].filter(Boolean).join('\n');
 
   const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.45;">
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; max-width: 520px;">
       <p>Hola <strong>${escapeHtml(safeName)}</strong>,</p>
-      <p>Recibimos una solicitud para restablecer tu contraseña en <strong>GOBY FILTERS QR</strong>.</p>
-      <p>Si no fuiste tú, ignora este correo o contacta a tu administrador.</p>
-      <hr/>
-      <p style="margin: 0;"><strong>ID de solicitud:</strong> ${escapeHtml(requestId)}</p>
-      <p style="margin: 0;"><strong>Fecha:</strong> ${escapeHtml(now.toLocaleString('es-CO'))}</p>
-      ${requestIp ? `<p style="margin: 0;"><strong>IP:</strong> ${escapeHtml(requestIp)}</p>` : ''}
-      ${userAgent ? `<p style="margin: 0;"><strong>Navegador:</strong> ${escapeHtml(userAgent)}</p>` : ''}
+      <p>Aquí están tus credenciales de acceso a <strong>GOBY FILTERS QR</strong>:</p>
+      <table style="border-collapse: collapse; background: #f5f5f5; border-radius: 6px; padding: 16px; width: 100%; margin: 16px 0;">
+        <tr>
+          <td style="padding: 8px 12px; font-weight: bold; white-space: nowrap;">Usuario:</td>
+          <td style="padding: 8px 12px; font-family: monospace; font-size: 1em;">${escapeHtml(accountUsername)}</td>
+        </tr>
+        ${accountPassword ? `
+        <tr>
+          <td style="padding: 8px 12px; font-weight: bold; white-space: nowrap;">Contraseña:</td>
+          <td style="padding: 8px 12px; font-family: monospace; font-size: 1em;">${escapeHtml(accountPassword)}</td>
+        </tr>` : ''}
+      </table>
+      <p style="color: #555; font-size: 0.9em;">Si no solicitaste este correo, contáctate con tu administrador.</p>
+      <hr style="border: none; border-top: 1px solid #ddd; margin: 16px 0;"/>
+      <p style="margin: 0; color: #888; font-size: 0.8em;">ID de solicitud: ${escapeHtml(requestId)} &nbsp;|&nbsp; ${escapeHtml(now.toLocaleString('es-CO'))}</p>
     </div>
   `;
 
@@ -696,6 +706,8 @@ app.post('/api/forgot-password', async (req, res) => {
 
     const profileEmail = (lookup.row.get('USUARIO') || '').toString().trim();
     const displayName = (lookup.row.get('NOMBRE') || '').toString().trim();
+    const accountUsername = profileEmail;
+    const accountPassword = (lookup.row.get('CONTRASEÑA') || '').toString().trim();
 
     if (!profileEmail || !isValidEmail(profileEmail)) {
       return res.json(genericResponse);
@@ -709,6 +721,8 @@ app.post('/api/forgot-password', async (req, res) => {
       await sendForgotPasswordConfirmationEmail({
         toEmail: profileEmail,
         displayName,
+        accountUsername,
+        accountPassword,
         requestId,
         requestIp,
         userAgent
