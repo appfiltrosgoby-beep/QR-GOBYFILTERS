@@ -1930,6 +1930,85 @@ function formatDateTimeForSheet(date) {
   };
 }
 
+// -- Cache de token OAuth2 nativo --
+let _nativeTokenCache = null;
+let _nativeTokenCacheExpiresAt = 0;
+
+/**
+ * Obtiene un access token de Google usando https.request() nativo de Node.js.
+ * Bypassa completamente node-fetch/gaxios que causan ERR_STREAM_PREMATURE_CLOSE
+ * en Render free tier.
+ */
+async function getAccessTokenNative() {
+  if (_nativeTokenCache && Date.now() < _nativeTokenCacheExpiresAt) {
+    return _nativeTokenCache;
+  }
+
+  const email = process.env.GOOGLE_CLIENT_EMAIL;
+  const rawKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: email,
+    scope: SCOPES.join(' '),
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
+  })).toString('base64url');
+
+  const signable = `${header}.${payload}`;
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(signable);
+  signer.end();
+  const sig = signer.sign(rawKey).toString('base64url');
+  const jwtStr = `${signable}.${sig}`;
+
+  const body = new URLSearchParams({
+    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    assertion: jwtStr,
+  }).toString();
+
+  const token = await new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'oauth2.googleapis.com',
+        path: '/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.access_token) {
+              resolve({ access_token: parsed.access_token, expires_in: parsed.expires_in || 3600 });
+            } else {
+              reject(new Error(`Google OAuth2 error (${res.statusCode}): ${JSON.stringify(parsed)}`));
+            }
+          } catch (e) {
+            reject(new Error(`OAuth2 respuesta no parseable: ${data.slice(0, 200)}`));
+          }
+        });
+        res.on('error', reject);
+      }
+    );
+    req.setTimeout(15000, () => req.destroy(new Error('OAuth2 token request timeout')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+
+  _nativeTokenCache = token;
+  _nativeTokenCacheExpiresAt = Date.now() + (token.expires_in - 120) * 1000;
+  return token;
+}
+
 /**
  * Inicializa y autentica la conexión con Google Sheets
  * @returns {GoogleSpreadsheet} Documento de Google Sheets autenticado
@@ -1948,13 +2027,23 @@ async function getGoogleSheet() {
     return await cachedGoogleDocPromise;
   }
 
-  // Cada intento crea un JWT fresco para evitar reutilizar credenciales expiradas
   cachedGoogleDocPromise = withSheetsRetry(async () => {
+    // Token via https.request() nativo — bypassa node-fetch/gaxios que falla en Render
+    const { access_token, expires_in } = await getAccessTokenNative();
+
     const auth = new JWT({
       email: process.env.GOOGLE_CLIENT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       scopes: SCOPES,
     });
+
+    // Pre-poblar credenciales para que JWT no llame a gaxios/node-fetch
+    auth.credentials = {
+      access_token,
+      token_type: 'Bearer',
+      expiry_date: Date.now() + (expires_in - 60) * 1000,
+    };
+
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SPREADSHEET_ID, auth);
     await ensureDocInfoLoaded(doc);
     cachedGoogleDoc = doc;
