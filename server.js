@@ -591,7 +591,9 @@ app.post('/api/forgot-password', async (req, res) => {
       });
     } catch (mailError) {
       const errorLog = formatErrorForLogging(mailError);
+      const smtpCfg = getSmtpConfig();
       console.error('❌ Error crítico enviando correo (detalles):', JSON.stringify(errorLog, null, 2));
+      console.error('📧 Config SMTP activa en Render:', { service: smtpCfg.service, host: smtpCfg.host, port: smtpCfg.port, user: smtpCfg.user, secure: smtpCfg.secure });
       
       let userMessage = 'No se pudo enviar el correo de confirmación. Intenta más tarde.';
       if (mailError?.code === 'EAUTH') {
