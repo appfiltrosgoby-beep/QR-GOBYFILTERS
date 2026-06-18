@@ -332,8 +332,79 @@ function getMailTransport() {
   return mailTransport;
 }
 
-async function sendForgotPasswordConfirmationEmail({ toEmail, displayName, requestId, requestIp, userAgent }) {
+/**
+ * Envía un correo via Resend HTTP API usando https.request() nativo.
+ * Render free tier bloquea todos los puertos SMTP (25, 465, 587),
+ * pero las llamadas HTTPS salientes funcionan correctamente.
+ */
+async function sendEmailViaResend({ from, to, subject, html, text }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const body = JSON.stringify({
+    from,
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
+    text,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.resend.com',
+        path: '/emails',
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(parsed);
+            } else {
+              const err = new Error(`Resend API (${res.statusCode}): ${parsed.message || JSON.stringify(parsed)}`);
+              err.code = res.statusCode === 401 ? 'EAUTH' : 'ERESEND';
+              reject(err);
+            }
+          } catch (e) {
+            reject(new Error(`Resend: respuesta no parseable: ${data.slice(0, 200)}`));
+          }
+        });
+        res.on('error', reject);
+      }
+    );
+    req.setTimeout(15000, () => req.destroy(new Error('Resend API timeout')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Envío unificado. Usa Resend HTTP API si RESEND_API_KEY está definido
+ * (producción/Render), de lo contrario usa SMTP (desarrollo local).
+ */
+async function sendEmail({ from, to, subject, html, text }) {
+  if (process.env.RESEND_API_KEY) {
+    return sendEmailViaResend({ from, to, subject, html, text });
+  }
   const transport = getMailTransport();
+  return transport.sendMail({
+    from,
+    to: Array.isArray(to) ? to.join(',') : to,
+    subject,
+    html,
+    text,
+  });
+}
+
+async function sendForgotPasswordConfirmationEmail({ toEmail, displayName, requestId, requestIp, userAgent }) {
   const { from } = getSmtpConfig();
 
   const safeName = (displayName || '').toString().trim() || 'Usuario';
@@ -365,13 +436,7 @@ async function sendForgotPasswordConfirmationEmail({ toEmail, displayName, reque
     </div>
   `;
 
-  await transport.sendMail({
-    from,
-    to: toEmail,
-    subject,
-    text,
-    html
-  });
+  await sendEmail({ from, to: toEmail, subject, html, text });
 }
 
 function escapeHtml(value) {
@@ -1853,7 +1918,6 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
   if (recipients.length === 0) return { sent: 0 };
 
   try {
-    const transport = getMailTransport();
     const { from } = getSmtpConfig();
 
     const subject = `Solicitud de registro pendiente${isNewClient ? ' (NUEVA EMPRESA)' : ''} (GOBY FILTERS QR)`;
@@ -1889,13 +1953,7 @@ async function sendPendingRegistrationEmailToSuperadmins({ requestId, nombre, em
       </div>
     `;
 
-    await transport.sendMail({
-      from,
-      to: recipients.join(','),
-      subject,
-      text,
-      html
-    });
+    await sendEmail({ from, to: recipients, subject, html, text });
 
     return { sent: recipients.length };
   } catch (error) {
