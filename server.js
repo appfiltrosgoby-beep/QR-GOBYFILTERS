@@ -3,16 +3,25 @@
  * Maneja las solicitudes del frontend y la integración con Google Sheets
  */
 
+// Force IPv4 DNS resolution — Render free tier has routing issues with IPv6
+// to googleapis.com, causing ERR_STREAM_PREMATURE_CLOSE on cold starts.
+require('dns').setDefaultResultOrder('ipv4first');
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const compression = require('compression');
+const https = require('https');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+
+// Disable keep-alive on the global HTTPS agent — keeps connections fresh
+// and avoids stale-socket ERR_STREAM_PREMATURE_CLOSE on Render.
+https.globalAgent.options.keepAlive = false;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
