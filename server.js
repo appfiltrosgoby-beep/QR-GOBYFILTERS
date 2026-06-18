@@ -93,9 +93,9 @@ function respondGoogleSheetsError(res, error, fallbackError = 'Error en Google S
 }
 
 async function withSheetsRetry(fn, label = 'sheets') {
-  const maxAttempts = Number.parseInt(process.env.SHEETS_RETRY_MAX_ATTEMPTS || '3', 10);
-  const baseDelayMs = Number.parseInt(process.env.SHEETS_RETRY_BASE_DELAY_MS || '250', 10);
-  const maxDelayMs = Number.parseInt(process.env.SHEETS_RETRY_MAX_DELAY_MS || '5000', 10);
+  const maxAttempts = Number.parseInt(process.env.SHEETS_RETRY_MAX_ATTEMPTS || '4', 10);
+  const baseDelayMs = Number.parseInt(process.env.SHEETS_RETRY_BASE_DELAY_MS || '500', 10);
+  const maxDelayMs = Number.parseInt(process.env.SHEETS_RETRY_MAX_DELAY_MS || '8000', 10);
 
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
@@ -3174,12 +3174,23 @@ function parseQRContent(qrContent) {
 /**
  * Ruta de prueba - Verifica que el servidor está funcionando
  */
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'OK',
     message: 'Servidor funcionando correctamente',
-    timestamp: new Date().toISOString()
-  });
+    timestamp: new Date().toISOString(),
+    sheets: 'unknown'
+  };
+
+  try {
+    await getGoogleSheet();
+    health.sheets = 'connected';
+  } catch {
+    health.sheets = 'unavailable';
+    health.status = 'DEGRADED';
+  }
+
+  res.status(health.status === 'OK' ? 200 : 503).json(health);
 });
 
 /**
@@ -4897,9 +4908,41 @@ app.use((req, res) => {
   });
 });
 
+// Pre-calentar la conexión con Google Sheets al iniciar para evitar el ERR_STREAM_PREMATURE_CLOSE
+// en el primer request real (cold start de Render).
+async function warmupGoogleSheets(maxWaitMs = 60000) {
+  const start = Date.now();
+  let attempt = 0;
+  const delays = [2000, 4000, 6000, 8000, 10000, 15000, 15000];
+
+  while (Date.now() - start < maxWaitMs) {
+    attempt += 1;
+    try {
+      await getGoogleSheet();
+      console.log(`✅ Conexión con Google Sheets establecida (intento ${attempt}, ${Date.now() - start}ms)`);
+      return true;
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      const remaining = maxWaitMs - elapsed;
+      if (remaining <= 0) break;
+      const delay = Math.min(delays[attempt - 1] || 15000, remaining);
+      console.warn(`⏳ Google Sheets no disponible aún (intento ${attempt}), reintentando en ${delay}ms... Error: ${err?.message || err}`);
+      await sleep(delay);
+    }
+  }
+
+  console.error('❌ No se pudo conectar con Google Sheets al iniciar. Las peticiones intentarán conectar por su cuenta.');
+  return false;
+}
+
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`✅ Servidor ejecutándose en http://localhost:${PORT}`);
   console.log(`📊 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🚀 API lista para recibir solicitudes`);
+
+  // Pre-warm en background — no bloquea el servidor
+  warmupGoogleSheets(60000).catch(err => {
+    console.error('Error inesperado en warmup de Google Sheets:', err?.message || err);
+  });
 });
