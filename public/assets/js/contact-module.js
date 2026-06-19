@@ -14,7 +14,9 @@
         emailLabel: 'Email',
         emailValue: 'contacto@gobyfilters.com',
         phoneLabel: 'Teléfono',
-        phoneValue: '+57 3108425071'
+        phoneValue: '+57 3108425071',
+        whatsappLabel: 'WhatsApp',
+        whatsappValue: '+57 314 8742393'
     };
 
     function createContactCard({ icon, title, badgeClass, value, href, smallNote }) {
@@ -116,6 +118,15 @@
             badgeClass: 'type-teléfono',
             value: info.phoneValue,
             href: cleanPhone ? `tel:${cleanPhone}` : ''
+        }));
+
+        const cleanWhatsapp = (info.whatsappValue || '').replace(/\s+/g, '').replace(/[()+-]/g, '');
+        grid.appendChild(createContactCard({
+            icon: '💬',
+            title: info.whatsappLabel,
+            badgeClass: 'type-whatsapp',
+            value: info.whatsappValue,
+            href: cleanWhatsapp ? `https://wa.me/${cleanWhatsapp}` : ''
         }));
 
         target.appendChild(header);

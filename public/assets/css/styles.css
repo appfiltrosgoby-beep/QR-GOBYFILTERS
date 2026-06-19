@@ -1069,6 +1069,11 @@ input:checked + .slider:before {
     color: var(--warning-color);
 }
 
+.type-whatsapp {
+    background: rgba(37, 211, 102, 0.12);
+    color: #25d366;
+}
+
 .type-numérico {
     background: rgba(139, 92, 246, 0.1);
     color: #8b5cf6;
