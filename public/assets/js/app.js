@@ -1268,6 +1268,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
         setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('ingresoMasivoView', false);
         setViewButtonVisibility('myRecordsView', true);
         setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
@@ -1298,6 +1299,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('clientsView', false);
         setViewButtonVisibility('projectionsView', false);
         setViewButtonVisibility('recordsView', false);
+        setViewButtonVisibility('ingresoMasivoView', true);
         setViewButtonVisibility('myRecordsView', true);
         setViewButtonVisibility('rewardsView', true);
         setViewButtonVisibility('scannerView', true);
@@ -1331,6 +1333,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('scannerView', true);
         setViewButtonVisibility('recordsView', true);
         setViewButtonVisibility('myRecordsView', false);
+        setViewButtonVisibility('ingresoMasivoView', true);
         setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para admins
         if (elements.clientSelectorContainer) {
@@ -1377,6 +1380,7 @@ function applyRolePermissions() {
         setViewButtonVisibility('scannerView', true);
         setViewButtonVisibility('recordsView', true);
         setViewButtonVisibility('myRecordsView', false);
+        setViewButtonVisibility('ingresoMasivoView', true);
         setViewButtonVisibility('rewardsView', true);
         // Ocultar selector de cliente para superadmin
         if (elements.clientSelectorContainer) {
@@ -1445,8 +1449,10 @@ function switchView(viewId) {
     // Solo superadmin puede acceder a: clientsView, statsView
     // Admin y superadmin pueden acceder a: usersView, projectionsView, recordsView
     // Mecánicos y despacho pueden acceder a: scannerView, myRecordsView
+    // Despacho, admin y superadmin pueden acceder a: ingresoMasivoView
     const superadminOnlyViews = ['clientsView', 'statsView'];
     const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
+    const noMecanicoViews = ['ingresoMasivoView'];
     const nonSuperadminViews = [];
     const isSuperadmin = currentUserType === 'super';
     const isAdmin = currentUserType === 'administrador';
@@ -1470,7 +1476,14 @@ function switchView(viewId) {
         // Redirigir a la vista permitida por defecto
         viewId = 'scannerView';
     }
-    
+
+    // Bloquear acceso a vistas no disponibles para mecánicos
+    if (noMecanicoViews.includes(viewId) && isMecanico) {
+        console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
+        showToast('No tienes permiso para acceder a esta sección', 'error');
+        viewId = 'scannerView';
+    }
+
     // Ocultar todas las vistas
     document.querySelectorAll('.view').forEach(view => {
         view.classList.remove('active');
@@ -1512,6 +1525,8 @@ function switchView(viewId) {
         loadProfile();
         // Superadmin: mostrar notificaciones de solicitudes de registro
         loadPendingRegistrationsForCard(elements.profilePendingUsersCard, elements.profilePendingUsersBody).catch(() => {});
+    } else if (viewId === 'ingresoMasivoView') {
+        loadIngresoMasivoClientes();
     }
 }
 
@@ -1998,6 +2013,28 @@ function setupEventListeners() {
         });
     }
     
+    // Event listeners del formulario de ingreso masivo
+    const ingresoSubmitBtn = document.getElementById('ingresoSubmitBtn');
+    if (ingresoSubmitBtn) {
+        ingresoSubmitBtn.addEventListener('click', submitIngresoMasivo);
+    }
+
+    const ingresoLimpiarBtn = document.getElementById('ingresoLimpiarBtn');
+    if (ingresoLimpiarBtn) {
+        ingresoLimpiarBtn.addEventListener('click', () => {
+            const ids = ['ingresoReferencia', 'ingresoSerialInicial', 'ingresoCantidad'];
+            ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const sel = document.getElementById('ingresoCliente');
+            if (sel) sel.value = '';
+            document.getElementById('ingresoError')?.classList.add('hidden');
+            document.getElementById('ingresoProgress')?.classList.add('hidden');
+            document.getElementById('ingresoResultados')?.classList.add('hidden');
+            if (document.getElementById('ingresoTablaContainer')) {
+                document.getElementById('ingresoTablaContainer').style.display = 'none';
+            }
+        });
+    }
+
     // Event listeners de estadísticas
     const filterReferencia = document.getElementById('filterReferencia');
     const exportStatsBtn = document.getElementById('exportStatsBtn');
@@ -2802,6 +2839,123 @@ async function loadClientsSelect() {
     } catch (error) {
         console.error('Error al cargar clientes:', error);
         showToast('⚠️ Error al cargar lista de clientes', 'warning');
+    }
+}
+
+/**
+ * Carga clientes en el selector del formulario de ingreso masivo
+ */
+async function loadIngresoMasivoClientes() {
+    const select = document.getElementById('ingresoCliente');
+    if (!select) return;
+    try {
+        const response = await fetch(`${API_URL}/api/clients`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            select.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+            sortClientsByNombre(result.data).forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.nombre;
+                option.textContent = client.nombre;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error al cargar clientes para ingreso masivo:', error);
+    }
+}
+
+/**
+ * Envía el formulario de ingreso masivo al backend
+ */
+async function submitIngresoMasivo() {
+    const referencia = (document.getElementById('ingresoReferencia')?.value || '').trim().toUpperCase();
+    const serialInicial = (document.getElementById('ingresoSerialInicial')?.value || '').trim();
+    const cliente = (document.getElementById('ingresoCliente')?.value || '').trim();
+    const cantidadRaw = (document.getElementById('ingresoCantidad')?.value || '').trim();
+    const cantidad = parseInt(cantidadRaw, 10);
+    const errorDiv = document.getElementById('ingresoError');
+
+    errorDiv.classList.add('hidden');
+    errorDiv.textContent = '';
+
+    if (!referencia || !serialInicial || !cliente || !cantidadRaw) {
+        errorDiv.textContent = 'Todos los campos son requeridos.';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    if (isNaN(cantidad) || cantidad < 1 || cantidad > 500) {
+        errorDiv.textContent = 'La cantidad debe ser un número entre 1 y 500.';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+
+    const submitBtn = document.getElementById('ingresoSubmitBtn');
+    submitBtn.disabled = true;
+    document.getElementById('ingresoProgress').classList.remove('hidden');
+    document.getElementById('ingresoResultados').classList.add('hidden');
+    document.getElementById('ingresoTablaContainer').style.display = 'none';
+
+    try {
+        const response = await fetch(`${API_URL}/api/bulk-ingress`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-auth-user': currentUsername || '',
+                'x-auth-password': currentUserPassword || ''
+            },
+            body: JSON.stringify({ referencia, serialInicial, cliente, cantidad })
+        });
+
+        const result = await response.json();
+        document.getElementById('ingresoProgress').classList.add('hidden');
+
+        if (result.success) {
+            const resumen = document.getElementById('ingresoResumen');
+            resumen.innerHTML = `
+                <div class="stats-grid" style="grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:.5rem;">
+                    <div class="stat-card">
+                        <div class="stat-label">Creados</div>
+                        <div class="stat-value" style="color:var(--success-color, #4caf50)">${result.totalCreados}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Omitidos</div>
+                        <div class="stat-value" style="color:var(--warning-color, #ff9800)">${result.totalOmitidos}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Errores</div>
+                        <div class="stat-value" style="color:var(--danger-color, #f44336)">${result.totalErrores}</div>
+                    </div>
+                </div>
+            `;
+
+            const allRows = [
+                ...(result.creados || []).map(r => ({ serial: r.serial, texto: 'Creado', clase: 'almacen' })),
+                ...(result.omitidos || []).map(r => ({ serial: r.serial, texto: r.motivo || 'Ya existe', clase: 'despachado' })),
+                ...(result.errores || []).map(r => ({ serial: r.serial, texto: r.motivo || 'Error', clase: 'desinstalado' }))
+            ];
+
+            if (allRows.length > 0) {
+                const tablaBody = document.getElementById('ingresoTablaBody');
+                tablaBody.innerHTML = allRows.map(r =>
+                    `<tr><td>${r.serial}</td><td><span class="type-badge type-${r.clase}">${r.texto}</span></td></tr>`
+                ).join('');
+                document.getElementById('ingresoTablaContainer').style.display = '';
+            }
+
+            document.getElementById('ingresoResultados').classList.remove('hidden');
+            showToast(`✅ ${result.totalCreados} producto(s) registrado(s) en almacén`, 'success');
+        } else {
+            errorDiv.textContent = result.error || 'Error al procesar el ingreso masivo.';
+            errorDiv.classList.remove('hidden');
+        }
+    } catch (error) {
+        document.getElementById('ingresoProgress').classList.add('hidden');
+        errorDiv.textContent = 'Error de conexión. Intenta de nuevo.';
+        errorDiv.classList.remove('hidden');
+        console.error('Error en ingreso masivo:', error);
+    } finally {
+        submitBtn.disabled = false;
     }
 }
 

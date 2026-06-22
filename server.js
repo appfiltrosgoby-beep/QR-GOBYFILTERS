@@ -224,6 +224,7 @@ app.use('/api/forgot-password', authLimiter);
 app.use('/api/register', authLimiter);
 app.use('/api/contact-request', publicLimiter);
 app.use('/api/save-qr', scanLimiter);
+app.use('/api/bulk-ingress', scanLimiter);
 
 // Debug: Log de rutas
 const publicPath = path.join(__dirname, 'public');
@@ -3449,6 +3450,20 @@ function parseQRContent(qrContent) {
   return null;
 }
 
+/**
+ * Incrementa la parte numérica final de un serial, preservando prefijo y longitud.
+ * Ej: '202630010001' + step 1 → '202630010002'
+ *     'SER001' + step 4 → 'SER005'
+ */
+function incrementSerial(serial, step) {
+  const match = serial.match(/^(.*?)(\d+)$/);
+  if (!match) return serial + String(step + 1);
+  const prefix = match[1];
+  const numStr = match[2];
+  const incremented = parseInt(numStr, 10) + step;
+  return prefix + String(incremented).padStart(numStr.length, '0');
+}
+
 // ============================================
 // RUTAS DE LA API
 // ============================================
@@ -5190,9 +5205,159 @@ app.get('/api/alerts', async (req, res) => {
   }
 });
 
+/**
+ * Ingreso masivo de productos en almacén desde formulario manual
+ * POST /api/bulk-ingress
+ * Headers: x-auth-user, x-auth-password
+ * Body: { referencia, serialInicial, cliente, cantidad }
+ */
+app.post('/api/bulk-ingress', async (req, res) => {
+  try {
+    const authUser = (req.headers['x-auth-user'] || '').toString().trim();
+    const authPassword = (req.headers['x-auth-password'] || '').toString();
+
+    if (!authUser || !authPassword) {
+      return res.status(401).json({ success: false, error: 'Credenciales requeridas' });
+    }
+
+    const doc = await getGoogleSheet();
+    const auth = await findUserRowByCredentials(doc, authUser, authPassword);
+    if (!auth) {
+      return res.status(401).json({ success: false, error: 'No autorizado' });
+    }
+
+    const userTipo = (auth.row.get('TIPO') || '').toString().trim().toLowerCase();
+    if (!['despacho', 'administrador', 'super'].includes(userTipo)) {
+      return res.status(403).json({ success: false, error: 'Sin permiso para esta acción' });
+    }
+
+    const referencia = (req.body.referencia || '').toString().trim().toUpperCase();
+    const serialInicial = (req.body.serialInicial || '').toString().trim();
+    const cliente = (req.body.cliente || '').toString().trim().toUpperCase();
+    const cantidad = parseInt(req.body.cantidad || '0', 10);
+
+    if (!referencia || !serialInicial || !cliente || !cantidad) {
+      return res.status(400).json({ success: false, error: 'Todos los campos son requeridos' });
+    }
+    if (cantidad < 1 || cantidad > 500) {
+      return res.status(400).json({ success: false, error: 'La cantidad debe estar entre 1 y 500' });
+    }
+
+    const globalSheet = await getOrCreateRecordsSheet(doc);
+    await ensureSheetHeaderRowLoaded(globalSheet);
+
+    // Asegurar que el cliente exista en la hoja CLIENTES
+    const clientsSheet = await getOrCreateClientsSheet(doc);
+    const clientsRows = await clientsSheet.getRows();
+    const clientExists = clientsRows.some(row =>
+      (row.get('NOMBRE') || '').trim().toUpperCase() === cliente
+    );
+    if (!clientExists) {
+      const now = new Date().toLocaleDateString('es-ES');
+      await clientsSheet.addRow({ 'NOMBRE': cliente, 'FECHA_REGISTRO': now });
+    }
+
+    const clientSheet = await getOrCreateClientRecordsSheet(doc, cliente);
+    await ensureSheetHeaderRowLoaded(clientSheet);
+
+    const now = new Date();
+    const fecha = now.toLocaleDateString('es-ES');
+    const hora = now.toLocaleTimeString('es-ES');
+    const userEmail = auth.row.get('USUARIO') || authUser;
+
+    const results = { created: [], skipped: [], errors: [] };
+
+    for (let i = 0; i < cantidad; i++) {
+      const serial = incrementSerial(serialInicial, i);
+      try {
+        const existingRecord = await findExistingRecord(globalSheet, referencia, serial);
+        if (existingRecord) {
+          results.skipped.push({ serial, motivo: 'Ya existe' });
+          continue;
+        }
+
+        const globalRows = await globalSheet.getRows();
+        await globalSheet.addRow({
+          'ID': globalRows.length + 1,
+          'REFERENCIA': referencia,
+          'SERIAL': serial,
+          'ESTADO': 'EN ALMACEN',
+          'CLIENTE': cliente,
+          'USUARIO_DESPACHO': '',
+          'USUARIO_PLANTA': userEmail,
+          'USUARIO_INSTALACION': '',
+          'USUARIO_DESINSTALACION': '',
+          'PLACA': '',
+          'KILOMETRAJE_INSTALACION': '',
+          'KILOMETRAJE_DESINSTALACION': '',
+          'NOMBRE_INSTALADOR': '',
+          'FECHA_ALMACEN': fecha,
+          'FECHA_DESPACHO': '',
+          'FECHA_INSTALACION': '',
+          'FECHA_DESINSTALACION': '',
+          'HORA_ALMACEN': hora,
+          'HORA_DESPACHO': '',
+          'HORA_INSTALACION': '',
+          'HORA_DESINSTALACION': ''
+        });
+
+        const clientRows = await clientSheet.getRows();
+        await clientSheet.addRow({
+          'ID': clientRows.length + 1,
+          'REFERENCIA': referencia,
+          'SERIAL': serial,
+          'ESTADO': 'EN ALMACEN',
+          'CLIENTE': cliente,
+          'USUARIO_DESPACHO': '',
+          'USUARIO_PLANTA': userEmail,
+          'USUARIO_INSTALACION': '',
+          'USUARIO_DESINSTALACION': '',
+          'PLACA': '',
+          'KILOMETRAJE_INSTALACION': '',
+          'KILOMETRAJE_DESINSTALACION': '',
+          'NOMBRE_INSTALADOR': '',
+          'FECHA_ALMACEN': fecha,
+          'FECHA_DESPACHO': '',
+          'FECHA_INSTALACION': '',
+          'FECHA_DESINSTALACION': '',
+          'HORA_ALMACEN': hora,
+          'HORA_DESPACHO': '',
+          'HORA_INSTALACION': '',
+          'HORA_DESINSTALACION': ''
+        });
+
+        results.created.push({ serial });
+      } catch (err) {
+        console.error(`Error al crear registro ${serial}:`, formatErrorForLogging(err));
+        results.errors.push({ serial, motivo: err.message || 'Error desconocido' });
+      }
+    }
+
+    return res.json({
+      success: true,
+      referencia,
+      cliente,
+      totalCreados: results.created.length,
+      totalOmitidos: results.skipped.length,
+      totalErrores: results.errors.length,
+      creados: results.created,
+      omitidos: results.skipped,
+      errores: results.errors
+    });
+
+  } catch (error) {
+    console.error('Error en ingreso masivo:', formatErrorForLogging(error));
+    return res.status(500).json({
+      success: false,
+      error: 'Error al procesar el ingreso masivo',
+      details: error.message
+    });
+  }
+});
+
 // Manejo de rutas no encontradas
 app.use((req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     success: false, 
     error: 'Ruta no encontrada' 
   });

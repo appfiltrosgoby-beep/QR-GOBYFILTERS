@@ -80,6 +80,7 @@
                 <button class="menu-item" data-view="usersView">Usuarios</button>
                 <button class="menu-item" data-view="clientsView">Clientes</button>
                 <button class="menu-item" data-view="projectionsView">Proyecciones</button>
+                <button class="menu-item" data-view="ingresoMasivoView">Ingreso Masivo</button>
                 <button class="menu-item" data-view="rewardsView">Recompensas</button>
                 <button class="menu-item" data-view="contactView">Contacto</button>
                 <!-- Botón de instalación PWA -->
@@ -254,6 +255,50 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vista: Ingreso Masivo (despacho/admin/superadmin) -->
+            <section id="ingresoMasivoView" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📦 Ingreso Masivo</h2>
+                    </div>
+                    <div class="card-body">
+                        <p style="margin-bottom:1.25rem; opacity:.8; font-size:.95rem;">Registra múltiples productos en almacén indicando la referencia, el serial inicial, el cliente y la cantidad.</p>
+                        <div class="password-form" style="max-width:480px;">
+                            <input type="text" id="ingresoReferencia" placeholder="Referencia (ej: OG971390)" class="input-password" autocomplete="off" style="text-transform:uppercase;">
+                            <input type="text" id="ingresoSerialInicial" placeholder="Serial inicial (ej: 202630010001)" class="input-password" autocomplete="off">
+                            <select id="ingresoCliente" class="input-password">
+                                <option value="">-- Seleccionar Cliente --</option>
+                            </select>
+                            <input type="number" id="ingresoCantidad" placeholder="Cantidad (1–500)" class="input-password" min="1" max="500" autocomplete="off">
+                            <div class="password-actions">
+                                <button id="ingresoLimpiarBtn" type="button" class="btn btn-secondary">Limpiar</button>
+                                <button id="ingresoSubmitBtn" type="button" class="btn btn-primary">Registrar</button>
+                            </div>
+                            <div id="ingresoError" class="error-message hidden"></div>
+                        </div>
+
+                        <div id="ingresoProgress" class="hidden" style="margin-top:1.5rem;">
+                            <div class="scanner-status">Procesando registros, por favor espera...</div>
+                        </div>
+
+                        <div id="ingresoResultados" class="hidden" style="margin-top:1.5rem;">
+                            <div id="ingresoResumen"></div>
+                            <div class="table-container" id="ingresoTablaContainer" style="margin-top:1rem; display:none;">
+                                <table class="records-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Serial</th>
+                                            <th>Resultado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ingresoTablaBody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -938,6 +983,14 @@
                     <line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
                 <span>Mis registros</span>
+            </button>
+            <button class="nav-item" data-view="ingresoMasivoView">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Ingreso</span>
             </button>
             <button class="nav-item" data-view="rewardsView">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
