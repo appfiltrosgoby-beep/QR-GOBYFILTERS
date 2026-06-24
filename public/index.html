@@ -267,8 +267,13 @@
                         <h2>📦 Ingreso Masivo</h2>
                     </div>
                     <div class="card-body">
-                        <p style="margin-bottom:1.25rem; opacity:.8; font-size:.95rem;">Registra múltiples productos en almacén indicando la referencia, el serial inicial, el cliente y la cantidad.</p>
+                        <p style="margin-bottom:1.25rem; opacity:.8; font-size:.95rem;">Registra múltiples productos indicando el destino, la referencia, el serial inicial, el cliente y la cantidad.</p>
                         <div class="password-form" style="max-width:480px;">
+                            <select id="ingresoDestino" class="input-password">
+                                <option value="">-- Seleccionar Destino --</option>
+                                <option value="almacen">Almacén (EN ALMACEN)</option>
+                                <option value="despachar">Despachar (DESPACHADO)</option>
+                            </select>
                             <input type="text" id="ingresoReferencia" placeholder="Referencia (ej: OG971390)" class="input-password" autocomplete="off" style="text-transform:uppercase;">
                             <input type="text" id="ingresoSerialInicial" placeholder="Serial inicial (ej: 202630010001)" class="input-password" autocomplete="off">
                             <select id="ingresoCliente" class="input-password">

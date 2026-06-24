@@ -5235,12 +5235,16 @@ app.post('/api/bulk-ingress', async (req, res) => {
     const serialInicial = (req.body.serialInicial || '').toString().trim();
     const cliente = (req.body.cliente || '').toString().trim().toUpperCase();
     const cantidad = parseInt(req.body.cantidad || '0', 10);
+    const destino = (req.body.destino || '').toString().trim().toLowerCase();
 
-    if (!referencia || !serialInicial || !cliente || !cantidad) {
+    if (!referencia || !serialInicial || !cliente || !cantidad || !destino) {
       return res.status(400).json({ success: false, error: 'Todos los campos son requeridos' });
     }
     if (cantidad < 1 || cantidad > 500) {
       return res.status(400).json({ success: false, error: 'La cantidad debe estar entre 1 y 500' });
+    }
+    if (!['almacen', 'despachar'].includes(destino)) {
+      return res.status(400).json({ success: false, error: 'Destino inválido. Use "almacen" o "despachar"' });
     }
 
     const globalSheet = await getOrCreateRecordsSheet(doc);
@@ -5276,55 +5280,36 @@ app.post('/api/bulk-ingress', async (req, res) => {
           continue;
         }
 
-        const globalRows = await globalSheet.getRows();
-        await globalSheet.addRow({
-          'ID': globalRows.length + 1,
+        const esDespacho = destino === 'despachar';
+        const estadoFinal = esDespacho ? 'DESPACHADO' : 'EN ALMACEN';
+        const rowData = {
           'REFERENCIA': referencia,
           'SERIAL': serial,
-          'ESTADO': 'EN ALMACEN',
+          'ESTADO': estadoFinal,
           'CLIENTE': cliente,
-          'USUARIO_DESPACHO': '',
-          'USUARIO_PLANTA': userEmail,
+          'USUARIO_DESPACHO': esDespacho ? userEmail : '',
+          'USUARIO_PLANTA': esDespacho ? '' : userEmail,
           'USUARIO_INSTALACION': '',
           'USUARIO_DESINSTALACION': '',
           'PLACA': '',
           'KILOMETRAJE_INSTALACION': '',
           'KILOMETRAJE_DESINSTALACION': '',
           'NOMBRE_INSTALADOR': '',
-          'FECHA_ALMACEN': fecha,
-          'FECHA_DESPACHO': '',
+          'FECHA_ALMACEN': esDespacho ? '' : fecha,
+          'FECHA_DESPACHO': esDespacho ? fecha : '',
           'FECHA_INSTALACION': '',
           'FECHA_DESINSTALACION': '',
-          'HORA_ALMACEN': hora,
-          'HORA_DESPACHO': '',
+          'HORA_ALMACEN': esDespacho ? '' : hora,
+          'HORA_DESPACHO': esDespacho ? hora : '',
           'HORA_INSTALACION': '',
           'HORA_DESINSTALACION': ''
-        });
+        };
+
+        const globalRows = await globalSheet.getRows();
+        await globalSheet.addRow({ 'ID': globalRows.length + 1, ...rowData });
 
         const clientRows = await clientSheet.getRows();
-        await clientSheet.addRow({
-          'ID': clientRows.length + 1,
-          'REFERENCIA': referencia,
-          'SERIAL': serial,
-          'ESTADO': 'EN ALMACEN',
-          'CLIENTE': cliente,
-          'USUARIO_DESPACHO': '',
-          'USUARIO_PLANTA': userEmail,
-          'USUARIO_INSTALACION': '',
-          'USUARIO_DESINSTALACION': '',
-          'PLACA': '',
-          'KILOMETRAJE_INSTALACION': '',
-          'KILOMETRAJE_DESINSTALACION': '',
-          'NOMBRE_INSTALADOR': '',
-          'FECHA_ALMACEN': fecha,
-          'FECHA_DESPACHO': '',
-          'FECHA_INSTALACION': '',
-          'FECHA_DESINSTALACION': '',
-          'HORA_ALMACEN': hora,
-          'HORA_DESPACHO': '',
-          'HORA_INSTALACION': '',
-          'HORA_DESINSTALACION': ''
-        });
+        await clientSheet.addRow({ 'ID': clientRows.length + 1, ...rowData });
 
         results.created.push({ serial });
       } catch (err) {
@@ -5337,6 +5322,7 @@ app.post('/api/bulk-ingress', async (req, res) => {
       success: true,
       referencia,
       cliente,
+      destino,
       totalCreados: results.created.length,
       totalOmitidos: results.skipped.length,
       totalErrores: results.errors.length,

@@ -2026,6 +2026,8 @@ function setupEventListeners() {
             ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const sel = document.getElementById('ingresoCliente');
             if (sel) sel.value = '';
+            const destSel = document.getElementById('ingresoDestino');
+            if (destSel) destSel.value = '';
             document.getElementById('ingresoError')?.classList.add('hidden');
             document.getElementById('ingresoProgress')?.classList.add('hidden');
             document.getElementById('ingresoResultados')?.classList.add('hidden');
@@ -2872,6 +2874,7 @@ async function submitIngresoMasivo() {
     const referencia = (document.getElementById('ingresoReferencia')?.value || '').trim().toUpperCase();
     const serialInicial = (document.getElementById('ingresoSerialInicial')?.value || '').trim();
     const cliente = (document.getElementById('ingresoCliente')?.value || '').trim();
+    const destino = (document.getElementById('ingresoDestino')?.value || '').trim();
     const cantidadRaw = (document.getElementById('ingresoCantidad')?.value || '').trim();
     const cantidad = parseInt(cantidadRaw, 10);
     const errorDiv = document.getElementById('ingresoError');
@@ -2879,7 +2882,7 @@ async function submitIngresoMasivo() {
     errorDiv.classList.add('hidden');
     errorDiv.textContent = '';
 
-    if (!referencia || !serialInicial || !cliente || !cantidadRaw) {
+    if (!destino || !referencia || !serialInicial || !cliente || !cantidadRaw) {
         errorDiv.textContent = 'Todos los campos son requeridos.';
         errorDiv.classList.remove('hidden');
         return;
@@ -2904,15 +2907,17 @@ async function submitIngresoMasivo() {
                 'x-auth-user': currentUsername || '',
                 'x-auth-password': currentUserPassword || ''
             },
-            body: JSON.stringify({ referencia, serialInicial, cliente, cantidad })
+            body: JSON.stringify({ referencia, serialInicial, cliente, cantidad, destino })
         });
 
         const result = await response.json();
         document.getElementById('ingresoProgress').classList.add('hidden');
 
         if (result.success) {
+            const estadoLabel = result.destino === 'despachar' ? 'DESPACHADO' : 'EN ALMACEN';
             const resumen = document.getElementById('ingresoResumen');
             resumen.innerHTML = `
+                <p style="margin-bottom:.5rem; font-size:.9rem; opacity:.75;">Estado asignado: <strong>${estadoLabel}</strong></p>
                 <div class="stats-grid" style="grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:.5rem;">
                     <div class="stat-card">
                         <div class="stat-label">Creados</div>
@@ -2929,8 +2934,9 @@ async function submitIngresoMasivo() {
                 </div>
             `;
 
+            const badgeClase = result.destino === 'despachar' ? 'despachado' : 'almacen';
             const allRows = [
-                ...(result.creados || []).map(r => ({ serial: r.serial, texto: 'Creado', clase: 'almacen' })),
+                ...(result.creados || []).map(r => ({ serial: r.serial, texto: 'Creado', clase: badgeClase })),
                 ...(result.omitidos || []).map(r => ({ serial: r.serial, texto: r.motivo || 'Ya existe', clase: 'despachado' })),
                 ...(result.errores || []).map(r => ({ serial: r.serial, texto: r.motivo || 'Error', clase: 'desinstalado' }))
             ];
@@ -2944,7 +2950,8 @@ async function submitIngresoMasivo() {
             }
 
             document.getElementById('ingresoResultados').classList.remove('hidden');
-            showToast(`✅ ${result.totalCreados} producto(s) registrado(s) en almacén`, 'success');
+            const toastLabel = result.destino === 'despachar' ? 'despachado(s)' : 'registrado(s) en almacén';
+            showToast(`✅ ${result.totalCreados} producto(s) ${toastLabel}`, 'success');
         } else {
             errorDiv.textContent = result.error || 'Error al procesar el ingreso masivo.';
             errorDiv.classList.remove('hidden');
