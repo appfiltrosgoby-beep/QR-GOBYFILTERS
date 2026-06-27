@@ -5269,13 +5269,26 @@ app.post('/api/bulk-ingress', async (req, res) => {
     const hora = now.toLocaleTimeString('es-ES');
     const userEmail = auth.row.get('USUARIO') || authUser;
 
+    // Pre-fetch rows once to avoid N read requests inside the loop
+    const globalRowsPrefetch = await globalSheet.getRows();
+    const clientRowsPrefetch = await clientSheet.getRows();
+
+    // Build a Set of existing REFERENCIA|SERIAL combos for O(1) duplicate checks
+    const existingKeys = new Set(
+      globalRowsPrefetch.map(r => `${r.get('REFERENCIA')}|${r.get('SERIAL')}`)
+    );
+
+    let globalRowCount = globalRowsPrefetch.length;
+    let clientRowCount = clientRowsPrefetch.length;
+
+    const BULK_WRITE_DELAY_MS = Number.parseInt(process.env.BULK_WRITE_DELAY_MS || '250', 10);
+
     const results = { created: [], skipped: [], errors: [] };
 
     for (let i = 0; i < cantidad; i++) {
       const serial = incrementSerial(serialInicial, i);
       try {
-        const existingRecord = await findExistingRecord(globalSheet, referencia, serial);
-        if (existingRecord) {
+        if (existingKeys.has(`${referencia}|${serial}`)) {
           results.skipped.push({ serial, motivo: 'Ya existe' });
           continue;
         }
@@ -5305,13 +5318,19 @@ app.post('/api/bulk-ingress', async (req, res) => {
           'HORA_DESINSTALACION': ''
         };
 
-        const globalRows = await globalSheet.getRows();
-        await globalSheet.addRow({ 'ID': globalRows.length + 1, ...rowData });
+        await withSheetsRetry(() => globalSheet.addRow({ 'ID': globalRowCount + 1, ...rowData }), `bulk-global-${serial}`);
+        globalRowCount += 1;
+        existingKeys.add(`${referencia}|${serial}`);
 
-        const clientRows = await clientSheet.getRows();
-        await clientSheet.addRow({ 'ID': clientRows.length + 1, ...rowData });
+        await withSheetsRetry(() => clientSheet.addRow({ 'ID': clientRowCount + 1, ...rowData }), `bulk-client-${serial}`);
+        clientRowCount += 1;
 
         results.created.push({ serial });
+
+        // Throttle writes to stay within Google Sheets API quota
+        if (BULK_WRITE_DELAY_MS > 0 && i < cantidad - 1) {
+          await sleep(BULK_WRITE_DELAY_MS);
+        }
       } catch (err) {
         console.error(`Error al crear registro ${serial}:`, formatErrorForLogging(err));
         results.errors.push({ serial, motivo: err.message || 'Error desconocido' });
