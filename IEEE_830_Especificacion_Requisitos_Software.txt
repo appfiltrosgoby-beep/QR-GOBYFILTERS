@@ -39,13 +39,16 @@ se detalla la información que debe incluir:
    - QR: Código de respuesta rápida (Quick Response Code)
    - SRS: Especificación de Requisitos de Software
    - API: Interfaz de Programación de Aplicaciones
-   - JWT: JSON Web Token
    - CORS: Intercambio de Recursos entre Orígenes
    - Superadmin: Administrador con acceso total al sistema
    - Admin: Administrador restringido a su cliente
    - Mecánico: Operario que realiza escaneos
+   - Despacho: Usuario que registra y despacha productos desde almacén
    - Planta: Usuario de planta con permisos de escaneo
    - Cliente: Entidad organizacional en Google Sheets
+   - Recompensas: Sistema de puntos por instalación, desinstalación y canje
+   - Ingreso masivo: Registro manual de productos por lote
+   - PWA: Progressive Web App instalada desde el navegador
    - Trazabilidad: Capacidad de rastrear un producto desde origen a destino
    - Google Sheets: Hoja de cálculo en línea de Google
    - Escaneo: Acción de leer un código QR con la cámara
@@ -157,6 +160,28 @@ se detalla la información que debe incluir:
       - Filtrar por cliente y referencia
       - Mostrar tablas y gráficas de proyección y duración
 
+   9. Recompensas
+      - Consultar saldo de puntos por usuario
+      - Acumular puntos por instalación y desinstalación completadas
+      - Canjear premios con datos de entrega
+      - Consultar historial de movimientos
+      - Ver resumen por cliente para admin/superadmin
+
+   10. Contacto y Solicitudes
+      - Enviar solicitudes de soporte desde la interfaz
+      - Registrar nombre, correo y teléfono opcionales
+      - Guardar solicitudes en Google Sheets o en respaldo local si falla la API
+
+   11. Ingreso Masivo
+      - Registrar productos en lote desde un formulario manual
+      - Validar permisos de despacho, administrador o superadmin
+      - Crear varios registros en almacén a partir de un serial inicial
+
+   12. Instalación PWA
+      - Permitir instalación de la aplicación desde el navegador
+      - Registrar service worker para funcionamiento tipo app
+      - Mostrar botón de instalación cuando el navegador lo soporte
+
 2.3 Características del Usuario
    TIPOS DE USUARIOS:
    
@@ -185,14 +210,29 @@ se detalla la información que debe incluir:
       - Ingreso: Opción "Usuarios" (el sistema lo identifica automáticamente)
       - Nivel de experiencia: Bajo-Medio
       - Frecuencia: Alta (uso diario)
+
+   4. DESPACHO
+      - Registra productos desde almacén y gestiona el primer ciclo del QR
+      - Puede asignar cliente al producto cuando corresponde
+      - Ingreso: Opción "Usuarios" o flujo equivalente según configuración
+      - Nivel de experiencia: Medio
+      - Frecuencia: Alta (uso operativo)
    
-   4. PLANTA
+   5. PLANTA
       - Similar a mecánico
       - Acceso para escaneo en planta
       - Visualización de registros
       - Ingreso: Opción "Usuarios" (el sistema lo identifica automáticamente)
       - Nivel de experiencia: Bajo
       - Frecuencia: Alta (uso diario)
+
+   6. RECOMPENSAS
+      - Consulta su saldo y su historial de puntos
+      - Puede canjear premios disponibles
+      - Visualiza el catálogo de recompensas
+      - Ingreso: según el rol asignado en el sistema
+      - Nivel de experiencia: Bajo-Medio
+      - Frecuencia: Media
    
    NOTA: Los usuarios mecánico y planta comparten la misma opción de ingreso.
    El sistema diferencia automáticamente el tipo basado en los datos en Google Sheets.
@@ -228,12 +268,12 @@ se detalla la información que debe incluir:
    - Límites de Google Sheets: 10 millones de celdas por hoja
    
    RESTRICCIONES DE SEGURIDAD:
-   - Contraseñas mínimo 6 caracteres
+   - Contraseñas mínimo 8 caracteres con al menos una mayúscula, una minúscula y un carácter especial
    - HTTPS obligatorio en producción
    - Validación de sesión cada 30 minutos
    - Encriptación de credenciales en tránsito
    - Logs de auditoría de accesos
-   - Tokens JWT con expiración
+   - Sesión persistida en localStorage/sessionStorage según rol y flujo
    - Validación de CORS restringida
    - Rate limiting en endpoints críticos
 
@@ -726,6 +766,104 @@ se detalla la información que debe incluir:
      - Superadmins solo en hoja global
      - Otros usuarios en ambas hojas
 
+    ================================================================================
+    MÓDULO 8: FUNCIONES COMPLEMENTARIAS
+    ================================================================================
+
+    RF-028: Solicitud de Contacto y Soporte
+    Prioridad: MEDIA | Estado: Implementado
+    Descripción: El sistema debe permitir enviar solicitudes de contacto desde la app.
+    Entrada: Solicitud, nombre opcional, correo opcional, teléfono opcional, usuario actual
+    Procesamiento:
+       1. Validar que la solicitud no esté vacía
+       2. Validar correo y teléfono si fueron diligenciados
+       3. Registrar metadatos de contexto de la sesión
+       4. Guardar en Google Sheets o respaldo local si la API no está disponible
+    Salida: Confirmación de solicitud recibida
+    Criterios de aceptación:
+       - El campo solicitud es obligatorio
+       - El sistema no pierde la solicitud si falla Google Sheets
+       - Se registra IP, user-agent y datos de contexto cuando están disponibles
+
+    RF-029: Recuperación de Credenciales
+    Prioridad: MEDIA | Estado: Implementado
+    Descripción: El sistema debe enviar al correo asociado las credenciales del usuario.
+    Entrada: Identificador del usuario
+    Procesamiento:
+       1. Validar que exista un identificador
+       2. Buscar el usuario en la hoja USUARIOS
+       3. Enviar un correo de confirmación al email asociado
+       4. Responder de forma genérica para evitar enumeración de cuentas
+    Salida: Mensaje de confirmación del envío o error de correo
+    Criterios de aceptación:
+       - No revela si un usuario existe o no
+       - Requiere servicio de correo configurado
+       - Maneja error SMTP/Brevo/Resend de forma explícita
+
+    RF-030: Canje de Recompensas
+    Prioridad: MEDIA | Estado: Implementado
+    Descripción: El usuario debe poder canjear puntos por premios disponibles.
+    Entrada: Identificador, premio, puntos, datos de entrega
+    Procesamiento:
+       1. Validar puntos suficientes
+       2. Solicitar datos de entrega obligatorios
+       3. Descontar puntos del saldo
+       4. Registrar el movimiento en el historial
+       5. Generar alertas para administrador y superadmin
+    Salida: Confirmación de canje y saldo actualizado
+    Criterios de aceptación:
+       - El canje no procede sin nombre, teléfono, dirección y ciudad
+       - El historial conserva el detalle del movimiento
+       - El resumen de recompensas se actualiza tras el canje
+
+    RF-031: Ingreso Masivo de Productos
+    Prioridad: MEDIA | Estado: Implementado
+    Descripción: El sistema debe permitir registrar productos en lote desde un formulario manual.
+    Entrada: Referencia, serial inicial, cliente, cantidad, destino
+    Procesamiento:
+       1. Validar autenticación del usuario
+       2. Verificar permisos de despacho, administrador o superadmin
+       3. Crear registros consecutivos a partir del serial inicial
+       4. Asociar el lote al cliente seleccionado
+       5. Guardar el lote en estado EN ALMACEN o DESPACHADO según el destino
+    Salida: Confirmación del lote creado
+    Criterios de aceptación:
+       - Solo usuarios autorizados pueden ejecutar la operación
+       - El sistema genera los seriales secuenciales del lote
+       - El lote no admite más de 500 registros por solicitud
+       - Los registros quedan disponibles para el ciclo normal de trazabilidad
+
+    RF-032: Instalación de la Aplicación como PWA
+    Prioridad: BAJA | Estado: Implementado
+    Descripción: El sistema debe poder instalarse como aplicación web progresiva.
+    Entrada: Evento beforeinstallprompt del navegador
+    Procesamiento:
+       1. Registrar service worker
+       2. Mostrar botón de instalación cuando el navegador lo permita
+       3. Solicitar instalación al usuario
+       4. Ocultar el botón después de completar o cancelar
+    Salida: Aplicación instalada o solicitud cancelada
+    Criterios de aceptación:
+       - El manifest y service worker están disponibles
+       - La instalación funciona desde el login y desde el menú
+       - La app puede ejecutarse en modo standalone
+
+    RF-033: Depuración Automática de Registros
+    Prioridad: MEDIA | Estado: Implementado
+    Descripción: El sistema debe depurar automáticamente los primeros 1000 registros cada vez que la hoja global alcance un múltiplo de 3000 registros.
+    Entrada: Total de registros almacenados en la hoja global REGISTROS
+    Procesamiento:
+       1. Verificar si el total de registros es múltiplo de 3000
+       2. Identificar los primeros 1000 registros por orden de inserción
+       3. Eliminar esos registros de la hoja global y de las hojas por cliente
+       4. Mantener sincronizados los datos restantes
+    Salida: Conjunto de registros depurado y sincronizado
+    Criterios de aceptación:
+       - La depuración se ejecuta solo al llegar a 3000, 6000, 9000, etc.
+       - Se conservan los registros más recientes
+       - La depuración no interrumpe el registro nuevo
+       - Las vistas de registros y estadísticas continúan consistentes
+
 3.2 Requisitos No-Funcionales
 
    3.2.1 Requisitos de Rendimiento
@@ -748,7 +886,8 @@ se detalla la información que debe incluir:
       NRF-004: Volumen de Datos
       - Hasta 100,000 registros en Google Sheets
       - Escalable según crecimiento
-      - Archivado manual de datos históricos
+      - Depuración automática de los primeros 1000 registros al alcanzar cada bloque de 3000
+      - Los datos históricos depurados pueden conservarse en respaldo externo si se requiere auditoría
       
       NRF-005: Optimización Móvil
       - Carga en dispositivos móviles: < 3 segundos
@@ -763,9 +902,9 @@ se detalla la información que debe incluir:
    3.2.2 Requisitos de Seguridad
       NRF-007: Autenticación
       - Autenticación basada en usuario/contraseña
-      - Contraseñas mínimo 6 caracteres (futuro: 12 caracteres)
+      - Contraseñas mínimo 8 caracteres con complejidad básica (futuro: 12 caracteres)
       - HTTPS obligatorio en producción
-      - Sessions con token JWT
+      - Sesión persistida en localStorage/sessionStorage y encabezados autenticados
       - Expiración de sesiones tras 30 minutos inactividad
       - Almacenamiento seguro de credenciales en Google Sheets
       
@@ -977,6 +1116,32 @@ se detalla la información que debe incluir:
       - Plugin system (futuro)
       - Migraciones de datos sin downtime
       - Nuevas funcionalidades sin afectar existentes
+
+3.3 Interfaces Externas
+
+   3.3.1 Interfaces de Usuario
+      - Interfaz web responsive para escritorio y móvil
+      - Pantalla de login con selección de flujo usuario/administrador
+      - Vista de escaneo con acceso rápido a cámara
+      - Tablas de registros, estadísticas, usuarios, clientes, recompensas y contacto
+
+   3.3.2 Interfaces de Software
+      - Google Sheets API como repositorio principal de datos
+      - Google Drive/Google Cloud para credenciales y configuración del proyecto
+      - html5-qrcode para lectura de códigos QR
+      - Chart.js para gráficas
+      - SheetJS/XLSX para exportaciones
+      - Nodemailer, Brevo o Resend para correo
+
+   3.3.3 Interfaces de Comunicación
+      - Comunicación HTTPS entre navegador y backend
+      - Intercambio JSON en rutas REST
+      - Encabezados x-auth-user y x-auth-password para consumo autenticado
+      - CORS habilitado para el frontend web
+
+   3.3.4 Interfaces de Hardware
+      - Cámara web o cámara móvil para escaneo QR
+      - Dispositivo con navegador moderno y acceso a internet
       
       NRF-037: Escalabilidad Técnica
       - Separation of concerns para scaling independiente

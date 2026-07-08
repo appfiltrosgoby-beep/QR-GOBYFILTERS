@@ -3074,6 +3074,71 @@ function mapRecordRowToObject(row) {
   };
 }
 
+function getRecordSheetKey(row) {
+  const referencia = (row.get('REFERENCIA') || '').toString().trim();
+  const serial = (row.get('SERIAL') || '').toString().trim();
+  if (!referencia || !serial) return '';
+  return `${referencia}|${serial}`;
+}
+
+function getRecordRowNumber(row) {
+  return Number(row?.rowNumber || row?._rowNumber || 0);
+}
+
+async function purgeOldestRecordsAcrossSheets(doc, rowsToPurge = 1000) {
+  const globalSheet = await getOrCreateRecordsSheet(doc);
+  await ensureSheetHeaderRowLoaded(globalSheet);
+
+  const globalRows = await globalSheet.getRows();
+  if (globalRows.length < rowsToPurge) {
+    return { deletedCount: 0, purgedCount: 0 };
+  }
+
+  const keysToDelete = new Set(
+    globalRows
+      .slice(0, rowsToPurge)
+      .map(getRecordSheetKey)
+      .filter(Boolean)
+  );
+
+  if (!keysToDelete.size) {
+    return { deletedCount: 0, purgedCount: 0 };
+  }
+
+  let deletedCount = 0;
+  const rowsToDelete = globalRows
+    .filter(row => keysToDelete.has(getRecordSheetKey(row)))
+    .sort((left, right) => getRecordRowNumber(right) - getRecordRowNumber(left));
+
+  for (const row of rowsToDelete) {
+    await row.delete();
+    deletedCount += 1;
+  }
+
+  return { deletedCount, purgedCount: keysToDelete.size };
+}
+
+function shouldRunAutomaticRecordCleanup(triggerCount) {
+  return Number.isFinite(triggerCount) && triggerCount === 3000;
+}
+
+async function runAutomaticRecordCleanup(doc, triggerCount) {
+  if (!shouldRunAutomaticRecordCleanup(triggerCount)) {
+    return null;
+  }
+
+  try {
+    const result = await purgeOldestRecordsAcrossSheets(doc, 1000);
+    if (result.deletedCount > 0) {
+      console.log(`🧹 Depuración automática ejecutada: ${result.deletedCount} filas eliminadas (${result.purgedCount} registros)`);
+    }
+    return result;
+  } catch (error) {
+    console.warn('⚠️ No se pudo ejecutar la depuración automática de registros:', formatErrorForLogging(error));
+    return null;
+  }
+}
+
 async function getAllRecordsForSuperadmin(doc, { requestedClient = '', maxRecords = 0 } = {}) {
   const requestedKey = requestedClient ? normalizeClientForMatch(requestedClient) : '';
   const cacheKey = requestedKey || '*';
@@ -4335,6 +4400,8 @@ app.post('/api/save-qr', async (req, res) => {
         });
       }
 
+      await runAutomaticRecordCleanup(doc, nextGlobalId);
+
       res.json({ 
         success: true, 
         action: 'stored',
@@ -5326,6 +5393,8 @@ app.post('/api/bulk-ingress', async (req, res) => {
         clientRowCount += 1;
 
         results.created.push({ serial });
+
+        await runAutomaticRecordCleanup(doc, globalRowCount);
 
         // Throttle writes to stay within Google Sheets API quota
         if (BULK_WRITE_DELAY_MS > 0 && i < cantidad - 1) {
