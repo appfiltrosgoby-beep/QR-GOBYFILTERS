@@ -3607,11 +3607,14 @@ app.post('/api/clients', async (req, res) => {
     // Validar que sea superadmin
     const doc = await getGoogleSheet();
     const authData = await validateAdminOrSuperadminCredentials(doc, authUser, authPassword);
-    
-    if (!authData || authData.tipo !== 'super') {
+    const isGobyAdmin = authData
+      && authData.tipo === 'administrador'
+      && normalizeClientForMatch(authData.cliente || '') === 'GOBY';
+
+    if (!authData || (authData.tipo !== 'super' && !isGobyAdmin)) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Solo superadmin puede agregar clientes' 
+        message: 'Solo superadmin o administrador de GOBY puede agregar clientes' 
       });
     }
 

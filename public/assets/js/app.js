@@ -548,6 +548,11 @@ function sortClientsByNombre(clients) {
     return list.slice().sort((a, b) => compareClientNames(a?.nombre, b?.nombre));
 }
 
+function canManageClients() {
+    return currentUserRole === 'superadmin'
+        || (currentUserRole === 'admin' && normalizeClientValue(currentUserClient) === 'GOBY');
+}
+
 async function resolveClientName(inputValue) {
     const target = normalizeClientValue(inputValue);
     if (!target) {
@@ -1240,6 +1245,10 @@ async function loadLoginAlerts() {
  * Aplicar permisos según el rol
  */
 function applyRolePermissions() {
+    const canAccessClientsView = canManageClients();
+    const usersForm = document.getElementById('usersForm');
+    const clientsForm = document.getElementById('clientsForm');
+
     // Actualizar badge de rol
     let roleText = 'Usuario';
     if (currentUserRole === 'superadmin') {
@@ -1292,6 +1301,12 @@ function applyRolePermissions() {
         if (document.getElementById('recordsView').classList.contains('active')) {
             switchView('myRecordsView');
         }
+        if (usersForm) {
+            usersForm.style.display = 'none';
+        }
+        if (clientsForm) {
+            clientsForm.style.display = 'none';
+        }
     } else if (currentUserRole === 'dispatch' && currentUserType === 'despacho') {
         // Usuario despacho: ocultar estadísticas, usuarios y clientes; mostrar escáner, registros propios y selector de cliente
         setViewButtonVisibility('statsView', false);
@@ -1324,11 +1339,17 @@ function applyRolePermissions() {
         if (document.getElementById('recordsView').classList.contains('active')) {
             switchView('myRecordsView');
         }
+        if (usersForm) {
+            usersForm.style.display = 'none';
+        }
+        if (clientsForm) {
+            clientsForm.style.display = 'none';
+        }
     } else if (currentUserRole === 'admin') {
         // Admin: mostrar escáner, usuarios, proyecciones, registros; ocultar estadísticas y clientes
         setViewButtonVisibility('statsView', false);
         setViewButtonVisibility('usersView', true);
-        setViewButtonVisibility('clientsView', false);
+        setViewButtonVisibility('clientsView', canAccessClientsView);
         setViewButtonVisibility('projectionsView', true);
         setViewButtonVisibility('scannerView', true);
         setViewButtonVisibility('recordsView', true);
@@ -1354,27 +1375,30 @@ function applyRolePermissions() {
                 }
             });
         }
-        // Si está en vista de estadísticas o clientes, redirigir a escáner
+        // Si está en vista de estadísticas o clientes sin permiso, redirigir a escáner
         if (document.getElementById('statsView').classList.contains('active')) {
             switchView('scannerView');
         }
-        if (document.getElementById('clientsView').classList.contains('active')) {
+        if (!canAccessClientsView && document.getElementById('clientsView').classList.contains('active')) {
             switchView('scannerView');
         }
         if (document.getElementById('myRecordsView')?.classList.contains('active')) {
             switchView('recordsView');
         }
-        
-        // Ocultar formulario de crear usuarios (solo pueden ver)
-        const userForm = document.querySelector('.user-form');
-        if (userForm) {
-            userForm.style.display = 'none';
+        if (usersForm) {
+            usersForm.style.display = 'none';
+        }
+        if (clientsForm) {
+            clientsForm.style.display = canAccessClientsView ? 'flex' : 'none';
+        }
+        if (!canAccessClientsView && elements.updateClientBtn) {
+            elements.updateClientBtn.classList.add('hidden');
         }
     } else {
         // Superadmin: mostrar estadísticas, registros, usuarios, clientes y proyecciones (ocultar escáner)
         setViewButtonVisibility('statsView', true);
         setViewButtonVisibility('usersView', true);
-        setViewButtonVisibility('clientsView', true);
+        setViewButtonVisibility('clientsView', canAccessClientsView);
         setViewButtonVisibility('projectionsView', true);
         // Escanear también disponible para superadmin
         setViewButtonVisibility('scannerView', true);
@@ -1398,10 +1422,12 @@ function applyRolePermissions() {
         // Nota: no forzar redirección desde Escanear/Mi perfil para superadmin;
         // el usuario puede navegar libremente.
         
-        // Mostrar formulario de crear usuarios (solo superadmin)
-        const userForm = document.querySelector('.user-form');
-        if (userForm) {
-            userForm.style.display = 'block';
+        // Mostrar formularios de usuarios y clientes para superadmin
+        if (usersForm) {
+            usersForm.style.display = 'block';
+        }
+        if (clientsForm) {
+            clientsForm.style.display = 'flex';
         }
         
         // Cargar clientes para superadmin
@@ -1446,11 +1472,11 @@ function applyRolePermissions() {
  */
 function switchView(viewId) {
     // Validar permisos de acceso a la vista
-    // Solo superadmin puede acceder a: clientsView, statsView
+    // Solo superadmin puede acceder a statsView; clientes queda disponible para superadmin y admin de GOBY
     // Admin y superadmin pueden acceder a: usersView, projectionsView, recordsView
     // Mecánicos y despacho pueden acceder a: scannerView, myRecordsView
     // Despacho, admin y superadmin pueden acceder a: ingresoMasivoView
-    const superadminOnlyViews = ['clientsView', 'statsView'];
+    const superadminOnlyViews = ['statsView'];
     const adminSuperadminViews = ['usersView', 'projectionsView', 'recordsView'];
     const noMecanicoViews = ['ingresoMasivoView'];
     const nonSuperadminViews = [];
@@ -1464,6 +1490,12 @@ function switchView(viewId) {
         console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
         showToast('No tienes permiso para acceder a esta sección', 'error');
         // Redirigir a la vista permitida por defecto
+        viewId = (isMecanico || isDespacho) ? 'scannerView' : 'statsView';
+    }
+
+    if (viewId === 'clientsView' && !canManageClients()) {
+        console.warn(`⚠️ Acceso denegado: El usuario ${currentUsername} (${currentUserType}) intentó acceder a ${viewId}`);
+        showToast('No tienes permiso para acceder a esta sección', 'error');
         viewId = (isMecanico || isDespacho) ? 'scannerView' : 'statsView';
     }
 
@@ -2224,6 +2256,7 @@ async function submitContactRequest(event) {
 
     const submitBtn = elements.contactRequestSubmitBtn;
     const prevText = submitBtn ? submitBtn.textContent : '';
+
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Enviando...';
@@ -4182,8 +4215,8 @@ async function createClient() {
         return;
     }
 
-    if (!currentUserPassword || currentUserRole !== 'superadmin') {
-        elements.clientFormError.textContent = 'No autorizado. Inicia sesión como superadmin.';
+    if (!currentUserPassword || !canManageClients()) {
+        elements.clientFormError.textContent = 'No autorizado. Inicia sesión como superadmin o admin de GOBY.';
         elements.clientFormError.classList.remove('hidden');
         return;
     }
@@ -4356,7 +4389,7 @@ async function deleteClient(nombre) {
  * Carga clientes registrados (solo superadmin)
  */
 async function loadClients() {
-    if (currentUserRole !== 'superadmin') {
+    if (!canManageClients()) {
         return;
     }
 
